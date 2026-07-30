@@ -183,7 +183,7 @@ function payloadFromTouchDragTarget(target) {
   if (taskRow && taskRow.cells && taskRow.cells.length) {
     const fn = taskRow.cells[0].innerText.split("\n")[0].trim();
     if (!fn) return null;
-    const detail = (taskRow.cells[3] ? taskRow.cells[3].innerText : "").trim().slice(0, 300);
+    const detail = taskRowDetail(taskRow);
     const meta = currentMeta[[...$("tbody").rows].indexOf(taskRow)] || {};
     const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
     return { kind: "task", title: fn, detail, ref };

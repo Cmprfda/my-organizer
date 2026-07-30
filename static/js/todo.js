@@ -414,13 +414,22 @@ async function addTodoWithFeedback(body) {
   toast(novo ? tf("todo_added", body.title) : tf("todo_exists", body.title), novo ? "ok" : "");
 }
 
+// a célula "To Do" tem a OBS colada a seguir (obsHtml) só para a vista da
+// tabela — a OBS já aparece à parte e ao vivo via todoTaskInfoHtml, por isso
+// não deve entrar aqui: copiá-la tal e qual duplicaria a OBS no item criado
+function taskRowDetail(tr) {
+  const cell = tr && tr.cells[3] ? tr.cells[3].cloneNode(true) : null;
+  if (cell) cell.querySelectorAll(".obs, .addnote").forEach(n => n.remove());
+  return (cell ? cell.innerText : "").trim().slice(0, 300);
+}
+
 function addTodoFromTaskRow(btn) {
   const tr = btn.closest("tr");
   const ri = +btn.dataset.todoadd;
   if (!tr || Number.isNaN(ri)) return;
   const fn = tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "";
   if (!fn) return;
-  const detail = (tr.cells[3] ? tr.cells[3].innerText : "").trim().slice(0, 300);
+  const detail = taskRowDetail(tr);
   const meta = currentMeta[ri] || {};
   const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
   addTodoWithFeedback({ action: "add", title: fn, kind: "task", detail, ref, col: "todo" });
@@ -552,7 +561,7 @@ $("tbody").addEventListener("dragstart", e => {
   const fn = tr.cells[0].innerText.split("\n")[0].trim();
   if (!fn) return;
   // leva também o "O que fazer" como detalhe do item
-  const detail = (tr.cells[3] ? tr.cells[3].innerText : "").trim().slice(0, 300);
+  const detail = taskRowDetail(tr);
   // ...e as chaves exatas da linha, para se poder voltar a ela mais tarde
   const meta = currentMeta[[...$("tbody").rows].indexOf(tr)] || {};
   const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
