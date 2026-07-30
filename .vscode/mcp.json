@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser", "msedge",
+        "--isolated",
+        "--headless",
+        "--viewport-size", "1280x800",
+        "--allowed-origins", "http://localhost:8766;http://127.0.0.1:8766;http://localhost:8767;http://localhost:8768;http://localhost:8769"
+      ]
+    }
+  }
+}
