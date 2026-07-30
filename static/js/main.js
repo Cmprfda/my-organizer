@@ -151,14 +151,16 @@ $("viewToggle").addEventListener("click", () => {
   render();
 });
 function setTaskLayout(layout) {
-  taskLayout = layout === "cards" ? "cards" : "list";
+  taskLayout = ["cards", "kanban"].includes(layout) ? layout : "list";
   localStorage.setItem("bsp-tracker-task-layout", taskLayout);
   $("taskModeList").classList.toggle("active", taskLayout === "list");
   $("taskModeCards").classList.toggle("active", taskLayout === "cards");
+  $("taskModeKanban").classList.toggle("active", taskLayout === "kanban");
   render();
 }
 $("taskModeList").addEventListener("click", () => setTaskLayout("list"));
 $("taskModeCards").addEventListener("click", () => setTaskLayout("cards"));
+$("taskModeKanban").addEventListener("click", () => setTaskLayout("kanban"));
 $("toggleAll").addEventListener("click", () => {
   showAll = !showAll;
   statusFilters.clear();

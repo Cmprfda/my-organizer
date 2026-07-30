@@ -6,7 +6,7 @@ const HELP = [
     {
         title: ["O que é isto", "What this is"],
         items: [
-            ["A app abre um livro de Excel (o teu <strong>BSP-G2_Daily_Tracker.xlsx</strong> ou qualquer outro do OneDrive) e mostra as tarefas, as CCRs e a tua TODO list numa página local. O Excel continua a ser a fonte de verdade.",
+            ["A app abre um livro de Excel (o teu <strong>BSP-G2_Daily_Tracker.xlsx</strong> ou qualquer outro do OneDrive) e mostra as tarefas, as CCRs e a tua lista Por fazer numa página local. O Excel continua a ser a fonte de verdade.",
                 "The app opens an Excel workbook (your <strong>BSP-G2_Daily_Tracker.xlsx</strong> or any other one in OneDrive) and shows tasks, CCRs and your personal TODO list in a local page. Excel remains the source of truth."],
             ["Em <strong>Definições → Livro do OneDrive</strong> podes <strong>Mudar de livro</strong>: navega pelas pastas do OneDrive/SharePoint, procura pelo nome e escolhe qualquer ficheiro .xlsx. Os últimos livros usados ficam à mão.",
                 "In <strong>Settings → OneDrive workbook</strong> use <strong>Change workbook</strong>: browse your OneDrive/SharePoint folders, search by name and pick any .xlsx file. Recently used workbooks stay one click away."],
@@ -29,9 +29,9 @@ const HELP = [
                 "Click the summary counters (status, role, side) to filter; click again to clear the filter."],
             ["Na <strong>Pesquisa</strong>, carrega em <strong>Enter</strong> para fixar o texto escrito e continuar a escrever outro termo. O botão <strong>OU/E</strong> ao lado da caixa escolhe se basta um dos termos aparecer (OU) ou se têm de aparecer todos (E). Clica num termo fixado para o remover.",
                 "In <strong>Search</strong>, press <strong>Enter</strong> to pin the text you typed and keep typing another term. The <strong>OR/AND</strong> button next to the box decides whether any single term is enough (OR) or all of them must appear (AND). Click a pinned term to remove it."],
-            ["Clica num estado para o alterar. A alteração fica <strong>local</strong> (marcada com ✎) e só vai para o Excel quando carregas em <strong>Push</strong>. <strong>Atualizar sem enviar</strong> relê os dados sem escrever; <strong>Descartar locais</strong> deita fora as alterações pendentes.",
+            ["Clica num estado para o alterar. A alteração fica <strong>local</strong> (marcada com ✎) e só vai para o Excel quando carregas em <strong>Enviar</strong>. <strong>Atualizar sem enviar</strong> relê os dados sem escrever; <strong>Descartar locais</strong> deita fora as alterações pendentes.",
                 "Click a status to change it. The change stays <strong>local</strong> (marked with ✎) and only reaches Excel when you press <strong>Push</strong>. <strong>Refresh without pushing</strong> re-reads the data; <strong>Discard local</strong> throws the pending changes away."],
-            ["Clica em <strong>Obs:</strong> (ou <strong>+ obs</strong>) para escrever a coluna <strong>OBS</strong> da folha. Tal como os estados, fica local (✎) até carregares em <strong>Push</strong>.",
+            ["Clica em <strong>Obs:</strong> (ou <strong>+ obs</strong>) para escrever a coluna <strong>OBS</strong> da folha. Tal como os estados, fica local (✎) até carregares em <strong>Enviar</strong>.",
                 "Click <strong>Obs:</strong> (or <strong>+ note</strong>) to write the sheet's <strong>OBS</strong> column. Like statuses, it stays local (✎) until you press <strong>Push</strong>."],
             ["<strong>+ nota</strong> guarda etiquetas, checklists e texto livre por tarefa (só na app, nunca no Excel). <strong>Limpar notas</strong> apaga-as todas.",
                 "<strong>+ note</strong> stores tags, checklists and free text per task (app only, never in Excel). <strong>Clear notes</strong> deletes them all."],
@@ -48,7 +48,7 @@ const HELP = [
         ],
     },
     {
-        title: ["TODO list", "TODO list"],
+        title: ["Por fazer", "TODO list"],
         items: [
             [() => t("todo_hint"), () => t("todo_hint")],
             ["No modo <strong>Kanban</strong>, arrasta os cartões entre colunas — podes largar em qualquer ponto da coluna, incluindo o título e o espaço vazio. O cronómetro conta o tempo em <strong>Em curso</strong>.",
@@ -74,7 +74,7 @@ const HELP = [
         ],
     },
     {
-        title: ["Feedback", "Feedback"],
+        title: ["Sugestões", "Feedback"],
         items: [
             [() => t("fb_hint"), () => t("fb_hint")],
             ["Os erros da app são reportados automaticamente para a mesma pasta — não precisas de fazer nada.",

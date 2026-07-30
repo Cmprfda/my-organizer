@@ -21,7 +21,7 @@ function renderCCRs() {
   <td class="ccrNote" data-nid="${esc(id)}" title="${t("t_edit_note")}">${ccrs[id].note ? `<span class="obs">${esc(ccrs[id].note)}</span>` : `<span class="addnote">${t("addnote")}</span>`
       }</td>
   <td class="todoActionCell">${todoHas("ccr", `CCR ${id}`, { ccr: String(id) }) ? ""
-        : `<button type="button" class="todoActionBtn" data-todoaddccr="${esc(id)}" title="${t("todo_add_click")}">+ TODO</button>`}</td>
+        : `<button type="button" class="todoActionBtn" data-todoaddccr="${esc(id)}" title="${t("todo_add_click")}">${t("btn_add_todo")}</button>`}</td>
   <td><button type="button" class="ccr-x" data-del="${esc(id)}" title="${t("t_remove")}">✕</button></td>
 </tr>`;
   }).join("");

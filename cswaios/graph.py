@@ -240,11 +240,18 @@ def _graph_own_token(cfg):
             return tokens["access_token"]
         if not tokens.get("refresh_token") or not cfg.get("client_id"):
             return None
-        out = _http_json(f"{cfg['authority']}/{cfg['tenant_id']}/oauth2/v2.0/token",
-                         {"client_id": cfg["client_id"], "grant_type": "refresh_token",
-                          "refresh_token": tokens["refresh_token"], "scope": cfg["scopes"]})
+        try:
+            out = _http_json(f"{cfg['authority']}/{cfg['tenant_id']}/oauth2/v2.0/token",
+                             {"client_id": cfg["client_id"], "grant_type": "refresh_token",
+                              "refresh_token": tokens["refresh_token"], "scope": cfg["scopes"]})
+        except GraphError:
+            return None   # sem rede agora — tenta de novo no próximo pedido, mantém o refresh token
         if not out.get("access_token"):
-            _graph_forget_tokens()   # sessão revogada/expirada
+            # só esquece o refresh token quando a Microsoft diz mesmo que a sessão
+            # morreu (revogada/expirada); uma falha temporária do lado deles
+            # (5xx, throttling) não pode obrigar a nova autenticação
+            if out.get("error") in ("invalid_grant", "interaction_required"):
+                _graph_forget_tokens()
             return None
         return _graph_save_tokens(out)["access_token"]
 

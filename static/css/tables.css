@@ -299,3 +299,155 @@ td .obs.local {
   color: var(--muted);
   opacity: .75;
 }
+
+/* ---------- vista em Kanban (mesmas tarefas, agrupadas por lado) ---------- */
+.taskBoard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.taskCol {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--ios-shadow);
+}
+
+.taskColHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  font-weight: 500;
+}
+
+.taskColCount {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 600;
+}
+
+.taskColBody {
+  flex: 1 1 auto;
+  min-height: 100px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.taskCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--ios-shadow);
+  padding: 10px 12px;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.taskCard:hover {
+  box-shadow: var(--ios-shadow-lg);
+  transform: translateY(-3px);
+}
+
+.taskCard:active {
+  transform: scale(0.98);
+  opacity: 0.84;
+}
+
+.taskCardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.taskCard .role {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* os cartões usam <div>/<article>, não <td> — os equivalentes de td .obs,
+   td.execCell e td .badge[data-col] (forms.css/tables.css) não se aplicam
+   dentro de .taskCard, por isso repetem-se aqui */
+.taskCard .obs {
+  color: var(--muted);
+  font-size: 12.5px;
+  display: block;
+  margin-top: 4px;
+}
+
+.taskCard .obs[data-obsri] {
+  cursor: pointer;
+}
+
+.taskCard .obs[data-obsri]:hover {
+  color: var(--text);
+}
+
+.taskCard .obs.local {
+  color: var(--accent-text);
+}
+
+.taskCard .execCell {
+  cursor: pointer;
+}
+
+.taskCard .execCell .addnote {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.taskCard .badge[data-col] {
+  cursor: pointer;
+}
+
+.taskCard .badge[data-col]:hover {
+  filter: brightness(1.12);
+}
+
+.taskCardStatus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+}
+
+.taskCardTodo {
+  font-size: 13px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.taskCardFoot {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.taskCardFoot .todoActionBtn {
+  display: block;
+  width: 100%;
+}
+
+@media (max-width: 980px) {
+  .taskBoard {
+    grid-template-columns: 1fr;
+  }
+}

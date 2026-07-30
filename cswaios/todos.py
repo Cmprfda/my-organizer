@@ -13,6 +13,18 @@ TODO_FILE = os.path.join(HERE, "todo.json")
 TODO_COLUMNS = {"todo", "inprogress", "review", "done"}
 
 
+def normalize_subtask(sub):
+    if not isinstance(sub, dict):
+        return None
+    title = str(sub.get("title") or "").strip()[:200]
+    if not title:
+        return None
+    sub_id = str(sub.get("id") or "").strip()
+    if not sub_id:
+        return None
+    return {"id": sub_id, "title": title, "done": bool(sub.get("done"))}
+
+
 def normalize_todo_item(item):
     if not isinstance(item, dict):
         return None
@@ -38,6 +50,9 @@ def normalize_todo_item(item):
         started = None
     # só pode estar "a contar" quando está em Em curso
     out["timer_started"] = started if (started is not None and out["col"] == "inprogress") else None
+    # subtarefas (checklist leve): lista de {id, title, done}
+    raw_subs = out.get("subtasks")
+    out["subtasks"] = [s for s in (normalize_subtask(s) for s in raw_subs) if s] if isinstance(raw_subs, list) else []
     return out
 
 

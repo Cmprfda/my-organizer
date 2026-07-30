@@ -8,14 +8,17 @@ let SOURCE = localStorage.getItem("bsp-tracker-source") || "auto";
 if (!["auto", "onedrive", "local"].includes(SOURCE)) SOURCE = "auto";
 let showAll = false;
 let compactView = true;            // vista resumida por omissão
-// disposição da vista de tarefas: "list" (tabela) ou "cards" (caixas)
-let taskLayout = localStorage.getItem("bsp-tracker-task-layout") === "cards" ? "cards" : "list";
+// disposição da vista de tarefas: "list" (tabela), "cards" (caixas)
+// ou "kanban" (3 colunas por lado)
+let taskLayout = ["cards", "kanban"].includes(localStorage.getItem("bsp-tracker-task-layout"))
+  ? localStorage.getItem("bsp-tracker-task-layout") : "list";
 const statusFilters = new Set();   // estados selecionados (vista completa)
 const sideFilters = new Set();     // On my side / On the other side / Done (vista resumida)
 const roleFilters = new Set();     // papéis selecionados (Autor / Reviewer / Mencionado)
 let searchTerms = [];              // termos de pesquisa fixados (Enter na caixa)
 // como combinar os termos: "or" = qualquer um deles, "and" = todos
-let searchMode = localStorage.getItem("bsp-tracker-search-mode") === "and" ? "and" : "or";
+// por omissão "and" — cada termo novo estreita a pesquisa em vez de a alargar
+let searchMode = localStorage.getItem("bsp-tracker-search-mode") === "or" ? "or" : "and";
 let lastData = null;
 
 const SIDES = ["On my side", "On the other side", "Done"];

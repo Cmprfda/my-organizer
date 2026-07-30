@@ -87,10 +87,8 @@
       </div>
       <div class="setRow setRowUpdate">
         <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
-        <span id="appUpdateStatus"></span>
-      </div>
-      <div class="setRow">
         <button type="button" class="mini" id="shareAppBtn">Partilhar app</button>
+        <span id="appUpdateStatus"></span>
       </div>
     </div>
 
@@ -128,6 +126,7 @@
                 <div class="todoMode" id="taskMode">
                   <button type="button" id="taskModeList" class="secondary">Lista</button>
                   <button type="button" id="taskModeCards" class="secondary">Caixas</button>
+                  <button type="button" id="taskModeKanban" class="secondary">Kanban</button>
                 </div>
                 <button class="secondary hidden" id="viewToggle">Vista completa</button>
                 <button class="secondary" id="toggleAll">Ver tudo</button>
@@ -154,6 +153,10 @@
               <thead id="thead"></thead>
               <tbody id="tbody"></tbody>
             </table>
+          </div>
+
+          <div class="tablebox hidden" id="taskBoardBox">
+            <div class="taskBoard" id="taskBoard"></div>
           </div>
 
           <div class="state hidden" id="stateBox"></div>

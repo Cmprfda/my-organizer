@@ -304,6 +304,7 @@ body.topShrunk .ios-top #helpBtn {
   border-top: 1px solid var(--border);
   padding-top: 10px;
   flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 8px;
 }
 

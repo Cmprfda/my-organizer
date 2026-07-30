@@ -8,6 +8,14 @@ tr.todoRow td {
   font-size: 13.5px;
 }
 
+/* achavas que estava fechado, mas o Excel ainda te aponta o dedo — não faz
+   sentido riscar o texto de um item que afinal ainda precisa de ti
+   (mais específico que "tr.ccr-done td" de ccr.css, para se sobrepor) */
+tr.todoRow.ccr-done.flagged td {
+  text-decoration: none;
+  opacity: 1;
+}
+
 .todoMode {
   display: inline-flex;
   border-radius: 6px;
@@ -105,9 +113,12 @@ tr.todoRow td {
 }
 
 .todoCard {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
+  /* recorta o aviso de canto (.todoCardFlag) pelo mesmo arredondado do cartão */
+  overflow: hidden;
   box-shadow: var(--ios-shadow);
   padding: 10px;
   cursor: grab;
@@ -127,6 +138,13 @@ tr.todoRow td {
 .todoCard.done {
   text-decoration: line-through;
   opacity: .58;
+}
+
+/* achavas que estava fechado, mas o Excel ainda te aponta o dedo — não faz
+   sentido riscar o texto de um item que afinal ainda precisa de ti */
+.todoCard.done.flagged {
+  text-decoration: none;
+  opacity: 1;
 }
 
 .todoCardTitle {
@@ -274,6 +292,7 @@ tr.todoRow td {
   display: flex;
   align-items: center;
   gap: 7px;
+  margin-top: 8px;
   /* com cronómetro + reiniciar + origem, os botões não cabem numa linha
      em colunas estreitas: em vez de saírem para fora do cartão, quebram */
   flex-wrap: wrap;
@@ -291,6 +310,124 @@ tr.todoRow td {
 
 .todoCardMeta input[type="checkbox"] {
   margin: 0;
+}
+
+/* subtarefas dentro de um item do TODO */
+.todoSubProgress {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.todoSubList {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.todoSubItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  padding: 1px 0;
+}
+
+.todoSubItem input[type="checkbox"] {
+  margin: 0;
+}
+
+.todoSubTitle {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.todoSubItem.done .todoSubTitle {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.todoSubAddRow {
+  margin-top: 4px;
+}
+
+/* seletor composto (em vez de só ".todoSubInput"): sobrepõe-se a
+   "input[type=text]" de forms.css, que tem mais especificidade e vem depois */
+.todoSubAddRow .todoSubInput {
+  width: 100%;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.todoSubAddRow .todoSubInput:focus {
+  border-style: solid;
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* edição do título (só tarefas manuais) e do texto de um passo — o dobro do
+   ".titleClass .inputClass" garante especificidade suficiente para vencer
+   "input[type=text]" de forms.css (ver nota acima do .todoSubAddRow) */
+.todoTitleText .todoTitleInput,
+.todoSubTitle .todoSubEditInput {
+  width: 100%;
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.todoTitleText {
+  cursor: pointer;
+}
+
+.todoTitleText[data-editing] {
+  cursor: default;
+}
+
+/* aviso "Do meu lado": faixa a todo o largo no topo do cartão no Kanban,
+   badge bem carregado junto ao título na lista. Cor sólida (não o par
+   bg/fg pastel dos outros badges) de propósito — tem de saltar à vista. */
+.todoCardFlag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--status-blocked-fg);
+  color: var(--white);
+  font-size: 12.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  padding: 7px 10px;
+  margin: -10px -10px 8px;
+}
+
+.todoRowFlag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--status-blocked-fg);
+  color: var(--white);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  white-space: nowrap;
+  padding: 3px 9px;
+  border-radius: 999px;
+  margin-right: 6px;
 }
 
 @media (max-width: 980px) {

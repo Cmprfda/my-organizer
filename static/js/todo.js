@@ -161,6 +161,21 @@ function taskRowFor(it) {
   return null;
 }
 
+// avisa quando marcaste este item como Concluído mas a tarefa do Excel por
+// trás afinal ainda está do teu lado (ex.: voltou para "Ready for rework")
+// — só faz sentido como aviso quando já achavas que estava feito.
+function todoIsFlagged(it) {
+  if (todoColOf(it) !== "done") return false;
+  const row = taskRowFor(it);
+  return !!row && row[5] === "On my side";
+}
+
+function todoMySideFlag(it, corner) {
+  if (!todoIsFlagged(it)) return "";
+  const cls = corner ? "todoCardFlag" : "todoRowFlag";
+  return `<span class="${cls}" title="${esc(t("side_my"))}">🚩 ${esc(t("side_my"))}</span>`;
+}
+
 function todoTaskInfoHtml(it) {
   const row = taskRowFor(it);
   if (!row) return "";
@@ -183,6 +198,93 @@ function todoTaskInfoHtml(it) {
   if (n && n.note) parts.push(`<span class="obs">${esc(n.note)}</span>`);
   if (!parts.length) return "";
   return `<div class="todoTaskInfo">${parts.join("")}</div>`;
+}
+
+// progresso das subtarefas (ex.: "2/5"), só aparece quando existem subtarefas
+function todoSubProgress(it) {
+  const subs = Array.isArray(it.subtasks) ? it.subtasks : [];
+  return subs.length ? `<span class="todoSubProgress">${subs.filter(s => s.done).length}/${subs.length}</span>` : "";
+}
+
+// checklist de subtarefas + campo para adicionar mais uma (Enter submete)
+function todoSubtasksHtml(it) {
+  const subs = Array.isArray(it.subtasks) ? it.subtasks : [];
+  const rows = subs.map(s => `<li class="todoSubItem${s.done ? " done" : ""}">
+    <input type="checkbox" data-tsubtgl="${esc(it.id)}|${esc(s.id)}"${s.done ? " checked" : ""}>
+    <span class="todoSubTitle" data-tsubedit="${esc(it.id)}|${esc(s.id)}" title="${t("t_edit_title")}">${esc(s.title)}</span>
+    <button type="button" class="ccr-x" data-tsubdel="${esc(it.id)}|${esc(s.id)}" title="${t("t_remove")}">✕</button>
+  </li>`).join("");
+  return `<ul class="todoSubList">${rows}<li class="todoSubAddRow">` +
+    `<input type="text" class="todoSubInput" data-tsubnew="${esc(it.id)}" placeholder="${t("ph_subtask")}"></li></ul>`;
+}
+
+// título editável só para tarefas criadas na app (as de Excel/CCR mantêm o
+// título igual à origem, por isso não são clicáveis aqui)
+function todoTitleHtml(it) {
+  const manual = (it.kind || "manual") === "manual";
+  if (!manual) return esc(it.title);
+  return `<span class="todoTitleText" data-ttitle="${esc(it.id)}" title="${t("t_edit_title")}">${esc(it.title)}</span>`;
+}
+
+function openTodoTitle(el) {
+  const id = el.dataset.ttitle;
+  const item = todos.find(it => it.id === id);
+  if (!item) return;
+  el.dataset.editing = "1";
+  editorOpen = true;
+  const host = el.closest("[data-tid]");
+  if (host) host.draggable = false;
+  el.innerHTML = `<input type="text" class="todoTitleInput" value="${esc(item.title)}" maxlength="200">`;
+  const box = el.querySelector(".todoTitleInput");
+  box.focus();
+  box.select();
+  // o finish() pode ser chamado duas vezes (Enter guarda e o re-render tira o
+  // input focado do DOM, o que ainda dispara blur) — a flag evita o duplicado
+  let finished = false;
+  const finish = save => {
+    if (finished) return;
+    finished = true;
+    editorOpen = false;
+    if (host) host.draggable = true;
+    const title = box.value.trim();
+    if (save && title && title !== item.title) postTodo({ action: "rename", id, title });
+    else renderTodo();
+  };
+  box.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  box.addEventListener("blur", () => finish(true));
+}
+
+function openSubtaskEdit(el) {
+  const [id, subId] = el.dataset.tsubedit.split("|");
+  const item = todos.find(it => it.id === id);
+  const sub = item && (item.subtasks || []).find(s => s.id === subId);
+  if (!sub) return;
+  el.dataset.editing = "1";
+  editorOpen = true;
+  const host = el.closest("[data-tid]");
+  if (host) host.draggable = false;
+  el.innerHTML = `<input type="text" class="todoSubEditInput" value="${esc(sub.title)}" maxlength="200">`;
+  const box = el.querySelector(".todoSubEditInput");
+  box.focus();
+  box.select();
+  let finished = false;
+  const finish = save => {
+    if (finished) return;
+    finished = true;
+    editorOpen = false;
+    if (host) host.draggable = true;
+    const title = box.value.trim();
+    if (save && title && title !== sub.title) postTodo({ action: "rename_subtask", id, sub_id: subId, title });
+    else renderTodo();
+  };
+  box.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  box.addEventListener("blur", () => finish(true));
 }
 
 // Nota do item. As tarefas do Excel e as CCRs trazem o detalhe da origem (e as
@@ -236,9 +338,9 @@ function renderTodo() {
       const srcCell = srcOf(it)
         ? `<button type="button" class="srcBtn" data-src="${esc(it.id)}" title="${t("t_src")}">↗</button>`
         : "";
-      return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}" data-tid="${esc(it.id)}">
+      return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     <td style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
-    <td>${kindChip(it.kind)}${esc(it.title)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}</td>
+    <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}</td>
     <td style="width:1%">${todoStatusHtml(it)}</td>
     <td style="width:1%">${todoTimerHtml(it)} ${todoTimerRestartHtml(it)}</td>
     <td style="width:1%">${srcCell}</td>
@@ -255,10 +357,12 @@ function renderTodo() {
       const srcCell = srcOf(it)
         ? `<button type="button" class="srcBtn" data-src="${esc(it.id)}" title="${t("t_src")}">↗</button>`
         : "";
-      return `<article draggable="true" class="todoCard${it.done ? " done" : ""}" data-tid="${esc(it.id)}">
-    <div class="todoCardTitle">${kindChip(it.kind)}${esc(it.title)}</div>
+      return `<article draggable="true" class="todoCard${it.done ? " done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
+    ${todoMySideFlag(it, true)}
+    <div class="todoCardTitle">${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}</div>
     ${todoNoteHtml(it, true)}
     ${todoTaskInfoHtml(it)}
+    ${todoSubtasksHtml(it)}
     <div class="todoCardMeta">
       <input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}>
       ${todoStatusHtml(it)}
@@ -309,12 +413,20 @@ async function addTodoWithFeedback(body) {
 }
 
 function addTodoFromTaskRow(btn) {
-  const tr = btn.closest("tr");
   const ri = +btn.dataset.todoadd;
-  if (!tr || Number.isNaN(ri)) return;
-  const fn = tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "";
+  if (Number.isNaN(ri)) return;
+  const tr = btn.closest("tr");
+  // no Kanban das Tarefas o botão vive num cartão (.taskCard), que não tem
+  // .cells — aí o nome e o detalhe vêm dos atributos data-drag-*
+  const card = tr ? null : btn.closest(".taskCard");
+  if (!tr && !card) return;
+  const fn = tr
+    ? (tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "")
+    : (card.dataset.dragFn || "");
   if (!fn) return;
-  const detail = (tr.cells[3] ? tr.cells[3].innerText : "").trim().slice(0, 300);
+  const detail = (tr
+    ? (tr.cells[3] ? tr.cells[3].innerText : "")
+    : (card.dataset.dragDetail || "")).trim().slice(0, 300);
   const meta = currentMeta[ri] || {};
   const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
   addTodoWithFeedback({ action: "add", title: fn, kind: "task", detail, ref, col: "todo" });
@@ -346,6 +458,11 @@ $("todoModeKanban").addEventListener("click", () => setTodoLayout("kanban"));
 $("todoBody").addEventListener("change", e => {
   const cb = e.target.closest("input[data-tgl]");
   if (cb) postTodo({ action: "toggle", id: cb.dataset.tgl });
+  const sub = e.target.closest("input[data-tsubtgl]");
+  if (sub) {
+    const [id, subId] = sub.dataset.tsubtgl.split("|");
+    postTodo({ action: "toggle_subtask", id, sub_id: subId });
+  }
 });
 $("todoBody").addEventListener("click", e => {
   const timer = e.target.closest("[data-ttimer]");
@@ -354,10 +471,20 @@ $("todoBody").addEventListener("click", e => {
   if (reset) { postTodo({ action: "restart_timer", id: reset.dataset.treset }); return; }
   const status = e.target.closest("[data-tocol]");
   if (status) { setTodoStatusById(status.dataset.tocol); return; }
+  const subDel = e.target.closest("[data-tsubdel]");
+  if (subDel) {
+    const [id, subId] = subDel.dataset.tsubdel.split("|");
+    postTodo({ action: "delete_subtask", id, sub_id: subId });
+    return;
+  }
   const del = e.target.closest("[data-tdel]");
   if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
   const src = e.target.closest("[data-src]");
   if (src) { revealSource(srcOf(todos.find(it => it.id === src.dataset.src))); return; }
+  const titleEl = e.target.closest("[data-ttitle]");
+  if (titleEl && !titleEl.dataset.editing) { openTodoTitle(titleEl); return; }
+  const subEdit = e.target.closest("[data-tsubedit]");
+  if (subEdit && !subEdit.dataset.editing) { openSubtaskEdit(subEdit); return; }
   const note = e.target.closest("[data-tnote]");
   if (note && !note.dataset.editing) openTodoNote(note);
 });
@@ -372,6 +499,11 @@ $("todoBody").addEventListener("contextmenu", e => {
 $("todoBoard").addEventListener("change", e => {
   const cb = e.target.closest("input[data-tgl]");
   if (cb) postTodo({ action: "toggle", id: cb.dataset.tgl });
+  const sub = e.target.closest("input[data-tsubtgl]");
+  if (sub) {
+    const [id, subId] = sub.dataset.tsubtgl.split("|");
+    postTodo({ action: "toggle_subtask", id, sub_id: subId });
+  }
 });
 $("todoBoard").addEventListener("click", e => {
   const timer = e.target.closest("[data-ttimer]");
@@ -380,10 +512,20 @@ $("todoBoard").addEventListener("click", e => {
   if (reset) { postTodo({ action: "restart_timer", id: reset.dataset.treset }); return; }
   const status = e.target.closest("[data-tocol]");
   if (status) { setTodoStatusById(status.dataset.tocol); return; }
+  const subDel = e.target.closest("[data-tsubdel]");
+  if (subDel) {
+    const [id, subId] = subDel.dataset.tsubdel.split("|");
+    postTodo({ action: "delete_subtask", id, sub_id: subId });
+    return;
+  }
   const del = e.target.closest("[data-tdel]");
   if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
   const src = e.target.closest("[data-src]");
   if (src) { revealSource(srcOf(todos.find(it => it.id === src.dataset.src))); return; }
+  const titleEl = e.target.closest("[data-ttitle]");
+  if (titleEl && !titleEl.dataset.editing) { openTodoTitle(titleEl); return; }
+  const subEdit = e.target.closest("[data-tsubedit]");
+  if (subEdit && !subEdit.dataset.editing) { openSubtaskEdit(subEdit); return; }
   const note = e.target.closest("[data-tnote]");
   if (note && !note.dataset.editing) openTodoNote(note);
 });
@@ -394,6 +536,40 @@ $("todoBoard").addEventListener("contextmenu", e => {
   e.preventDefault();
   setTodoStatusById(status.dataset.tocol, -1);
 });
+
+// nova subtarefa: Enter no campo do fim da checklist
+function handleSubtaskKeydown(e) {
+  const input = e.target.closest(".todoSubInput");
+  if (!input || e.key !== "Enter") return;
+  e.preventDefault();
+  const title = input.value.trim();
+  if (!title) return;
+  postTodo({ action: "add_subtask", id: input.dataset.tsubnew, title });
+  input.value = "";
+}
+$("todoBody").addEventListener("keydown", handleSubtaskKeydown);
+$("todoBoard").addEventListener("keydown", handleSubtaskKeydown);
+
+// enquanto se escreve: o arrasto da linha/cartão rouba a seleção de texto e o
+// re-render dos 15 s apagaria o que já estava escrito
+function todoSubFocusIn(e) {
+  const input = e.target.closest(".todoSubInput");
+  if (!input) return;
+  editorOpen = true;
+  const host = input.closest("[data-tid]");
+  if (host) host.draggable = false;
+}
+function todoSubFocusOut(e) {
+  const input = e.target.closest(".todoSubInput");
+  if (!input) return;
+  editorOpen = false;
+  const host = input.closest("[data-tid]");
+  if (host) host.draggable = true;
+}
+$("todoBody").addEventListener("focusin", todoSubFocusIn);
+$("todoBody").addEventListener("focusout", todoSubFocusOut);
+$("todoBoard").addEventListener("focusin", todoSubFocusIn);
+$("todoBoard").addEventListener("focusout", todoSubFocusOut);
 
 // arrastar: das Tarefas/CCRs para o TODO, e dentro do TODO para reordenar
 function dragPayload(e) {
@@ -413,6 +589,18 @@ $("tbody").addEventListener("dragstart", e => {
   // ...e as chaves exatas da linha, para se poder voltar a ela mais tarde
   const meta = currentMeta[[...$("tbody").rows].indexOf(tr)] || {};
   const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
+  e.dataTransfer.setData("application/json", JSON.stringify({ kind: "task", title: fn, detail, ref }));
+  e.dataTransfer.effectAllowed = "copy";
+});
+// no Kanban das Tarefas o cartão não é um <tr>: a mesma informação vem dos
+// atributos data-drag-* preenchidos em taskCardHtml (ver tasks.js)
+$("taskBoard").addEventListener("dragstart", e => {
+  const card = e.target.closest(".taskCard");
+  if (!card) return;
+  const fn = card.dataset.dragFn || "";
+  if (!fn) return;
+  const detail = (card.dataset.dragDetail || "").trim().slice(0, 300);
+  const ref = { sheet: card.dataset.dragSheet || "", fn, todo: card.dataset.dragTodo || "" };
   e.dataTransfer.setData("application/json", JSON.stringify({ kind: "task", title: fn, detail, ref }));
   e.dataTransfer.effectAllowed = "copy";
 });

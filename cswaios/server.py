@@ -351,6 +351,61 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("item TODO não encontrado")
                     target["detail"] = str(payload.get("detail") or "").strip()[:1000]
                     log_event(f'{ip} TODO nota: {str(target.get("title", "?"))[:60]!r}')
+                elif action == "add_subtask":
+                    # checklist leve dentro do item (sem edição/reordenação)
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    title = str(payload.get("title") or "").strip()[:200]
+                    if not title:
+                        raise ValueError("subtarefa vazia")
+                    subs = target.get("subtasks")
+                    if not isinstance(subs, list):
+                        subs = []
+                    subs.append({"id": f"s{int(time.time() * 1000)}", "title": title, "done": False})
+                    target["subtasks"] = subs
+                    log_event(f'{ip} subtarefa + em {str(target.get("title", "?"))[:60]!r}: {title[:60]!r}')
+                elif action == "toggle_subtask":
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    subs = target.get("subtasks") if isinstance(target.get("subtasks"), list) else []
+                    sub = next((s for s in subs if isinstance(s, dict) and s.get("id") == payload.get("sub_id")), None)
+                    if sub is None:
+                        raise ValueError("subtarefa não encontrada")
+                    sub["done"] = not sub.get("done")
+                elif action == "rename":
+                    # só as tarefas criadas na app podem ser renomeadas — as de
+                    # Excel/CCR têm de manter o título igual à origem
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    if (target.get("kind") or "manual") != "manual":
+                        raise ValueError("só as tarefas criadas na app podem ser renomeadas")
+                    title = str(payload.get("title") or "").strip()[:200]
+                    if not title:
+                        raise ValueError("título vazio")
+                    target["title"] = title
+                    log_event(f'{ip} TODO renomeado: {title[:60]!r}')
+                elif action == "rename_subtask":
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    subs = target.get("subtasks") if isinstance(target.get("subtasks"), list) else []
+                    sub = next((s for s in subs if isinstance(s, dict) and s.get("id") == payload.get("sub_id")), None)
+                    if sub is None:
+                        raise ValueError("passo não encontrado")
+                    title = str(payload.get("title") or "").strip()[:200]
+                    if not title:
+                        raise ValueError("passo vazio")
+                    sub["title"] = title
+                elif action == "delete_subtask":
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    subs = target.get("subtasks") if isinstance(target.get("subtasks"), list) else []
+                    target["subtasks"] = [s for s in subs
+                                          if not (isinstance(s, dict) and s.get("id") == payload.get("sub_id"))]
                 else:
                     raise ValueError(f"ação inválida: {action}")
                 todos = [normalize_todo_item(t) for t in todos if normalize_todo_item(t)]
@@ -497,8 +552,12 @@ class Handler(BaseHTTPRequestHandler):
                 def _restart():
                     time.sleep(0.8)
                     env = dict(os.environ, BSP_SKIP_UPDATE="1")
+                    # o browser já está aberto (foi de lá que veio o pedido) e vai
+                    # recarregar sozinho (location.reload() em settings.js) — não
+                    # abrir uma segunda janela/aba ao reiniciar
+                    argv = [a for a in sys.argv[1:] if a != "--no-browser"]
                     subprocess.Popen([sys.executable,
-                                      os.path.join(HERE, "app.py")] + sys.argv[1:],
+                                      os.path.join(HERE, "app.py"), "--no-browser"] + argv,
                                      cwd=HERE, env=env)
                     os._exit(0)
                 threading.Thread(target=_restart, daemon=True).start()
