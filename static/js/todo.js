@@ -330,6 +330,7 @@ function renderTodo() {
   if (!todos.length) {
     $("todoBody").innerHTML = "";
     $("todoBoard").innerHTML = "";
+    refreshItemBox();
     return;
   }
 
@@ -347,6 +348,7 @@ function renderTodo() {
     <td class="todoCtl" style="width:1%"><button type="button" class="ccr-x" data-tdel="${esc(it.id)}" title="${t("t_remove")}">✕</button></td>
   </tr>`;
     }).join("");
+    refreshItemBox();
     return;
   }
 
@@ -377,6 +379,7 @@ function renderTodo() {
   <div class="todoColBody" data-todocol="${col}">${cards}</div>
 </section>`;
   }).join("");
+  refreshItemBox();
 }
 
 async function postTodo(body) {
@@ -445,7 +448,8 @@ $("todoNew").addEventListener("keydown", e => { if (e.key === "Enter") addManual
 $("todoModeList").addEventListener("click", () => setTodoLayout("list"));
 $("todoModeKanban").addEventListener("click", () => setTodoLayout("kanban"));
 
-$("todoBody").addEventListener("change", e => {
+// tratadores partilhados pela lista, pelo Kanban e pela caixa de detalhe
+function todoItemChange(e) {
   const cb = e.target.closest("input[data-tgl]");
   if (cb) postTodo({ action: "toggle", id: cb.dataset.tgl });
   const sub = e.target.closest("input[data-tsubtgl]");
@@ -453,8 +457,9 @@ $("todoBody").addEventListener("change", e => {
     const [id, subId] = sub.dataset.tsubtgl.split("|");
     postTodo({ action: "toggle_subtask", id, sub_id: subId });
   }
-});
-$("todoBody").addEventListener("click", e => {
+}
+
+function todoItemTap(e) {
   const timer = e.target.closest("[data-ttimer]");
   if (timer) { postTodo({ action: "toggle_timer", id: timer.dataset.ttimer }); return; }
   const reset = e.target.closest("[data-treset]");
@@ -477,55 +482,24 @@ $("todoBody").addEventListener("click", e => {
   if (subEdit && !subEdit.dataset.editing) { openSubtaskEdit(subEdit); return; }
   const note = e.target.closest("[data-tnote]");
   if (note && !note.dataset.editing) openTodoNote(note);
-});
+}
 
-$("todoBody").addEventListener("contextmenu", e => {
+function todoItemContext(e) {
   const status = e.target.closest("[data-tocol]");
   if (!status) return;
   e.preventDefault();
   setTodoStatusById(status.dataset.tocol, -1);
-});
+}
+
+$("todoBody").addEventListener("change", todoItemChange);
+$("todoBody").addEventListener("click", todoItemTap);
+$("todoBody").addEventListener("contextmenu", todoItemContext);
 
 // no Kanban não há caixa de "feito" (a coluna Concluído já diz isso); só as
 // subtarefas continuam a ter checkbox
-$("todoBoard").addEventListener("change", e => {
-  const sub = e.target.closest("input[data-tsubtgl]");
-  if (sub) {
-    const [id, subId] = sub.dataset.tsubtgl.split("|");
-    postTodo({ action: "toggle_subtask", id, sub_id: subId });
-  }
-});
-$("todoBoard").addEventListener("click", e => {
-  const timer = e.target.closest("[data-ttimer]");
-  if (timer) { postTodo({ action: "toggle_timer", id: timer.dataset.ttimer }); return; }
-  const reset = e.target.closest("[data-treset]");
-  if (reset) { postTodo({ action: "restart_timer", id: reset.dataset.treset }); return; }
-  const status = e.target.closest("[data-tocol]");
-  if (status) { setTodoStatusById(status.dataset.tocol); return; }
-  const subDel = e.target.closest("[data-tsubdel]");
-  if (subDel) {
-    const [id, subId] = subDel.dataset.tsubdel.split("|");
-    postTodo({ action: "delete_subtask", id, sub_id: subId });
-    return;
-  }
-  const del = e.target.closest("[data-tdel]");
-  if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
-  const src = e.target.closest("[data-src]");
-  if (src) { revealSource(srcOf(todos.find(it => it.id === src.dataset.src))); return; }
-  const titleEl = e.target.closest("[data-ttitle]");
-  if (titleEl && !titleEl.dataset.editing) { openTodoTitle(titleEl); return; }
-  const subEdit = e.target.closest("[data-tsubedit]");
-  if (subEdit && !subEdit.dataset.editing) { openSubtaskEdit(subEdit); return; }
-  const note = e.target.closest("[data-tnote]");
-  if (note && !note.dataset.editing) openTodoNote(note);
-});
-
-$("todoBoard").addEventListener("contextmenu", e => {
-  const status = e.target.closest("[data-tocol]");
-  if (!status) return;
-  e.preventDefault();
-  setTodoStatusById(status.dataset.tocol, -1);
-});
+$("todoBoard").addEventListener("change", todoItemChange);
+$("todoBoard").addEventListener("click", todoItemTap);
+$("todoBoard").addEventListener("contextmenu", todoItemContext);
 
 // nova subtarefa: Enter no campo do fim da checklist
 function handleSubtaskKeydown(e) {

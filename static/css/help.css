@@ -99,25 +99,14 @@
 }
 
 .itemValue {
+    display: block;
+    width: auto;
+    padding: 0;
+    border: none;
     font-size: 14px;
     line-height: 1.5;
     white-space: pre-line;
     overflow-wrap: anywhere;
-}
-
-/* a caixa é só para ler: os controlos são a fotografia do estado do item */
-#itemBody input,
-#itemBody button,
-#itemBody select,
-#itemBody textarea {
-    pointer-events: none;
-}
-
-#itemBody .obs {
-    display: block;
-    margin-top: 4px;
-    color: var(--muted);
-    font-size: 12.5px;
 }
 
 /* avisos: verde para o que correu bem, vermelho para o que falhou */

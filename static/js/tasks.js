@@ -217,6 +217,7 @@ function render() {
       data.sheets.map(s => `<li>${esc(s)}</li>`).join("") + `</ul>`;
     box.innerHTML = html;
     $("fileInfo").textContent = data.file ? `${t("info_file")}: ${data.file}` : "";
+    refreshItemBox();
     return;
   }
 
@@ -321,6 +322,7 @@ function render() {
         ? `<h2>${t("none_search")} "${esc(searchLabel())}".</h2>`
         : `<h2>${t("none_person")} ${esc(PERSON)}.</h2>
      <p>${t("rows_hint_1")} ${data.total_rows} ${t("rows_hint_2")}</p>`;
+    refreshItemBox();
     return;
   }
 
@@ -421,6 +423,7 @@ function render() {
       return cell.replace("<td", `<td data-label="${esc(headers[i])}"`);
     }).join("") + `<td class="todoActionCell">${todoAddBtn(r, ri)}</td></tr>`
   ).join("");
+  refreshItemBox();
 }
 
 async function load(cycle = false, fresh = false) {

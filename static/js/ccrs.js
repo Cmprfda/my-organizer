@@ -25,6 +25,7 @@ function renderCCRs() {
   <td><button type="button" class="ccr-x" data-del="${esc(id)}" title="${t("t_remove")}">✕</button></td>
 </tr>`;
   }).join("");
+  refreshItemBox();
 }
 
 async function postCcr(body) {
@@ -52,7 +53,9 @@ async function addCcr() {
 
 $("ccrAdd").addEventListener("click", addCcr);
 $("ccrId").addEventListener("keydown", e => { if (e.key === "Enter") addCcr(); });
-$("ccrBody").addEventListener("change", e => {
+
+// tratadores partilhados com a caixa de detalhe (ver itembox.js)
+function ccrBodyChange(e) {
   const cb = e.target.closest("input[type=checkbox][data-id]");
   if (!cb) return;
   const stored = (ccrs[cb.dataset.id] && ccrs[cb.dataset.id].checks) || {};
@@ -60,8 +63,9 @@ $("ccrBody").addEventListener("change", e => {
     action: "update", id: cb.dataset.id,
     checks: { ...stored, [cb.dataset.k]: cb.checked }
   });
-});
-$("ccrBody").addEventListener("click", e => {
+}
+
+function ccrBodyTap(e) {
   const btn = e.target.closest(".ccr-x");
   if (btn) {
     if (confirm(tf("cfm_del_ccr", btn.dataset.del)))
@@ -70,7 +74,10 @@ $("ccrBody").addEventListener("click", e => {
   }
   const cell = e.target.closest("td.ccrNote");
   if (cell && !cell.dataset.editing) openCcrNote(cell);
-});
+}
+
+$("ccrBody").addEventListener("change", ccrBodyChange);
+$("ccrBody").addEventListener("click", ccrBodyTap);
 
 
 function openCcrNote(cell) {
