@@ -280,12 +280,30 @@ function openSubtaskEdit(el) {
   box.addEventListener("blur", () => finish(true));
 }
 
+// itens de tarefa criados antes da correção da duplicação da OBS (v79)
+// guardaram a OBS colada ao fim do detail; se ainda bater certo com a OBS ao
+// vivo da linha (todoTaskInfoHtml já a mostra), tira-se daqui para não
+// aparecer duas vezes
+function dedupeStaleObs(it, detail) {
+  if (!detail) return detail;
+  const row = taskRowFor(it);
+  if (!row) return detail;
+  const obsText = String(row[3] === undefined ? "" : row[3]).split("")[1] || "";
+  if (!obsText) return detail;
+  const marker = `${t("obs_prefix")} ${obsText}`;
+  const i = detail.indexOf(marker);
+  return i > 0 ? detail.slice(0, i).trim() : detail;
+}
+
 // Nota do item. As tarefas do Excel e as CCRs trazem o detalhe da origem (e as
 // notas editam-se lá); os itens escritos à mão passam a poder ter a sua.
 function todoNoteHtml(it, kanban) {
   const manual = (it.kind || "manual") === "manual";
   const cls = kanban ? "todoCardDetail" : "obs";
-  if (!manual) return it.detail ? `<span class="${cls}">${esc(it.detail)}</span>` : "";
+  if (!manual) {
+    const detail = dedupeStaleObs(it, it.detail);
+    return detail ? `<span class="${cls}">${esc(detail)}</span>` : "";
+  }
   const body = it.detail ? esc(it.detail) : `<span class="addnote">${t("addnote")}</span>`;
   return `<span class="${cls} todoNote" data-tnote="${esc(it.id)}" title="${t("t_edit_note")}">${body}</span>`;
 }
