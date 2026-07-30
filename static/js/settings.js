@@ -1,6 +1,6 @@
 // My Organizer — definições: idioma, tema, fonte de dados, OneDrive
 
-const SHARE_APP_URL = "https://criticalsoftwaresa-my.sharepoint.com/:f:/g/personal/cm-andrade_criticalsoftware_com/IgBCZw_05_5CQ5dGXDDDpjwnASxLWy-Rt6YlM2ylqZxr1xc?e=3Gk6qi";
+const SHARE_APP_URL = "https://github.com/Cmprfda/my-organizer/releases/latest";
 
 function applyLang() {
   $("langSel").value = LANG;
@@ -73,7 +73,6 @@ function applyLang() {
   $("noteToolbar").querySelector('[data-tool="connector"]').title = t("t_tool_connector");
   $("noteToolbar").querySelector('[data-tool="frame"]').title = t("t_tool_frame");
   $("noteToolColor").title = t("t_tool_color");
-  $("noteFolderSelect").title = t("t_note_folder");
   $("noteUndoBtn").title = t("t_note_undo");
   $("noteClearBtn").title = t("t_note_clear");
   $("noteEmpty").innerHTML = `<h2>${t("note_empty_t")}</h2><p>${t("note_empty_p")}</p>`;
@@ -104,7 +103,6 @@ function applyLang() {
   $("itemOverlay").setAttribute("aria-label", t("item_box"));
   $("appUpdateBtn").textContent = t("btn_app_update");
   $("appUpdateBtn").title = t("t_app_update");
-  $("shareAppBtn").textContent = t("btn_share_app");
   $("shareAppBtn").title = t("t_share_app");
   renderHelp();
   if (currentView === "todo" || sideView === "todo") renderTodo();

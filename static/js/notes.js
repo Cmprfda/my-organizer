@@ -13,7 +13,7 @@ let noteTyping = false;     // texto a ser escrito: não refazer o quadro por ba
 let noteTextTimer = null;   // gravação do texto com atraso
 let noteTextSnap = false;   // instantâneo desta sessão de escrita já guardado
 let notePoint = { x: 24, y: 24 };   // último ponto tocado no quadro
-let noteTool = "select";      // "select" | "pen" | "line" | "rect" | "ellipse" | "connector" | "frame"
+let noteTool = "select";      // "select" | "pen" | "line" | "rect" | "ellipse" | "eraser" | "connector" | "frame"
 let noteStrokeColor = "yellow";
 let noteDrawSel = [];         // [{ type: "stroke"|"shape"|"connector", id }] selecionados
 let noteConnectFrom = null;   // { id } da caixa já escolhida ao ligar duas caixas
@@ -21,6 +21,9 @@ let noteClip = [];            // caixas copiadas com Ctrl+C (só nesta janela)
 const NOTE_MIN_W = 120, NOTE_MIN_H = 80;
 const NOTE_BOARD = 4000;
 const NOTE_PASTE_OFFSET = 24;   // desvio da cópia colada em relação à original
+const NOTE_ZOOM_MIN = 0.25, NOTE_ZOOM_MAX = 2, NOTE_ZOOM_STEP = 0.1;
+let noteZoom = Math.min(NOTE_ZOOM_MAX, Math.max(NOTE_ZOOM_MIN,
+  parseFloat(localStorage.getItem("bsp-tracker-note-zoom")) || 1));
 
 // histórico por nota: pilha de instantâneos do quadro para o Ctrl+Z
 const noteUndo = new Map();
@@ -130,7 +133,7 @@ function renderNoteTree() {
   const q = norm($("noteFilter").value || "");
   const html = noteBranchHtml("", 0, q);
   // a zona da raiz está sempre no topo: é onde se larga para tirar da pasta
-  const root = `<div class="noteRootDrop" data-frootdrop="1" title="${esc(t("t_note_drop_root"))}">🏠</div>`;
+  const root = `<div class="noteRootDrop" data-frootdrop="1" title="${esc(t("t_note_drop_root"))}">${esc(t("note_root_label"))}</div>`;
   // sem pesquisa e sem notas o estado vazio do quadro já explica tudo
   $("noteTree").innerHTML = root + (html || (q ? `<div class="noteTreeEmpty">${esc(t("note_none"))}</div>` : ""));
 }
@@ -225,51 +228,6 @@ async function commitNotePath(raw) {
   await postNotepad({ action: "rename_note", id: note.id, title });
 }
 
-// ---------- escolher a pasta (grupo) da nota no cabeçalho ----------
-const NOTE_FOLDER_NEW = "nova";   // valor da opção "+ Nova pasta…"
-
-// a hierarquia das pastas é dada pela indentação (com espaços inquebráveis,
-// que as <option> não descartam)
-function noteFolderOptionsHtml(parent, depth) {
-  let html = "";
-  for (const f of notepad.folders.filter(x => x.parent === parent)) {
-    const pad = "  ".repeat(depth);
-    html += `<option value="${esc(f.id)}">${esc(`${pad}${depth ? "└ " : ""}${f.name}`)}</option>` +
-      noteFolderOptionsHtml(f.id, depth + 1);
-  }
-  return html;
-}
-
-function renderNoteFolderSel(note) {
-  const sel = $("noteFolderSelect");
-  sel.innerHTML = `<option value="">${esc(t("note_folder_root"))}</option>` +
-    noteFolderOptionsHtml("", 0) +
-    `<option value="${NOTE_FOLDER_NEW}">${esc(t("note_folder_add"))}</option>`;
-  sel.value = note.folder || "";
-}
-
-$("noteFolderSelect").addEventListener("change", async () => {
-  const sel = $("noteFolderSelect");
-  const note = currentNote();
-  if (!note) return;
-  const target = sel.value;
-  if (target === NOTE_FOLDER_NEW) {
-    sel.value = note.folder || "";   // a opção não é uma pasta: não fica escolhida
-    const name = prompt(t("note_ask_folder"), t("note_folder_new"));
-    if (name === null || !name.trim()) return;
-    // a pasta nova nasce dentro da pasta atual da nota (ou na raiz, se não tiver)
-    const out = await postNotepad({ action: "add_folder", name: name.trim(), parent: note.folder }, true);
-    if (!out) return;
-    const created = (out.notepad.folders[out.notepad.folders.length - 1] || {}).id || "";
-    if (!await postNotepad({ action: "move_note", id: note.id, folder: created })) return;
-    revealFolder(created);
-    return;
-  }
-  if (target === (note.folder || "")) return;
-  if (!await postNotepad({ action: "move_note", id: note.id, folder: target })) return;
-  revealFolder(target);
-});
-
 // ---------- quadro ----------
 function noteBoxHtml(b) {
   const img = b.image
@@ -288,16 +246,22 @@ function noteBoxHtml(b) {
   </div>`;
 }
 
-// moldura de grupo: só a barra e o canto recebem cliques (ver notes.css), para
-// as caixas lá dentro continuarem a funcionar normalmente
+// moldura de grupo: só a barra, as bordas e os cantos recebem cliques (ver
+// notes.css), para as caixas lá dentro continuarem a funcionar normalmente
 function noteFrameHtml(f) {
+  const edges = ["top", "right", "bottom", "left"].map(edge =>
+    `<div class="noteFrameEdge" data-frmedge="${esc(f.id)}" data-edge="${edge}" title="${esc(t("t_frame_drag"))}"></div>`).join("");
+  const corners = ["nw", "ne", "sw", "se"].map(c =>
+    `<div class="noteFrameSize" data-frmsize="${esc(f.id)}" data-corner="${c}"></div>`).join("");
   return `<div class="noteFrame" data-fmid="${esc(f.id)}"
     style="left:${f.x}px;top:${f.y}px;width:${f.w}px;height:${f.h}px">
     <div class="noteFrameBar" title="${esc(t("t_frame_drag"))}">
+      <span class="noteFrameGrip" aria-hidden="true"></span>
       <span class="noteFrameName" data-frmrename="${esc(f.id)}" title="${esc(t("t_note_rename"))}">${esc(f.name)}</span>
       <button type="button" data-frmdel="${esc(f.id)}" title="${esc(t("t_frame_del"))}">✕</button>
     </div>
-    <div class="noteFrameSize" data-frmsize="${esc(f.id)}"></div>
+    ${edges}
+    ${corners}
   </div>`;
 }
 
@@ -350,16 +314,19 @@ function renderNoteBoard(focusBoxId) {
   renderNoteUndoBtn();
   if (!has) return;
   if (document.activeElement !== $("notePathInput")) $("notePathInput").value = notePathString(note);
-  renderNoteFolderSel(note);
   renderNoteLink(note);
   if (noteTyping && !focusBoxId) return;   // a escrever: não mexer nas caixas
   const canvas = $("noteCanvas");
   const scroll = { left: canvas.scrollLeft, top: canvas.scrollTop };
-  canvas.innerHTML = `<svg class="noteDrawLayer" id="noteDrawLayer" width="${NOTE_BOARD}" height="${NOTE_BOARD}">${noteDrawSvgInner(note)}</svg>` +
+  canvas.innerHTML = `<div class="noteZoomSizer" id="noteZoomSizer"><div class="noteSurface" id="noteSurface"
+      style="width:${NOTE_BOARD}px;height:${NOTE_BOARD}px">` +
+    `<svg class="noteDrawLayer" id="noteDrawLayer" width="${NOTE_BOARD}" height="${NOTE_BOARD}">${noteDrawSvgInner(note)}</svg>` +
     (note.frames || []).map(noteFrameHtml).join("") +
     `<div class="noteCanvasHint" id="noteCanvasHint">${
       note.boxes.length ? "" : esc(t("note_canvas_hint"))}</div>` +
-    note.boxes.map(noteBoxHtml).join("");
+    note.boxes.map(noteBoxHtml).join("") +
+    `</div></div>`;
+  applyNoteZoom();
   canvas.scrollLeft = scroll.left;
   canvas.scrollTop = scroll.top;
   if (focusBoxId) {
@@ -369,7 +336,7 @@ function renderNoteBoard(focusBoxId) {
 }
 
 function noteRefLabel(ref) {
-  return ref.label || ref.fn || ref.ccr || "";
+  return ref.label || ref.fn || ref.ccr || ref.todo_id || "";
 }
 
 function notesForTask(fn, todo) {
@@ -378,6 +345,10 @@ function notesForTask(fn, todo) {
 
 function notesForCcr(ccrId) {
   return notepad.notes.filter(n => (n.refs || []).some(r => r.kind === "ccr" && r.ccr === ccrId));
+}
+
+function notesForTodo(todoId) {
+  return notepad.notes.filter(n => (n.refs || []).some(r => r.kind === "todo" && r.todo_id === todoId));
 }
 
 // IMPORTANTE: não chamar a estas funções openTaskNote/openCcrNote — o ccrs.js já
@@ -392,6 +363,14 @@ function openTaskLinkedNote(fn, todo) {
 
 function openCcrLinkedNote(ccrId) {
   const note = notesForCcr(ccrId)[0];
+  if (!note) return;
+  setItemBoxOpen(false);
+  setCurrentNote(note.id);
+  showView("notes");
+}
+
+function openTodoLinkedNote(todoId) {
+  const note = notesForTodo(todoId)[0];
   if (!note) return;
   setItemBoxOpen(false);
   setCurrentNote(note.id);
@@ -549,27 +528,33 @@ $("notesHead").addEventListener("click", e => {
   if (go) {
     const ref = (note.refs || [])[+go.dataset.nogo];
     if (!ref) return;
-    revealSource(ref.kind === "ccr"
-      ? { view: "ccrs", ccr: ref.ccr }
-      : { view: "excel", fn: ref.fn, todo: ref.todo || "", sheet: ref.sheet || "" });
+    revealSource(ref.kind === "ccr" ? { view: "ccrs", ccr: ref.ccr }
+      : ref.kind === "todo" ? { view: "todo", todoId: ref.todo_id }
+        : { view: "excel", fn: ref.fn, todo: ref.todo || "", sheet: ref.sheet || "" });
     return;
   }
   const un = e.target.closest("[data-nounlink]");
   if (!un) return;
   const ref = (note.refs || [])[+un.dataset.nounlink];
   if (!ref) return;
-  postNotepad({ action: "remove_link", id: note.id, ref }).then(() => { render(); renderCCRs(); });
+  postNotepad({ action: "remove_link", id: note.id, ref }).then(() => { render(); renderCCRs(); renderTodo(); });
 });
 
 function noteLinkOptions() {
+  // tarefas do Excel (se estiver carregado) + itens da lista TODO -- para se
+  // poder ligar uma nota a qualquer um dos dois, com ou sem Excel disponivel
   const compact = lastData && !lastData.error && lastData.headers ? buildCompact(lastData) : null;
-  return (compact ? compact.rows : []).map(r => {
+  const tasks = (compact ? compact.rows : []).map(r => {
     const meta = r[6] || {};
     return {
-      fn: meta.fn || r[0], todo: meta.todo || "",
+      kind: "task", fn: meta.fn || r[0], todo: meta.todo || "",
       label: r[0], sub: String(r[3] || "").split("\u001F")[0].split("\n")[0],
     };
   });
+  const todoItems = todos.map(it => ({
+    kind: "todo", todoId: it.id, label: it.title, sub: t("note_link_todo_sub"),
+  }));
+  return tasks.concat(todoItems);
 }
 
 let noteLinkRows = [];
@@ -580,7 +565,7 @@ function renderNoteLinkList() {
   noteLinkRows = all.filter(o => !q || norm(o.label + " " + o.sub).includes(q)).slice(0, 200);
   $("noteLinkBody").innerHTML = noteLinkRows.length
     ? noteLinkRows.map((o, i) => `<button type="button" class="pickRow" data-nlink="${i}">
-        <span class="pickIcon">▤</span>
+        <span class="pickIcon">${o.kind === "todo" ? "✓" : "▤"}</span>
         <span class="pickName">${esc(o.label)}<span class="pickSub">${esc(o.sub)}</span></span></button>`).join("")
     : `<div class="noteTreeEmpty">${esc(t(all.length ? "none_search" : "note_no_tasks"))}</div>`;
 }
@@ -605,10 +590,11 @@ $("noteLinkOverlay").addEventListener("click", e => {
   const opt = noteLinkRows[+row.dataset.nlink];
   if (!opt) return;
   setNoteLinkOpen(false);
-  postNotepad({
-    action: "add_link", id: note.id,
-    ref: { kind: "task", sheet: (lastData && lastData.sheet) || "", fn: opt.fn, todo: opt.todo, label: opt.label },
-  }).then(() => { render(); renderCCRs(); });
+  const ref = opt.kind === "todo"
+    ? { kind: "todo", todo_id: opt.todoId, label: opt.label }
+    : { kind: "task", sheet: (lastData && lastData.sheet) || "", fn: opt.fn, todo: opt.todo, label: opt.label };
+  postNotepad({ action: "add_link", id: note.id, ref })
+    .then(() => { render(); renderCCRs(); renderTodo(); });
 });
 
 // em captura: com esta janela aberta o Esc fecha-a e mais nada (o ecrã
@@ -624,10 +610,56 @@ function canvasPoint(e) {
   const canvas = $("noteCanvas");
   const rect = canvas.getBoundingClientRect();
   return {
-    x: Math.max(0, Math.min(NOTE_BOARD, e.clientX - rect.left + canvas.scrollLeft)),
-    y: Math.max(0, Math.min(NOTE_BOARD, e.clientY - rect.top + canvas.scrollTop)),
+    x: Math.max(0, Math.min(NOTE_BOARD, (e.clientX - rect.left + canvas.scrollLeft) / noteZoom)),
+    y: Math.max(0, Math.min(NOTE_BOARD, (e.clientY - rect.top + canvas.scrollTop) / noteZoom)),
   };
 }
+
+// ---------- zoom do quadro ----------
+// o quadro lógico continua a ser sempre 4000x4000 (coordenadas das caixas
+// não mudam); só a "lupa" (noteSurface) e o espaço com que se pode dar
+// scroll (noteZoomSizer) é que crescem/encolhem visualmente
+function applyNoteZoom() {
+  const sizer = $("noteZoomSizer");
+  const surface = $("noteSurface");
+  if (!sizer || !surface) return;
+  sizer.style.width = (NOTE_BOARD * noteZoom) + "px";
+  sizer.style.height = (NOTE_BOARD * noteZoom) + "px";
+  surface.style.transform = `scale(${noteZoom})`;
+  const label = $("noteZoomLabel");
+  if (label) label.textContent = Math.round(noteZoom * 100) + "%";
+}
+
+// muda o zoom mantendo fixo, debaixo do cursor (ou do centro do que está
+// visível, sem cursor), o mesmo ponto do quadro que lá estava antes
+function setNoteZoom(next, anchorClientX, anchorClientY) {
+  const canvas = $("noteCanvas");
+  if (!canvas || canvas.classList.contains("hidden")) return;
+  const clamped = Math.min(NOTE_ZOOM_MAX, Math.max(NOTE_ZOOM_MIN, Math.round(next * 100) / 100));
+  if (clamped === noteZoom) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = anchorClientX != null ? anchorClientX : rect.left + rect.width / 2;
+  const cy = anchorClientY != null ? anchorClientY : rect.top + rect.height / 2;
+  const logicalX = (cx - rect.left + canvas.scrollLeft) / noteZoom;
+  const logicalY = (cy - rect.top + canvas.scrollTop) / noteZoom;
+  noteZoom = clamped;
+  localStorage.setItem("bsp-tracker-note-zoom", noteZoom);
+  applyNoteZoom();
+  canvas.scrollLeft = logicalX * noteZoom - (cx - rect.left);
+  canvas.scrollTop = logicalY * noteZoom - (cy - rect.top);
+}
+
+$("noteZoomInBtn").addEventListener("click", () => setNoteZoom(noteZoom + NOTE_ZOOM_STEP));
+$("noteZoomOutBtn").addEventListener("click", () => setNoteZoom(noteZoom - NOTE_ZOOM_STEP));
+$("noteZoomLabel").addEventListener("click", () => setNoteZoom(1));
+
+// Ctrl/Cmd+scroll no quadro dá zoom em vez de scroll (como em qualquer editor
+// gráfico); scroll normal, sem modificador, continua só a mover a vista
+$("noteCanvas").addEventListener("wheel", e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  setNoteZoom(noteZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX, e.clientY);
+}, { passive: false });
 
 // ---------- seleção (caixas + desenhos), com vários itens de cada vez ----------
 function drawSelHas(type, id) {
@@ -763,7 +795,7 @@ function startCanvasBand(e) {
   if (!add) clearNoteSel();
   const band = document.createElement("div");
   band.className = "noteRubber";
-  $("noteCanvas").appendChild(band);
+  $("noteSurface").appendChild(band);
   let last = start;
 
   const move = ev => {
@@ -867,6 +899,45 @@ function startShapeDraw(e, kind) {
   window.addEventListener("pointerup", up);
 }
 
+// borracha: arrastar por cima de um traço, forma ou ligação apaga-o; usa o
+// hit-test que o próprio SVG já faz (pointer-events: visibleStroke), em vez
+// de recalcular distâncias — por isso a borracha só "pega" no traço em si,
+// tal como um clique normal de seleção
+function startEraseDraw(e) {
+  const note = currentNote();
+  if (!note) return;
+  const erased = new Set();
+  let touched = false;
+  let chain = Promise.resolve();
+  const eraseAt = ev => {
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    if (!el) return;
+    const strokeEl = el.closest("[data-sid]");
+    const shapeEl = el.closest("[data-shid]");
+    const connEl = el.closest("[data-cid]");
+    const hit = strokeEl ? { type: "stroke", id: strokeEl.dataset.sid, action: "delete_stroke", key: "stroke_id" }
+      : shapeEl ? { type: "shape", id: shapeEl.dataset.shid, action: "delete_shape", key: "shape_id" }
+        : connEl ? { type: "connector", id: connEl.dataset.cid, action: "delete_connector", key: "connector_id" }
+          : null;
+    if (!hit) return;
+    const key = `${hit.type}:${hit.id}`;
+    if (erased.has(key)) return;
+    erased.add(key);
+    if (!touched) { touched = true; pushNoteUndo(note); }
+    // em fila: várias passagens rápidas da borracha não podem sobrepor-se
+    // (uma resposta antiga a chegar depois reporia um traço já apagado)
+    chain = chain.then(() => postNotepad({ action: hit.action, id: note.id, [hit.key]: hit.id }));
+  };
+  eraseAt(e);
+  const move = ev => eraseAt(ev);
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
 // ---------- ligar caixas ----------
 function highlightConnectFrom(id) {
   $("noteCanvas").querySelectorAll(".noteBox.connectFrom").forEach(el => el.classList.remove("connectFrom"));
@@ -899,7 +970,7 @@ function startFrameCreate(e) {
   const start = canvasPoint(e);
   const band = document.createElement("div");
   band.className = "noteRubber";
-  $("noteCanvas").appendChild(band);
+  $("noteSurface").appendChild(band);
   let last = start;
   const move = ev => {
     last = canvasPoint(ev);
@@ -926,16 +997,20 @@ function startFrameCreate(e) {
 }
 
 // arrastar a barra move a moldura e todas as caixas que estejam completamente
-// dentro dela (calculado uma vez no início do arrasto); o canto redimensiona
-function startFrameDrag(e, frameEl, mode) {
+// dentro dela (calculado uma vez no início do arrasto); qualquer um dos 4
+// cantos redimensiona, mantendo fixo o canto oposto ao que foi agarrado
+function startFrameDrag(e, frameEl, mode, corner = "se") {
   const note = currentNote();
   if (!note) return;
   const model = note.frames.find(f => f.id === frameEl.dataset.fmid);
   if (!model) return;
   e.preventDefault();
+  blurStrayFocus();
   const start = canvasPoint(e);
   const base = { x: model.x, y: model.y, w: model.w, h: model.h };
   const next = { ...base };
+  const growsRight = corner === "se" || corner === "ne";
+  const growsDown = corner === "se" || corner === "sw";
   const members = mode === "move"
     ? note.boxes.filter(b => b.x >= base.x && b.y >= base.y && b.x + b.w <= base.x + base.w && b.y + b.h <= base.y + base.h)
     : [];
@@ -954,8 +1029,23 @@ function startFrameDrag(e, frameEl, mode) {
         if (el) { el.style.left = (b.x + dx) + "px"; el.style.top = (b.y + dy) + "px"; }
       });
     } else {
-      next.w = Math.max(NOTE_MIN_W, Math.min(NOTE_BOARD, base.w + p.x - start.x));
-      next.h = Math.max(NOTE_MIN_H, Math.min(NOTE_BOARD, base.h + p.y - start.y));
+      const dx = p.x - start.x, dy = p.y - start.y;
+      if (growsRight) {
+        next.w = Math.max(NOTE_MIN_W, Math.min(NOTE_BOARD, base.w + dx));
+      } else {
+        next.w = Math.max(NOTE_MIN_W, Math.min(NOTE_BOARD, base.w - dx));
+        next.x = Math.max(0, base.x + base.w - next.w);
+        next.w = base.x + base.w - next.x;   // canto direito fica fixo mesmo ao bater no limite do quadro
+      }
+      if (growsDown) {
+        next.h = Math.max(NOTE_MIN_H, Math.min(NOTE_BOARD, base.h + dy));
+      } else {
+        next.h = Math.max(NOTE_MIN_H, Math.min(NOTE_BOARD, base.h - dy));
+        next.y = Math.max(0, base.y + base.h - next.h);
+        next.h = base.y + base.h - next.y;   // canto de baixo fica fixo mesmo ao bater no limite do quadro
+      }
+      frameEl.style.left = next.x + "px";
+      frameEl.style.top = next.y + "px";
       frameEl.style.width = next.w + "px";
       frameEl.style.height = next.h + "px";
     }
@@ -968,7 +1058,7 @@ function startFrameDrag(e, frameEl, mode) {
     if (mode === "move") {
       postNotepad({ action: "move_frame", id: note.id, frame_id: model.id, dx: next.x - base.x, dy: next.y - base.y });
     } else {
-      postNotepad({ action: "update_frame", id: note.id, frame_id: model.id, w: next.w, h: next.h });
+      postNotepad({ action: "update_frame", id: note.id, frame_id: model.id, x: next.x, y: next.y, w: next.w, h: next.h });
     }
   };
   window.addEventListener("pointermove", move);
@@ -982,6 +1072,7 @@ function startBoxDrag(e, box, mode) {
   const model = note.boxes.find(b => b.id === box.dataset.bid);
   if (!model) return;
   e.preventDefault();
+  blurStrayFocus();
   // arrastar uma caixa que já faz parte de uma seleção não a desfaz
   if (!noteSelBoxes.includes(model.id)) selectBox(model.id);
   const start = canvasPoint(e);
@@ -1016,14 +1107,16 @@ function startBoxDrag(e, box, mode) {
 
 $("noteCanvas").addEventListener("pointerdown", e => {
   if (e.button !== 0) return;
-  if (noteTool === "pen" || noteTool === "line" || noteTool === "rect" || noteTool === "ellipse") {
-    // com uma ferramenta de desenho ativa o clique é para desenhar: não dar o foco
-    // (nem selecionar texto) à caixa que esteja por baixo — com `noteTyping` a true
-    // o quadro não se refaz e o traço acabado de gravar não aparecia
+  if (noteTool === "pen" || noteTool === "line" || noteTool === "rect" || noteTool === "ellipse" || noteTool === "eraser") {
+    // com uma ferramenta de desenho (ou a borracha) ativa o clique é para
+    // desenhar/apagar: não dar o foco (nem selecionar texto) à caixa que
+    // esteja por baixo — com `noteTyping` a true o quadro não se refaz e o
+    // traço acabado de gravar não aparecia
     e.preventDefault();
     const focused = document.activeElement;
     if (focused && focused.closest && focused.closest(".noteBox")) focused.blur();
     if (noteTool === "pen") startPenDraw(e);
+    else if (noteTool === "eraser") startEraseDraw(e);
     else startShapeDraw(e, noteTool);
     return;
   }
@@ -1033,7 +1126,9 @@ $("noteCanvas").addEventListener("pointerdown", e => {
   // barra ou no canto — e aí arrasta/redimensiona seja qual for a ferramenta
   const frameEl = e.target.closest(".noteFrame");
   if (frameEl) {
-    if (e.target.closest("[data-frmsize]")) { startFrameDrag(e, frameEl, "size"); return; }
+    const sizeHandle = e.target.closest("[data-frmsize]");
+    if (sizeHandle) { startFrameDrag(e, frameEl, "size", sizeHandle.dataset.corner || "se"); return; }
+    if (e.target.closest("[data-frmedge]")) { startFrameDrag(e, frameEl, "move"); return; }
     if (e.target.closest(".noteFrameBar") && !e.target.closest("button")) { startFrameDrag(e, frameEl, "move"); return; }
   }
   if (noteTool === "frame" && !frameEl) { startFrameCreate(e); return; }
@@ -1045,6 +1140,7 @@ $("noteCanvas").addEventListener("pointerdown", e => {
   // (dentro do texto não: aí o Shift+clique serve para marcar o texto)
   if ((e.ctrlKey || e.metaKey || e.shiftKey) && !e.target.closest(".noteBoxText")) {
     e.preventDefault();
+    blurStrayFocus();
     toggleBoxSel(box.dataset.bid);
     return;
   }
@@ -1226,6 +1322,16 @@ function noteTextFocused() {
   const el = document.activeElement;
   if (!el) return false;
   return el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable;
+}
+
+// interações que chamam preventDefault() no pointerdown (arrastar, redimensionar,
+// Ctrl/Shift+clique) impedem o browser de tirar o foco sozinho a um campo de
+// texto — de outra forma qualquer input deixado focado (a pesquisa, o nome de
+// outra caixa, etc.) continua "ativo" e o Delete a seguir não apaga nada,
+// porque noteTextFocused() acha que ainda se está a escrever
+function blurStrayFocus() {
+  const el = document.activeElement;
+  if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) el.blur();
 }
 
 // apaga tudo o que estiver selecionado (caixas, traços, formas e ligações)

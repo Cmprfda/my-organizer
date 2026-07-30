@@ -24,6 +24,10 @@ function findSrcRow(src) {
       return del && del.dataset.del === src.ccr;
     }) || null;
   }
+  if (src.view === "todo") {
+    const container = todoLayout === "kanban" ? $("todoBoard") : $("todoBody");
+    return container.querySelector(`[data-tid="${CSS.escape(src.todoId)}"]`) || null;
+  }
   const rows = [...$("tbody").rows];
   if ($("tablebox").classList.contains("hidden")) return null;  // tabela sem resultados
   // chave exata (função + "o que fazer"), depois só a função, depois o texto da 1.ª célula

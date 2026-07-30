@@ -290,6 +290,14 @@ function todoNoteHtml(it, kanban) {
   return `<span class="${cls} todoNote" data-tnote="${esc(it.id)}" title="${t("t_edit_note")}">${body}</span>`;
 }
 
+// pin para o quadro de Notas (o grande, com desenhos/caixas) ligado a este
+// item — não confundir com todoNoteHtml, que é o textinho de detalhe acima
+function todoNoteFlag(it) {
+  return notesForTodo(it.id).length
+    ? `<button type="button" class="taskNoteFlag" data-todolink="${esc(it.id)}" title="${esc(t("t_open_linked_note"))}">📌</button>`
+    : "";
+}
+
 function openTodoNote(el) {
   const id = el.dataset.tnote;
   const item = todos.find(it => it.id === id);
@@ -334,7 +342,7 @@ function renderTodo() {
         : "";
       return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     <td class="todoCtl" style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
-    <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}</td>
+    <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}</td>
     <td class="todoCtl" style="width:1%">${todoStatusHtml(it)}</td>
     <td class="todoCtl" style="width:1%"><span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span></td>
     <td class="todoCtl" style="width:1%">${srcCell}</td>
@@ -354,7 +362,7 @@ function renderTodo() {
         : "";
       return `<article draggable="true" class="todoCard${it.done ? " done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     ${todoMySideFlag(it, true)}
-    <div class="todoCardTitle">${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}</div>
+    <div class="todoCardTitle">${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}</div>
     ${todoNoteHtml(it, true)}
     ${todoTaskInfoHtml(it)}
     ${todoSubtasksHtml(it)}
@@ -474,7 +482,9 @@ function todoItemTap(e) {
   const subEdit = e.target.closest("[data-tsubedit]");
   if (subEdit && !subEdit.dataset.editing) { openSubtaskEdit(subEdit); return; }
   const note = e.target.closest("[data-tnote]");
-  if (note && !note.dataset.editing) openTodoNote(note);
+  if (note && !note.dataset.editing) { openTodoNote(note); return; }
+  const link = e.target.closest("[data-todolink]");
+  if (link) openTodoLinkedNote(link.dataset.todolink);
 }
 
 function todoItemContext(e) {

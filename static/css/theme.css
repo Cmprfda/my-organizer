@@ -185,6 +185,10 @@ html,
 body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* a .ios-top muda de altura ao encolher (scroll > 48px); sem isto o
+     scroll anchoring do browser compensa o salto de layout ajustando o
+     scrollY, o que reencolhe/reexpande a barra em loop (flicker) */
+  overflow-anchor: none;
 }
 
 body {

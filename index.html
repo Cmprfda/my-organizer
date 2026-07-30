@@ -89,7 +89,7 @@
       </div>
       <div class="setRow setRowUpdate">
         <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
-        <button type="button" class="mini" id="shareAppBtn">Partilhar app</button>
+        <button type="button" class="mini" id="shareAppBtn">↗</button>
       </div>
     </div>
 
@@ -236,23 +236,51 @@
                   <span class="notePathSlash">/</span>
                   <input type="text" id="notePathInput" placeholder="pasta/título">
                 </div>
-                <select class="noteFolderSel" id="noteFolderSelect" title="Pasta desta nota"></select>
                 <span class="noteLinkChips" id="noteLinkChips"></span>
                 <button type="button" class="linkBtn" id="noteLinkBtn">Ligar a uma tarefa</button>
                 <button type="button" class="ccr-x" id="noteDel" title="Apagar nota">✕</button>
               </div>
               <div class="noteToolbar" id="noteToolbar">
-                <button type="button" class="noteToolBtn active" data-tool="select" title="Selecionar / mover">↖</button>
-                <button type="button" class="noteToolBtn" data-tool="pen" title="Desenhar à mão">✏️</button>
-                <button type="button" class="noteToolBtn" data-tool="line" title="Linha">╱</button>
-                <button type="button" class="noteToolBtn" data-tool="rect" title="Rectângulo">▭</button>
-                <button type="button" class="noteToolBtn" data-tool="ellipse" title="Elipse">◯</button>
-                <button type="button" class="noteToolBtn" data-tool="connector" title="Ligar caixas">⤳</button>
-                <button type="button" class="noteToolBtn" data-tool="frame" title="Criar grupo">▢</button>
+                <button type="button" class="noteToolBtn active" data-tool="select" title="Selecionar / mover">
+                  <span class="noteToolIcon">↖</span><span class="noteToolLabel">Selecionar</span>
+                </button>
+                <button type="button" class="noteToolBtn" data-tool="pen" title="Desenhar à mão">
+                  <span class="noteToolIcon">✏️</span><span class="noteToolLabel">Caneta</span>
+                </button>
+                <button type="button" class="noteToolBtn" data-tool="line" title="Linha">
+                  <span class="noteToolIcon">╱</span><span class="noteToolLabel">Linha</span>
+                </button>
+                <button type="button" class="noteToolBtn" data-tool="rect" title="Rectângulo">
+                  <span class="noteToolIcon">▭</span><span class="noteToolLabel">Retângulo</span>
+                </button>
+                <button type="button" class="noteToolBtn" data-tool="ellipse" title="Elipse">
+                  <span class="noteToolIcon">◯</span><span class="noteToolLabel">Elipse</span>
+                </button>
+                <button type="button" class="noteToolBtn" data-tool="eraser" title="Borracha (apaga traços, formas e ligações)">
+                  <span class="noteToolIcon">🧽</span><span class="noteToolLabel">Borracha</span>
+                </button>
+                <button type="button" class="noteToolBtn" data-tool="connector" title="Ligar caixas">
+                  <span class="noteToolIcon">⤳</span><span class="noteToolLabel">Ligar</span>
+                </button>
+                <button type="button" class="noteToolBtn" data-tool="frame" title="Criar grupo">
+                  <span class="noteToolIcon">▢</span><span class="noteToolLabel">Grupo</span>
+                </button>
                 <button type="button" class="noteToolColor c-yellow" id="noteToolColor" title="Cor do traço (clica para escolher)"></button>
                 <span class="noteToolSep"></span>
-                <button type="button" class="noteToolBtn" id="noteUndoBtn" title="Reverter a última alteração (Ctrl+Z)" disabled>↺</button>
-                <button type="button" class="noteToolBtn" id="noteClearBtn" title="Limpar o quadro">🗑</button>
+                <button type="button" class="noteToolBtn" id="noteUndoBtn" title="Reverter a última alteração (Ctrl+Z)" disabled>
+                  <span class="noteToolIcon">↺</span><span class="noteToolLabel">Reverter</span>
+                </button>
+                <button type="button" class="noteToolBtn" id="noteClearBtn" title="Limpar o quadro">
+                  <span class="noteToolIcon">🗑</span><span class="noteToolLabel">Limpar</span>
+                </button>
+                <span class="noteToolSep"></span>
+                <button type="button" class="noteToolBtn" id="noteZoomOutBtn" title="Diminuir zoom (ou Ctrl+scroll no quadro)">
+                  <span class="noteToolIcon">−</span><span class="noteToolLabel">Zoom −</span>
+                </button>
+                <button type="button" class="noteZoomLabel" id="noteZoomLabel" title="Repor zoom (100%)">100%</button>
+                <button type="button" class="noteToolBtn" id="noteZoomInBtn" title="Aumentar zoom (ou Ctrl+scroll no quadro)">
+                  <span class="noteToolIcon">+</span><span class="noteToolLabel">Zoom +</span>
+                </button>
               </div>
               <div class="noteCanvas" id="noteCanvas">
                 <svg class="noteDrawLayer" id="noteDrawLayer" width="4000" height="4000"></svg>

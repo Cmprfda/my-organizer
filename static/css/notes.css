@@ -193,19 +193,40 @@
 .noteToolbar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     padding: 2px 2px 4px;
 }
 
 .noteToolBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--ios-radius-btn);
-    padding: 6px 9px;
+    padding: 5px 8px 4px;
     font-size: 14px;
     line-height: 1;
     cursor: pointer;
     color: var(--text);
+}
+
+.noteToolIcon {
+    line-height: 1;
+}
+
+.noteToolLabel {
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.noteToolBtn.active .noteToolLabel {
+    color: var(--accent-text);
 }
 
 .noteToolBtn:hover {
@@ -314,18 +335,6 @@
 }
 
 /* escolher a pasta (grupo) da nota */
-.noteFolderSel {
-    flex: 0 0 auto;
-    max-width: 190px;
-    font: inherit;
-    font-size: 12.5px;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--ios-radius-btn);
-    padding: 5px 8px;
-}
-
 .linkBtn {
     background: transparent;
     border: none;
@@ -399,6 +408,37 @@
     -webkit-overflow-scrolling: touch;
 }
 
+/* dá ao quadro (4000x4000 lógicos) o espaço de scroll certo para o zoom atual;
+   quem realmente cresce/encolhe é a .noteSurface lá dentro, via transform */
+.noteZoomSizer {
+    position: relative;
+}
+
+.noteSurface {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+}
+
+.noteZoomLabel {
+    flex: 0 0 auto;
+    min-width: 38px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ios-radius-btn);
+    padding: 5px 6px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.noteZoomLabel:hover {
+    background: var(--accent-soft);
+}
+
 .noteCanvasHint {
     position: absolute;
     left: 14px;
@@ -457,15 +497,93 @@
     padding: 0 2px;
 }
 
+/* bolinha à esquerda do nome: reforça visualmente que a barra toda arrasta o grupo */
+.noteFrameGrip {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex: 0 0 auto;
+}
+
 .noteFrameSize {
     position: absolute;
-    right: 0;
-    bottom: 0;
     width: 16px;
     height: 16px;
-    cursor: nwse-resize;
     pointer-events: auto;
     background: linear-gradient(135deg, transparent 50%, var(--ink-300) 50%);
+}
+
+/* os 4 cantos ficam disponíveis para redimensionar (não só o de baixo-direita) */
+.noteFrameSize[data-corner="se"] {
+    right: 0;
+    bottom: 0;
+    cursor: nwse-resize;
+}
+
+.noteFrameSize[data-corner="nw"] {
+    left: 0;
+    top: 0;
+    cursor: nwse-resize;
+    transform: rotate(180deg);
+}
+
+.noteFrameSize[data-corner="ne"] {
+    right: 0;
+    top: 0;
+    cursor: nesw-resize;
+    transform: rotate(-90deg);
+}
+
+.noteFrameSize[data-corner="sw"] {
+    left: 0;
+    bottom: 0;
+    cursor: nesw-resize;
+    transform: rotate(90deg);
+}
+
+/* faixa ao longo de cada lado da moldura (fora dos 16px dos cantos, esses são
+   só para redimensionar) que arrasta o grupo inteiro — assim não é preciso
+   apanhar exatamente a etiqueta do título, que pode estar fora do ecrã num
+   grupo grande */
+.noteFrameEdge {
+    position: absolute;
+    pointer-events: auto;
+    cursor: grab;
+}
+
+.noteFrameEdge:active {
+    cursor: grabbing;
+}
+
+.noteFrameEdge[data-edge="top"],
+.noteFrameEdge[data-edge="bottom"] {
+    left: 16px;
+    right: 16px;
+    height: 10px;
+}
+
+.noteFrameEdge[data-edge="top"] {
+    top: -5px;
+}
+
+.noteFrameEdge[data-edge="bottom"] {
+    bottom: -5px;
+}
+
+.noteFrameEdge[data-edge="left"],
+.noteFrameEdge[data-edge="right"] {
+    top: 16px;
+    bottom: 16px;
+    width: 10px;
+}
+
+.noteFrameEdge[data-edge="left"] {
+    left: -5px;
+}
+
+.noteFrameEdge[data-edge="right"] {
+    right: -5px;
 }
 
 .noteBox.connectFrom {

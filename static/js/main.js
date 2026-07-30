@@ -172,12 +172,14 @@ applyLang();
 load();
 
 // barra do topo: encolhe (mais estreita e sem subtítulos) assim que se desce
+// zona morta entre os 32 e os 64px para não oscilar (encolhe/expande em
+// loop) quando o scroll pousa mesmo em cima do limiar
 let topShrunk = false;
 function syncTopBar() {
-  const encolher = window.scrollY > 48;
-  if (encolher === topShrunk) return;
-  topShrunk = encolher;
-  document.body.classList.toggle("topShrunk", encolher);
+  if (!topShrunk && window.scrollY > 64) topShrunk = true;
+  else if (topShrunk && window.scrollY < 32) topShrunk = false;
+  else return;
+  document.body.classList.toggle("topShrunk", topShrunk);
 }
 window.addEventListener("scroll", syncTopBar, { passive: true });
 syncTopBar();

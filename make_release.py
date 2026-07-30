@@ -14,6 +14,15 @@ import sys
 import zipfile
 from datetime import datetime
 
+# a consola do Windows e cp1252: sem isto, os "check marks" (u2713) usados
+# abaixo para assinalar cada passo rebentam o script a meio (mesmo bug que o
+# app evita em cswaios/config.py)
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 # Path Configuration
 DEV_DIR = os.path.dirname(os.path.abspath(__file__))
 RELEASES_SHARE_DIR = r"C:\Users\cm-andrade\OneDrive - CRITICAL SOFTWARE, S.A\BSP-G2-Tracker-App"

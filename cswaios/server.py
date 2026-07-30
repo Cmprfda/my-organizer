@@ -32,7 +32,7 @@ from .tasks import (build_payload, current_stamp, forget_web_cache, push_overrid
                     warm_cache)
 from .todos import (TODO_COLUMNS, load_todo, normalize_todo_item, save_todo,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity)
-from .updates import check_update, find_releases_dir
+from .updates import GITHUB_REPO, check_update, find_releases_dir, github_latest
 from . import cli
 
 STATIC_ROOT = os.path.join(HERE, "static")
@@ -665,10 +665,20 @@ def main():
                          cwd=HERE, env=env)
         return
     if not skip and find_releases_dir() is None:
+        # sem a pasta do OneDrive: as atualizacoes ainda podem vir do GitHub
+        # (ver check_update) -- so avisa que estao mesmo desligadas se nem
+        # isso for possivel de verificar (sem rede, por exemplo)
+        github_version, _, _ = github_latest()
         print()
-        print("Atualizacoes automaticas desligadas: a pasta 'BSP-G2-Tracker-App' nao foi encontrada.")
-        print("Para as ativar, abre este link e escolhe 'Adicionar atalho ao OneDrive':")
-        print(f"  {SHARE_URL}")
+        if github_version:
+            print(f"Pasta partilhada 'BSP-G2-Tracker-App' nao encontrada — atualizacoes automaticas"
+                  f" a usar o GitHub ({GITHUB_REPO}).")
+        else:
+            print("Atualizacoes automaticas desligadas: nao encontrei a pasta 'BSP-G2-Tracker-App'")
+            print("nem consegui verificar o GitHub (falta rede?).")
+            print("Pasta partilhada: abre este link e escolhe 'Adicionar atalho ao OneDrive':")
+            print(f"  {SHARE_URL}")
+            print(f"GitHub: https://github.com/{GITHUB_REPO}/releases/latest")
         print()
 
     url = f"http://localhost:{port}"

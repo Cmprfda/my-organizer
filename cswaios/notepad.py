@@ -168,20 +168,24 @@ def normalize_frame(raw):
 
 
 def normalize_ref(raw):
-    """Ligação da nota a uma tarefa do Excel (ou a uma CCR)."""
+    """Ligação da nota a uma tarefa do Excel, a uma CCR, ou a um item da
+    lista TODO (identificado por "todo_id" — não confundir com "todo", que
+    é a coluna "to do" duma linha do Excel numa ligação kind="task")."""
     if not isinstance(raw, dict):
         return None
     kind = str(raw.get("kind") or "").strip().lower()
-    if kind not in ("task", "ccr"):
+    if kind not in ("task", "ccr", "todo"):
         return None
     ref = {"kind": kind, "label": _text(raw.get("label"), 200)}
-    for key in ("sheet", "fn", "todo", "ccr"):
+    for key in ("sheet", "fn", "todo", "ccr", "todo_id"):
         value = _text(raw.get(key), 200)
         if value:
             ref[key] = value
     if kind == "task" and not ref.get("fn"):
         return None
     if kind == "ccr" and not ref.get("ccr"):
+        return None
+    if kind == "todo" and not ref.get("todo_id"):
         return None
     return ref
 
@@ -385,6 +389,8 @@ def _ref_same(a, b):
         return False
     if a["kind"] == "task":
         return a.get("fn") == b.get("fn") and a.get("todo", "") == b.get("todo", "")
+    if a["kind"] == "todo":
+        return a.get("todo_id") == b.get("todo_id")
     return a.get("ccr") == b.get("ccr")
 
 

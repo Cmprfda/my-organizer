@@ -332,6 +332,23 @@ def push_overrides(target=None):
     return target, pushed, failed
 
 
+def _with_app_state(result):
+    """Junta a qualquer resposta o estado que não depende do Excel (CCRs, TODO,
+    pendentes, versão da app) — para essas vistas funcionarem à mesma quando
+    não há nenhum ficheiro Excel disponível (ou a nuvem pede login)."""
+    result["ccrs"] = load_ccrs()
+    # TODO é totalmente manual: colunas/estado só mudam por ação explícita
+    # do utilizador (drag/drop, checkbox, botões de cronómetro).
+    result["todo"] = load_todo()
+    result["pending"] = sum(len(v) for v in load_overrides().values() if isinstance(v, dict))
+    ip = lan_ip()
+    if ip:
+        result["lan_url"] = f"http://{ip}:{config.SERVER_PORT}"
+    result["app_version"] = f"v{APP_VERSION}"
+    result["mode"] = "dev" if config.DEV_MODE else "stable"
+    return result
+
+
 def build_payload(query):
     person = query.get("person", [DEFAULT_PERSON])[0]
     sheet = query.get("sheet", [DEFAULT_SHEET])[0]
@@ -372,9 +389,9 @@ def build_payload(query):
     if source != "local" and web_ready:
         path = GRAPH_PATH
     elif source == "onedrive" and graph["configured"]:
-        return {"error": msg("err_graph_login", lang),
+        return _with_app_state({"error": msg("err_graph_login", lang),
                 "hint": msg("hint_graph_login", lang),
-                "files": files_info, "graph": graph, "source": "onedrive"}
+                "files": files_info, "graph": graph, "source": "onedrive"})
     if path is None and wanted_file and wanted_file != GRAPH_PATH:
         for p in files:
             if os.path.normcase(p) == os.path.normcase(wanted_file):
@@ -383,13 +400,13 @@ def build_payload(query):
     if path is None and files:
         path = files[0]  # o mais recente
     if path is None:
-        return {
+        return _with_app_state({
             "error": msg("err_nofile", lang),
             "hint": msg("hint_nofile", lang),
             "searched": CANDIDATE_DIRS,
             "files": files_info,
             "graph": graph,
-        }
+        })
     cycle = cycle and path != GRAPH_PATH   # não há Excel local para fechar
     if fresh:
         # "Atualizar" limpa tudo o que está em memória, não só do ficheiro
@@ -494,16 +511,7 @@ def build_payload(query):
     result["graph"] = graph
     result["source"] = "onedrive" if path == GRAPH_PATH else "local"
     result["synced_copy"] = bool(twin) and path == twin
-    result["ccrs"] = load_ccrs()
-    # TODO é totalmente manual: colunas/estado só mudam por ação explícita
-    # do utilizador (drag/drop, checkbox, botões de cronómetro).
-    result["todo"] = load_todo()
-    result["pending"] = sum(len(v) for v in load_overrides().values() if isinstance(v, dict))
-    ip = lan_ip()
-    if ip:
-        result["lan_url"] = f"http://{ip}:{config.SERVER_PORT}"
-    result["app_version"] = f"v{APP_VERSION}"
-    result["mode"] = "dev" if config.DEV_MODE else "stable"
+    result = _with_app_state(result)
     # impressão digital do conteúdo servido: se o Excel mudou e isto não muda,
     # o problema está na origem (livro por gravar), não na app
     result["digest"] = hashlib.md5(
