@@ -9,6 +9,7 @@ import os
 import py_compile
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
 from datetime import datetime
@@ -16,6 +17,10 @@ from datetime import datetime
 # Path Configuration
 DEV_DIR = os.path.dirname(os.path.abspath(__file__))
 RELEASES_SHARE_DIR = r"C:\Users\cm-andrade\OneDrive - CRITICAL SOFTWARE, S.A\BSP-G2-Tracker-App"
+# Repositorio onde o zip da release e publicado (pagina de download para quem
+# so quer usar a app). Vazio ou BSP_GITHUB_REPO="" desliga esta publicacao.
+GITHUB_REPO = os.environ.get("BSP_GITHUB_REPO", "Cmprfda/my-organizer")
+GITHUB_BRANCH = "main"
 CHANGELOG_PATH = os.path.join(RELEASES_SHARE_DIR, "changelog.json")
 LATEST_PATH = os.path.join(RELEASES_SHARE_DIR, "latest.json")
 RELEASES_MD_PATH = os.path.join(RELEASES_SHARE_DIR, "RELEASES.md")
@@ -72,8 +77,76 @@ def build_payload_zip() -> str:
     return payload_path
 
 
+def find_gh():
+    """Caminho para o GitHub CLI (gh), ou None se nao estiver instalado."""
+    exe = shutil.which("gh")
+    if exe:
+        return exe
+    fallback = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"),
+                            "GitHub CLI", "gh.exe")
+    return fallback if os.path.isfile(fallback) else None
+
+
+def _run(cmd):
+    """Corre um comando e devolve (ok, saida)."""
+    proc = subprocess.run(cmd, cwd=DEV_DIR, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+    return proc.returncode == 0, ((proc.stdout or "") + (proc.stderr or "")).strip()
+
+
+def warn_unpushed():
+    """O tag da release aponta para o ultimo commit que esta no GitHub; avisa
+    se o codigo local ainda nao la estiver."""
+    ok, _ = _run(["git", "rev-parse", "--is-inside-work-tree"])
+    if not ok:
+        return
+    ok, dirty = _run(["git", "status", "--porcelain"])
+    if ok and dirty:
+        print("  ⚠️ Ha alteracoes por commitar; o tag da release nao as inclui.")
+    ok, ahead = _run(["git", "log", "--oneline", f"origin/{GITHUB_BRANCH}..HEAD"])
+    if ok and ahead:
+        print("  ⚠️ Ha commits por enviar (git push); o tag da release nao os inclui.")
+
+
+def publish_github_release(version, zip_path, changes):
+    """Publica o zip na pagina de Releases do GitHub.
+
+    Falhar aqui nao invalida a release: a pasta partilhada continua a ser a
+    fonte da auto-atualizacao da app.
+    """
+    if not GITHUB_REPO:
+        print("  - Publicacao no GitHub desligada (GITHUB_REPO vazio).")
+        return
+    gh = find_gh()
+    if not gh:
+        print("  ⚠️ GitHub CLI (gh) nao encontrado: publicacao no GitHub ignorada.")
+        print("     Instalar com: winget install --id GitHub.cli")
+        return
+    ok, _ = _run([gh, "auth", "status", "--hostname", "github.com"])
+    if not ok:
+        print("  ⚠️ gh sem sessao iniciada: publicacao no GitHub ignorada.")
+        print("     Iniciar com: gh auth login")
+        return
+
+    warn_unpushed()
+    tag = f"v{version}"
+    if _run([gh, "release", "view", tag, "--repo", GITHUB_REPO])[0]:
+        print(f"  - Release {tag} ja existe: a substituir o ficheiro.")
+        ok, out = _run([gh, "release", "upload", tag, zip_path,
+                        "--repo", GITHUB_REPO, "--clobber"])
+    else:
+        notes = "\n".join("- " + c for c in changes)
+        ok, out = _run([gh, "release", "create", tag, zip_path,
+                        "--repo", GITHUB_REPO, "--target", GITHUB_BRANCH,
+                        "--title", f"My Organizer {tag}", "--notes", notes])
+    if ok:
+        print(f"  ✓ Publicada em https://github.com/{GITHUB_REPO}/releases/tag/{tag}")
+    else:
+        print(f"  ⚠️ Nao foi possivel publicar no GitHub: {out}")
+
+
 def validate_python_syntax():
-    print("[1/8] A validar sintaxe do app.py e do pacote cswaios/...")
+    print("[1/9] A validar sintaxe do app.py e do pacote cswaios/...")
     alvos = [os.path.join(DEV_DIR, "app.py")]
     alvos += [full for full, rel in iter_core_dir_files() if rel.endswith(".py")]
     for alvo in alvos:
@@ -118,10 +191,10 @@ def main():
 
     # 2. Obter versão atual do app.py
     version = get_current_app_version()
-    print(f"\n[2/8] Versão atual detetada em cswaios/config.py: v{version}")
+    print(f"\n[2/9] Versão atual detetada em cswaios/config.py: v{version}")
     
     # Pergunta notas da release ao utilizador
-    print("\n[3/8] Introduza as notas da release (uma por linha).")
+    print("\n[3/9] Introduza as notas da release (uma por linha).")
     print("      Pressione Enter numa linha vazia quando terminar:")
     changes = []
     while True:
@@ -134,7 +207,7 @@ def main():
         changes.append(sanitize_text(line))
 
     # 4. Atualizar changelog.json
-    print("\n[4/8] A atualizar changelog.json...")
+    print("\n[4/9] A atualizar changelog.json...")
     changelog = {}
     if os.path.exists(CHANGELOG_PATH):
         with open(CHANGELOG_PATH, "r", encoding="utf-8-sig") as f:
@@ -153,11 +226,11 @@ def main():
     print("  ✓ changelog.json atualizado (UTF-8 sem BOM).")
 
     # 5. Regenerar RELEASES.md
-    print("\n[5/8] A regenerar RELEASES.md...")
+    print("\n[5/9] A regenerar RELEASES.md...")
     update_releases_md(changelog)
 
     # 6. Criar ZIP da release
-    print("\n[6/8] A empacotar ficheiros no ZIP da release...")
+    print("\n[6/9] A empacotar ficheiros no ZIP da release...")
     os.makedirs(RELEASES_ZIP_DIR, exist_ok=True)
     zip_filename = f"bsp-tracker-v{version}.zip"
     zip_target_path = os.path.join(RELEASES_ZIP_DIR, zip_filename)
@@ -183,7 +256,7 @@ def main():
     print(f"  ✓ Release zip criada em: {zip_target_path}")
 
     # 7. Atualizar latest.json
-    print("\n[7/8] A atualizar latest.json...")
+    print("\n[7/9] A atualizar latest.json...")
     latest_data = {
         "version": version,
         "id": f"v{version}",
@@ -195,9 +268,13 @@ def main():
     print("  ✓ latest.json atualizado.")
 
     # 8. Sincronizar Zip de Espelho
-    print("\n[8/8] A espelhar zip para ..\\bsp-tracker.zip...")
+    print("\n[8/9] A espelhar zip para ..\\bsp-tracker.zip...")
     shutil.copy2(zip_target_path, MIRROR_ZIP_PATH)
     print("  ✓ Espelho atualizado com sucesso.")
+
+    # 9. Publicar o zip na pagina de Releases do GitHub
+    print("\n[9/9] A publicar o zip no GitHub...")
+    publish_github_release(version, zip_target_path, changes)
 
     print("\n==================================================")
     print(f"🎉 RELEASE v{version} PUBLICADA COM SUCESSO!")

@@ -8,9 +8,14 @@ para fazer. Qualquer outro livro é mostrado como tabela simples.
 
 ## Instalação (uma vez)
 
-Descarrega o zip mais recente da pasta partilhada **`BSP-G2-Tracker-App`**
-(`releases\bsp-tracker-vN.zip`), extrai-o para uma pasta tua (ex.: no Ambiente
-de Trabalho) e **duplo clique em `setup.bat`**. Ele trata de tudo:
+Descarrega o zip mais recente de um destes sítios:
+
+- **[Releases no GitHub](https://github.com/Cmprfda/my-organizer/releases/latest)**
+  — o `bsp-tracker-vN.zip` está anexado à versão mais recente;
+- a pasta partilhada **`BSP-G2-Tracker-App`** (`releases\bsp-tracker-vN.zip`).
+
+Extrai-o para uma pasta tua (ex.: no Ambiente de Trabalho) e **duplo clique em
+`setup.bat`**. Ele trata de tudo:
 - instala o Python 3 se não existir (via winget, sem admin)
 - instala a dependência `openpyxl`
 - cria o atalho **"My Organizer"** no Ambiente de Trabalho
@@ -163,6 +168,11 @@ automaticamente. Sem o atalho, a app continua a funcionar, só não se atualiza
 
 Também podes atualizar sem esperar pelo arranque, com o comando `bsp update`
 (ver abaixo).
+
+Cada versão é publicada **também** em
+[Releases no GitHub](https://github.com/Cmprfda/my-organizer/releases), como
+alternativa de download para quem não tem a pasta partilhada. A atualização
+automática continua a usar a pasta partilhada.
 
 ## Comandos (linha de comandos)
 
