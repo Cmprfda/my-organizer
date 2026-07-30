@@ -96,6 +96,65 @@ function buildCompact(data) {
 
 let lastSelectorsSig = "";
 
+// localiza a meta de uma linha do Excel pelo nº da linha real na folha —
+// ao contrário de currentMeta (só as linhas atualmente filtradas na vista do
+// Excel), isto funciona a partir de qualquer vista (ex.: o painel da tarefa
+// dentro de um TODO). Usa-se o xlrow (não função+"to do") porque há linhas
+// com a mesma função e "to do" em branco — só o nº de linha é mesmo único.
+function metaByRow(xlrow) {
+  const list = (lastData && lastData.row_meta) || [];
+  return list.find(m => m && String(m.xlrow) === String(xlrow)) || null;
+}
+
+// depois de cancelar/fechar um editor aberto a partir de QUALQUER vista (a
+// mesma célula pode ter sido clonada para o TODO ou para a caixa de detalhe),
+// as duas têm de ser refeitas — cada uma já trata sozinha de repor a caixa
+function refreshTaskViews() {
+  render();
+  if (currentView === "todo") renderTodo();
+}
+
+function badgeHtml(text, col, meta) {
+  const editable = meta && (col === "Status TC" || col === "Status TP");
+  const local = !!(meta && meta.over && meta.over[col]);
+  const title = local ? t("t_local") : t("t_edit_status");
+  return `<span class="badge ${statusClass(text)}${local ? " local" : ""}"` +
+    (editable ? ` data-xlrow="${esc(meta.xlrow)}" data-col="${esc(col)}" title="${title}"` : "") +
+    `>${esc(text)}${local ? " ✎" : ""}</span>`;
+}
+
+// a OBS do Excel é editável: escrever aqui fica como alteração local (✎) e
+// só chega à folha no Push, tal como os estados. O valor atual (já com
+// qualquer alteração local aplicada) vem em data-obscur — meta.over só guarda
+// um booleano (há alteração ou não), não o texto, por isso não chega aqui.
+function obsHtml(obs, meta) {
+  const editable = !!(meta && lastData && (lastData.xlcols || {})["OBS"]);
+  const local = !!(meta && meta.over && meta.over["OBS"]);
+  const attrs = editable
+    ? ` data-obsxlrow="${esc(meta.xlrow)}" data-obscur="${esc(obs || "")}" title="${t("t_edit_obs")}"`
+    : "";
+  if (!obs) return editable ? `<span class="obs addnote"${attrs}>${t("addobs")}</span>` : "";
+  return `<span class="obs${local ? " local" : ""}"${attrs}>${t("obs_prefix")} ${esc(obs)}${local ? " ✎" : ""}</span>`;
+}
+
+// conteúdo da célula de execução (etiqueta, checklist e nota)
+function execCellHtml(meta) {
+  const n = meta && meta.note;
+  let inner = "";
+  if (n && n.tag) inner += `<span class="badge ${tagClass(n.tag)}">${esc(tagDisplay(n.tag))}</span>`;
+  if (n && n.checks && Object.values(n.checks).some(Boolean)) {
+    inner += `<span class="chips">` + CHECKS.map(([k, label, short]) =>
+      `<span class="chip${n.checks[k] ? " done" : ""}" title="${esc(t(label))}">${esc(short)}${n.checks[k] ? " ✓" : ""}</span>`
+    ).join("") + `</span>`;
+  }
+  if (n && n.note) inner += `<span class="obs">${esc(n.note)}</span>`;
+  if (!inner) inner = `<span class="addnote">${t("addnote")}</span>`;
+  // não escapar aqui: quem chama já faz esc(title) ao inserir no atributo —
+  // escapar também aqui duplicaria entidades (& -> &amp;amp;)
+  const title = (n && n.updated ? `${t("t_updated")} ${n.updated} — ` : "") + t("t_edit_note");
+  return { inner, title };
+}
+
 function populateSelectors(data) {
   const files = data.files || [];
   const sheets = data.sheets || [];
@@ -337,60 +396,21 @@ function render() {
     useCompact ? (String(r[3] === undefined ? "" : r[3]).split("\u001F")[1] || "") : "");
   currentStatuses = data.statuses || [];
 
-  function badgeHtml(text, col, ri, meta) {
-    const editable = meta && (col === "Status TC" || col === "Status TP");
-    const local = !!(meta && meta.over && meta.over[col]);
-    const title = local ? t("t_local") : t("t_edit_status");
-    return `<span class="badge ${statusClass(text)}${local ? " local" : ""}"` +
-      (editable ? ` data-ri="${ri}" data-col="${esc(col)}" title="${title}"` : "") +
-      `>${esc(text)}${local ? " ✎" : ""}</span>`;
-  }
-
   function statusCell(r, ri, i) {
     const meta = currentMeta[ri];
     if (useCompact) {
       const lines = String(r[2]).split("\n").filter(l => l.trim());
       const cols = r[7] || [];
-      return lines.map((l, k) => badgeHtml(l, cols[k], ri, meta)).join("<br>");
+      return lines.map((l, k) => badgeHtml(l, cols[k], meta)).join("<br>");
     }
     const c = r[i] ? String(r[i]) : "";
-    return c ? badgeHtml(c, headers[i], ri, meta) : "";
-  }
-
-  // a OBS do Excel é editável: escrever aqui fica como alteração local (✎) e
-  // só chega à folha no Push, tal como os estados
-  function obsHtml(obs, ri) {
-    const meta = currentMeta[ri];
-    const editable = !!(meta && (lastData.xlcols || {})["OBS"]);
-    const local = !!(meta && meta.over && meta.over["OBS"]);
-    const attrs = editable ? ` data-obsri="${ri}" title="${t("t_edit_obs")}"` : "";
-    if (!obs) return editable ? `<span class="obs addnote"${attrs}>${t("addobs")}</span>` : "";
-    return `<span class="obs${local ? " local" : ""}"${attrs}>${t("obs_prefix")} ${esc(obs)}${local ? " ✎" : ""}</span>`;
-  }
-
-  // conteúdo da célula de execução (etiqueta, checklist e nota)
-  function execCellHtml(ri) {
-    const meta = currentMeta[ri];
-    const n = meta && meta.note;
-    let inner = "";
-    if (n && n.tag) inner += `<span class="badge ${tagClass(n.tag)}">${esc(tagDisplay(n.tag))}</span>`;
-    if (n && n.checks && Object.values(n.checks).some(Boolean)) {
-      inner += `<span class="chips">` + CHECKS.map(([k, label, short]) =>
-        `<span class="chip${n.checks[k] ? " done" : ""}" title="${esc(t(label))}">${esc(short)}${n.checks[k] ? " ✓" : ""}</span>`
-      ).join("") + `</span>`;
-    }
-    if (n && n.note) inner += `<span class="obs">${esc(n.note)}</span>`;
-    if (!inner) inner = `<span class="addnote">${t("addnote")}</span>`;
-    // não escapar aqui: quem chama já faz esc(title) ao inserir no atributo —
-    // escapar também aqui duplicaria entidades (& -> &amp;amp;)
-    const title = (n && n.updated ? `${t("t_updated")} ${n.updated} — ` : "") + t("t_edit_note");
-    return { inner, title };
+    return c ? badgeHtml(c, headers[i], meta) : "";
   }
 
   // "O que fazer" + OBS da linha (a OBS vem colada ao resumo pelo separador \u001F)
   function todoObsHtml(r, ri) {
     const [todo, obs] = String(r[3] === undefined ? "" : r[3]).split("\u001F");
-    return `${esc(todo)}${obsHtml(obs || "", ri)}`;
+    return `${esc(todo)}${obsHtml(obs || "", currentMeta[ri])}`;
   }
 
   // o botão "+ TODO" só existe enquanto a linha não estiver na TODO list
@@ -408,11 +428,19 @@ function render() {
         const c = r[i] !== undefined ? r[i] : "";
         if (useCompact ? i === 2 : isStatusHeader(headers[i]))
           return `<td>${statusCell(r, ri, i)}</td>`;
-        if (useCompact && i === 0) return `<td class="fn">${esc(c)}</td>`;
+        if (useCompact && i === 0) {
+          const m = currentMeta[ri] || {};
+          const linked = notesForTask(m.fn || c, m.todo || "");
+          const flag = linked.length
+            ? `<button type="button" class="taskNoteFlag" data-tasklink-fn="${esc(m.fn || c)}" data-tasklink-todo="${esc(m.todo || "")}" title="${esc(t("t_open_linked_note"))}">📌</button>`
+            : "";
+          return `<td class="fn">${esc(c)}${flag}</td>`;
+        }
         if (useCompact && i === 1) return `<td class="role">${esc(c)}</td>`;
         if (useCompact && i === 4) {
-          const { inner, title } = execCellHtml(ri);
-          return `<td class="execCell" data-ri="${ri}" title="${esc(title)}">${inner}</td>`;
+          const m = currentMeta[ri] || {};
+          const { inner, title } = execCellHtml(m);
+          return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
         }
         if (useCompact && i === 3) {
           return `<td>${todoObsHtml(r, ri)}</td>`;
@@ -463,18 +491,23 @@ async function load(cycle = false, fresh = false) {
 }
 
 function tbodyTap(e) {
+  const pin = e.target.closest("[data-tasklink-fn]");
+  if (pin) { openTaskLinkedNote(pin.dataset.tasklinkFn, pin.dataset.tasklinkTodo); return; }
   const add = e.target.closest("[data-todoadd]");
   if (add) { e.preventDefault(); e.stopPropagation(); addTodoFromTaskRow(add); return; }
   const badge = e.target.closest(".badge[data-col]");
   if (badge) return openStatusEditor(badge);
-  const obs = e.target.closest("[data-obsri]");
+  const obs = e.target.closest("[data-obsxlrow]");
   if (obs && !obs.dataset.editing) return openObsEditor(obs);
-  const cell = e.target.closest("td.execCell");
+  const cell = e.target.closest(".execCell");
   if (cell && !cell.dataset.editing) openNoteEditor(cell);
 }
 // click + pointerup: alguns browsers móveis não entregam o click delegado
 $("tbody").addEventListener("click", tbodyTap);
 $("tbody").addEventListener("pointerup", tbodyTap);
+// os mesmos editores também servem o painel da tarefa dentro de um item do TODO
+$("todoBody").addEventListener("click", tbodyTap);
+$("todoBoard").addEventListener("click", tbodyTap);
 
 $("ccrBody").addEventListener("click", e => {
   const add = e.target.closest("[data-todoaddccr]");
@@ -485,9 +518,8 @@ $("ccrBody").addEventListener("click", e => {
 });
 
 function openNoteEditor(cell) {
-  const ri = +cell.dataset.ri;
-  const meta = currentMeta[ri];
-  if (!meta) { clientLog(`nota: célula sem metadados (linha ${ri})`); return; }
+  const meta = metaByRow(cell.dataset.xlrow);
+  if (!meta) { clientLog(`nota: célula sem metadados (linha ${cell.dataset.xlrow})`); return; }
   clientLog(`nota: editor aberto (${meta.fn})`);
   cell.dataset.editing = "1";
   editorOpen = true;
@@ -530,7 +562,7 @@ function openNoteEditor(cell) {
   cell.querySelector(".actCancel").addEventListener("click", e => {
     e.stopPropagation();
     editorOpen = false;
-    render();
+    refreshTaskViews();
   });
   cell.querySelector(".actClear").addEventListener("click", async e => {
     e.stopPropagation();
@@ -554,10 +586,9 @@ function openNoteEditor(cell) {
 // Editor da OBS: grava como alteração local (✎), tal como os estados — só o
 // Push é que a escreve mesmo na coluna OBS do Excel.
 function openObsEditor(span) {
-  const ri = +span.dataset.obsri;
-  const meta = currentMeta[ri];
-  if (!meta) { clientLog(`obs: célula sem metadados (linha ${ri})`); return; }
-  const atual = currentObs[ri] || "";
+  const meta = metaByRow(span.dataset.obsxlrow);
+  if (!meta) { clientLog(`obs: célula sem metadados (linha ${span.dataset.obsxlrow})`); return; }
+  const atual = span.dataset.obscur || "";
   span.dataset.editing = "1";
   editorOpen = true;
   span.innerHTML =
@@ -596,7 +627,7 @@ function openObsEditor(span) {
   span.querySelector(".actCancel").addEventListener("click", e => {
     e.stopPropagation();
     editorOpen = false;
-    render();
+    refreshTaskViews();
   });
   // limpar = repor o que está na folha (deixa de haver alteração local)
   span.querySelector(".actClear").addEventListener("click", e => {
@@ -606,8 +637,8 @@ function openObsEditor(span) {
 }
 
 function openStatusEditor(badge) {
-  const ri = +badge.dataset.ri, col = badge.dataset.col;
-  const meta = currentMeta[ri];
+  const col = badge.dataset.col;
+  const meta = metaByRow(badge.dataset.xlrow);
   if (!meta) return;
   const current = badge.innerText.replace(/^TC: |^TP: /, "").trim();
   // deixa no log o que está mesmo no ecrã para esta linha: serve para comparar
@@ -658,5 +689,5 @@ function openStatusEditor(badge) {
     }
     load();
   });
-  sel.addEventListener("blur", () => { if (!done) { done = true; editorOpen = false; render(); } });
+  sel.addEventListener("blur", () => { if (!done) { done = true; editorOpen = false; refreshTaskViews(); } });
 }

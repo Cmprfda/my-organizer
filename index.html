@@ -232,12 +232,26 @@
             </aside>
             <section class="notesMain">
               <div class="notesHead" id="notesHead">
-                <input type="text" id="noteTitle" placeholder="Título da nota">
-                <select id="noteFolderSel" title="Pasta"></select>
-                <button type="button" class="secondary" id="noteLinkBtn">Ligar a uma tarefa</button>
+                <div class="notePath">
+                  <span class="notePathSlash">/</span>
+                  <input type="text" id="notePathInput" placeholder="pasta/título">
+                </div>
+                <span class="noteLinkChips" id="noteLinkChips"></span>
+                <button type="button" class="linkBtn" id="noteLinkBtn">Ligar a uma tarefa</button>
                 <button type="button" class="ccr-x" id="noteDel" title="Apagar nota">✕</button>
               </div>
+              <div class="noteToolbar" id="noteToolbar">
+                <button type="button" class="noteToolBtn active" data-tool="select" title="Selecionar / mover">↖</button>
+                <button type="button" class="noteToolBtn" data-tool="pen" title="Desenhar à mão">✏️</button>
+                <button type="button" class="noteToolBtn" data-tool="line" title="Linha">╱</button>
+                <button type="button" class="noteToolBtn" data-tool="rect" title="Rectângulo">▭</button>
+                <button type="button" class="noteToolBtn" data-tool="ellipse" title="Elipse">◯</button>
+                <button type="button" class="noteToolBtn" data-tool="connector" title="Ligar caixas">⤳</button>
+                <button type="button" class="noteToolBtn" data-tool="frame" title="Criar grupo">▢</button>
+                <button type="button" class="noteToolColor c-yellow" id="noteToolColor" title="Cor do traço (clica para mudar)"></button>
+              </div>
               <div class="noteCanvas" id="noteCanvas">
+                <svg class="noteDrawLayer" id="noteDrawLayer" width="4000" height="4000"></svg>
                 <div class="noteCanvasHint" id="noteCanvasHint"></div>
               </div>
               <div class="state" id="noteEmpty">

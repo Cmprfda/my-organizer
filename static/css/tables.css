@@ -257,6 +257,16 @@ td .obs.local {
   font-weight: 600;
 }
 
+.taskNoteFlag {
+  background: transparent;
+  border: none;
+  padding: 0 0 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
 .tablebox.cards td.role {
   color: var(--muted);
   font-size: 12.5px;

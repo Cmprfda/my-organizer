@@ -14,8 +14,11 @@ function renderCCRs() {
     const chk = defs => defs.map(([k, label]) =>
       `<label><input type="checkbox" data-id="${esc(id)}" data-k="${k}"${c[k] ? " checked" : ""}> ${esc(t(label))}</label>`
     ).join("");
+    const ccrFlag = notesForCcr(id).length
+      ? `<button type="button" class="taskNoteFlag" data-ccrlink="${esc(id)}" title="${esc(t("t_open_linked_note"))}">📌</button>`
+      : "";
     return `<tr draggable="true" class="${done ? "ccr-done" : ready ? "ccr-ready" : ""}">
-  <td class="fn">CCR ${esc(id)}${ready && !done ? `<br><span class="badge done">${t("ccr_ready")}</span>` : ""}</td>
+  <td class="fn">CCR ${esc(id)}${ccrFlag}${ready && !done ? `<br><span class="badge done">${t("ccr_ready")}</span>` : ""}</td>
   <td class="ccr-chk">${chk(CCR_PRE)}</td>
   <td class="ccr-chk">${ready ? chk(CCR_POST) : `<span class="obs">${t("ccr_wait")}</span>`}</td>
   <td class="ccrNote" data-nid="${esc(id)}" title="${t("t_edit_note")}">${ccrs[id].note ? `<span class="obs">${esc(ccrs[id].note)}</span>` : `<span class="addnote">${t("addnote")}</span>`
@@ -66,6 +69,8 @@ function ccrBodyChange(e) {
 }
 
 function ccrBodyTap(e) {
+  const pin = e.target.closest("[data-ccrlink]");
+  if (pin) { openCcrLinkedNote(pin.dataset.ccrlink); return; }
   const btn = e.target.closest(".ccr-x");
   if (btn) {
     if (confirm(tf("cfm_del_ccr", btn.dataset.del)))

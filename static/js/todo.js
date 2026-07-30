@@ -180,23 +180,16 @@ function todoTaskInfoHtml(it) {
   const row = taskRowFor(it);
   if (!row) return "";
   const meta = row[6] || {};
-  const over = meta.over || {};
   const cols = row[7] || [];
-  const n = meta.note;
   const parts = [];
   if (row[1]) parts.push(`<span class="role">${esc(row[1])}</span>`);
   String(row[2]).split("\n").filter(l => l.trim()).forEach((l, k) => {
-    const local = !!over[cols[k]];
-    parts.push(`<span class="badge ${statusClass(l)}${local ? " local" : ""}">${esc(l)}${local ? " ✎" : ""}</span>`);
+    parts.push(badgeHtml(l, cols[k], meta));
   });
-  if (n && n.tag) parts.push(`<span class="badge ${tagClass(n.tag)}">${esc(tagDisplay(n.tag))}</span>`);
-  if (n && n.checks && Object.values(n.checks).some(Boolean)) {
-    parts.push(`<span class="chips">` + CHECKS.map(([k, label, short]) =>
-      `<span class="chip${n.checks[k] ? " done" : ""}" title="${esc(t(label))}">${esc(short)}${n.checks[k] ? " ✓" : ""}</span>`
-    ).join("") + `</span>`);
-  }
-  if (n && n.note) parts.push(`<span class="obs">${esc(n.note)}</span>`);
-  if (!parts.length) return "";
+  const obsText = String(row[3] === undefined ? "" : row[3]).split("")[1] || "";
+  parts.push(obsHtml(obsText, meta));
+  const { inner, title } = execCellHtml(meta);
+  parts.push(`<div class="execCell" data-xlrow="${esc(meta.xlrow || "")}" title="${esc(title)}">${inner}</div>`);
   return `<div class="todoTaskInfo">${parts.join("")}</div>`;
 }
 

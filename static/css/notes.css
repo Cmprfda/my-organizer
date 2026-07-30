@@ -55,6 +55,27 @@
     align-items: center;
     gap: 4px;
     padding: 4px 2px;
+    border: 1px dashed transparent;
+    border-radius: 8px;
+}
+
+.noteRootDrop {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border: 1px dashed transparent;
+    border-radius: 8px;
+}
+
+.noteFolder.dragOver,
+.noteRootDrop.dragOver {
+    background: var(--accent-soft);
+    border-color: var(--accent);
 }
 
 .noteFolder .noteFolderTog {
@@ -168,22 +189,106 @@
     padding: 10px 12px;
 }
 
-#noteTitle {
+/* ---------- barra de ferramentas de desenho ---------- */
+.noteToolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 2px 4px;
+}
+
+.noteToolBtn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ios-radius-btn);
+    padding: 6px 9px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text);
+}
+
+.noteToolBtn:hover {
+    background: var(--accent-soft);
+}
+
+.noteToolBtn.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-text);
+}
+
+.noteToolColor {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    padding: 0;
+    margin-left: 4px;
+}
+
+.noteToolColor.c-yellow { background: var(--status-doing-bg); }
+.noteToolColor.c-blue { background: var(--status-info-bg); }
+.noteToolColor.c-green { background: var(--status-done-bg); }
+.noteToolColor.c-pink { background: var(--status-blocked-bg); }
+.noteToolColor.c-plain { background: var(--ink-900); }
+
+.notePath {
+    display: flex;
+    align-items: center;
+    gap: 2px;
     flex: 1 1 200px;
     min-width: 0;
-    font: inherit;
     font-size: 14px;
     font-weight: 600;
     color: var(--text);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--ios-radius-btn);
-    padding: 7px 10px;
 }
 
-#noteFolderSel {
+.notePathSlash {
     flex: 0 0 auto;
-    max-width: 180px;
+    color: var(--ink-400);
+    opacity: .7;
+}
+
+#notePathInput {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: inherit;
+    color: var(--text);
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 4px 2px;
+}
+
+.linkBtn {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 4px 2px;
+    color: var(--accent-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    cursor: pointer;
+}
+
+.linkBtn:hover {
+    text-decoration-color: currentColor;
+}
+
+.linkBtn:active {
+    transform: none;
+    opacity: 0.7;
+}
+
+.noteLinkChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .noteLinkChip {
@@ -246,6 +351,93 @@
     background: var(--accent-soft);
     pointer-events: none;
 }
+
+/* ---------- grupos (molduras que arrastam as caixas lá dentro) ---------- */
+.noteFrame {
+    position: absolute;
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    background: var(--accent-soft);
+    pointer-events: none;
+}
+
+.noteFrameBar {
+    position: absolute;
+    left: -2px;
+    top: -26px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: grab;
+    pointer-events: auto;
+    white-space: nowrap;
+}
+
+.noteFrameBar:active {
+    cursor: grabbing;
+}
+
+.noteFrameBar button {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+.noteFrameSize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    pointer-events: auto;
+    background: linear-gradient(135deg, transparent 50%, var(--ink-300) 50%);
+}
+
+.noteBox.connectFrom {
+    box-shadow: 0 0 0 3px var(--accent);
+}
+
+/* ---------- camada de desenho (por baixo das caixas) ---------- */
+.noteDrawLayer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+}
+
+.noteDrawLayer .noteStroke,
+.noteDrawLayer .noteShape {
+    pointer-events: visibleStroke;
+    cursor: pointer;
+}
+
+/* as ligações entre caixas também se selecionam com o rato (a camada em si
+   não recebe cliques) */
+.noteDrawLayer .noteConnector {
+    pointer-events: visibleStroke;
+    cursor: pointer;
+}
+
+.noteDrawLayer .sel {
+    stroke-width: 5 !important;
+}
+
+.noteDrawLayer .c-yellow { stroke: var(--status-doing-fg); }
+.noteDrawLayer .c-blue { stroke: var(--status-info-fg); }
+.noteDrawLayer .c-green { stroke: var(--status-done-fg); }
+.noteDrawLayer .c-pink { stroke: var(--status-blocked-fg); }
+.noteDrawLayer .c-plain { stroke: var(--text); }
 
 /* ---------- caixas ---------- */
 .noteBox {

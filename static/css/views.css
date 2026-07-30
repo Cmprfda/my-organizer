@@ -118,6 +118,17 @@ tr.flashSrc td:first-child {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+/* vista em cartões: a linha É o cartão (tr em coluna) — sem isto o
+   destaque só cobria a altura da 1.ª célula (o título), não o cartão todo */
+.tablebox.cards tr.flashSrc {
+  animation: flashRow 2.6s ease-out;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.tablebox.cards tr.flashSrc td:first-child {
+  box-shadow: none;
+}
+
 /* ---- ecrã dividido ---- */
 body.split .wrap {
   max-width: none;

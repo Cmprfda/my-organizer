@@ -6,7 +6,7 @@
 // clique neles nunca deve abrir a caixa.
 const BOX_SKIP = [
   "button", "input", "select", "textarea", "a", "label", "[contenteditable]",
-  ".badge[data-col]", "[data-obsri]", "td.execCell", "td.ccrNote",
+  ".badge[data-col]", "[data-obsxlrow]", ".execCell", "td.ccrNote",
   "[data-tnote]", "[data-ttitle]", "[data-tsubedit]", ".editActions",
 ].join(", ");
 

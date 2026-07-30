@@ -194,7 +194,7 @@
     padding: 9px;
   }
 
-  td.execCell {
+  .execCell {
     min-width: 0;
   }
 

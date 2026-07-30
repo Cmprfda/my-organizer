@@ -69,10 +69,16 @@
 
 /* ---------- caixa de detalhe de um item (clicar numa linha/cartão) ---------- */
 .itemCard {
-    width: min(560px, 100%);
+    width: min(880px, 96vw);
+    max-height: min(88vh, 900px);
 }
 
 #itemBody {
+    /* sem isto, um conteúdo alto cresce além do cartão e o "overflow:hidden"
+       do .helpCard corta-o em vez de o deixar rolar — no telemóvel isso
+       parecia "não se conseguir navegar" na caixa */
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
     padding: 4px 16px 16px;
     -webkit-overflow-scrolling: touch;

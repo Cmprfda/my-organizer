@@ -188,17 +188,17 @@ body.devmode {
   opacity: 0.84;
 }
 
-td.execCell {
+.execCell {
   cursor: pointer;
   min-width: 150px;
 }
 
-td.execCell .addnote {
+.execCell .addnote {
   color: var(--muted);
   font-size: 12.5px;
 }
 
-td.execCell .mini {
+.execCell .mini {
   margin: 0 6px 0 0;
 }
 

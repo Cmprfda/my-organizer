@@ -227,6 +227,11 @@ tr.todoRow.ccr-done.flagged td {
   overflow-wrap: anywhere;
 }
 
+.todoTaskInfo .execCell {
+  flex-basis: 100%;
+  cursor: pointer;
+}
+
 .todoTimer {
   display: inline-flex;
   align-items: center;
