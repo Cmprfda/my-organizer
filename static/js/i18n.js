@@ -60,6 +60,7 @@ const TR = {
   upd_ok: ["Já está na versão mais recente.", "Already on the latest version."],
   upd_found: ["Nova versão instalada. A reiniciar…", "New version installed. Restarting…"],
   upd_err: ["Erro ao verificar atualizações.", "Error checking for updates."],
+  item_box: ["Detalhe", "Details"],
   review_tc: ["Rever o TC de", "Review the TC by"], review_tp: ["Rever o TP de", "Review the TP by"],
   t_edit_status: ["Clica para alterar o estado", "Click to change the status"],
   t_local: ["Alterado localmente — clica para alterar ou repor", "Changed locally — click to change or revert"],

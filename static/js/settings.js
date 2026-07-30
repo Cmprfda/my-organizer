@@ -76,6 +76,8 @@ function applyLang() {
   $("pickerClose").title = t("t_close");
   $("pickerSearch").placeholder = t("pick_search");
   $("pickerOverlay").setAttribute("aria-label", t("pick_title"));
+  $("itemClose").title = t("t_close");
+  $("itemOverlay").setAttribute("aria-label", t("item_box"));
   $("appUpdateBtn").textContent = t("btn_app_update");
   $("appUpdateBtn").title = t("t_app_update");
   $("shareAppBtn").textContent = t("btn_share_app");
@@ -89,22 +91,22 @@ $("shareAppBtn").addEventListener("click", () => {
 });
 
 $("appUpdateBtn").addEventListener("click", async () => {
-  const btn = $("appUpdateBtn"), status = $("appUpdateStatus");
+  const btn = $("appUpdateBtn");
   btn.disabled = true;
-  status.textContent = t("upd_checking");
+  toast(t("upd_checking"));
   try {
     const res = await fetch("/api/app-update", { method: "POST" });
     const j = await res.json();
     if (!j.ok) throw new Error(j.error || "?");
     if (j.updated) {
-      status.textContent = t("upd_found");
+      toast(t("upd_found"), "ok");
       setTimeout(() => location.reload(), 4000);
     } else {
-      status.textContent = t("upd_ok");
-      setTimeout(() => { status.textContent = ""; btn.disabled = false; }, 4000);
+      toast(t("upd_ok"), "ok");
+      btn.disabled = false;
     }
   } catch (e) {
-    status.textContent = t("upd_err") + " " + e.message;
+    toast(t("upd_err") + " " + e.message, "err");
     btn.disabled = false;
   }
 });

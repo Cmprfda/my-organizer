@@ -67,6 +67,59 @@
     padding: 1px 5px;
 }
 
+/* ---------- caixa de detalhe de um item (clicar numa linha/cartão) ---------- */
+.itemCard {
+    width: min(560px, 100%);
+}
+
+#itemBody {
+    overflow: auto;
+    padding: 4px 16px 16px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.itemField {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.itemField:last-child {
+    border-bottom: none;
+}
+
+.itemLabel {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+.itemValue {
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+/* a caixa é só para ler: os controlos são a fotografia do estado do item */
+#itemBody input,
+#itemBody button,
+#itemBody select,
+#itemBody textarea {
+    pointer-events: none;
+}
+
+#itemBody .obs {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12.5px;
+}
+
 /* avisos: verde para o que correu bem, vermelho para o que falhou */
 #toast.ok {
     border-color: var(--ios-green);

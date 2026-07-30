@@ -16,6 +16,8 @@ const HELP = [
                 "You can open the app on your phone or another PC on the same network using the address shown under the buttons."],
             ["A versão instalada está sempre visível no canto inferior direito do ecrã.",
                 "The installed version is always visible in the bottom-right corner of the screen."],
+            ["Clica em qualquer item (tarefa, CCR ou item da lista Por fazer) para o abrir numa <strong>caixa</strong> com tudo o que ele tem, sem cortes. <strong>Esc</strong> ou ✕ fecham a caixa.",
+                "Click any item (task, CCR or TODO entry) to open it in a <strong>box</strong> with everything it holds, nothing truncated. <strong>Esc</strong> or ✕ close the box."],
         ],
     },
     {

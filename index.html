@@ -88,7 +88,6 @@
       <div class="setRow setRowUpdate">
         <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
         <button type="button" class="mini" id="shareAppBtn">Partilhar app</button>
-        <span id="appUpdateStatus"></span>
       </div>
     </div>
 
@@ -272,6 +271,16 @@
     </div>
   </div>
 
+  <div id="itemOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Detalhe">
+    <div class="helpCard itemCard">
+      <div class="helpHead">
+        <strong id="itemTitle">Detalhe</strong>
+        <button type="button" class="ccr-x" id="itemClose" title="Fechar">✕</button>
+      </div>
+      <div id="itemBody"></div>
+    </div>
+  </div>
+
   <div id="pickerOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
     aria-label="Escolher livro no OneDrive">
     <div class="helpCard pickerCard">
@@ -295,6 +304,7 @@
   <script src="/static/js/ccrs.js"></script>
   <script src="/static/js/views.js"></script>
   <script src="/static/js/todo.js"></script>
+  <script src="/static/js/itembox.js"></script>
   <script src="/static/js/split.js"></script>
   <script src="/static/js/feedback.js"></script>
   <script src="/static/js/settings.js"></script>
