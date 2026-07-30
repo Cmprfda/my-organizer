@@ -339,12 +339,12 @@ function renderTodo() {
         ? `<button type="button" class="srcBtn" data-src="${esc(it.id)}" title="${t("t_src")}">↗</button>`
         : "";
       return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
-    <td style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
+    <td class="todoCtl" style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
     <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}</td>
-    <td style="width:1%">${todoStatusHtml(it)}</td>
-    <td style="width:1%">${todoTimerHtml(it)} ${todoTimerRestartHtml(it)}</td>
-    <td style="width:1%">${srcCell}</td>
-    <td style="width:1%"><button type="button" class="ccr-x" data-tdel="${esc(it.id)}" title="${t("t_remove")}">✕</button></td>
+    <td class="todoCtl" style="width:1%">${todoStatusHtml(it)}</td>
+    <td class="todoCtl" style="width:1%"><span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span></td>
+    <td class="todoCtl" style="width:1%">${srcCell}</td>
+    <td class="todoCtl" style="width:1%"><button type="button" class="ccr-x" data-tdel="${esc(it.id)}" title="${t("t_remove")}">✕</button></td>
   </tr>`;
     }).join("");
     return;
@@ -364,10 +364,8 @@ function renderTodo() {
     ${todoTaskInfoHtml(it)}
     ${todoSubtasksHtml(it)}
     <div class="todoCardMeta">
-      <input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}>
       ${todoStatusHtml(it)}
-      ${todoTimerHtml(it)}
-      ${todoTimerRestartHtml(it)}
+      <span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span>
       ${srcCell}
       <span class="spacer"></span>
       <button type="button" class="ccr-x" data-tdel="${esc(it.id)}" title="${t("t_remove")}">✕</button>
@@ -488,9 +486,9 @@ $("todoBody").addEventListener("contextmenu", e => {
   setTodoStatusById(status.dataset.tocol, -1);
 });
 
+// no Kanban não há caixa de "feito" (a coluna Concluído já diz isso); só as
+// subtarefas continuam a ter checkbox
 $("todoBoard").addEventListener("change", e => {
-  const cb = e.target.closest("input[data-tgl]");
-  if (cb) postTodo({ action: "toggle", id: cb.dataset.tgl });
   const sub = e.target.closest("input[data-tsubtgl]");
   if (sub) {
     const [id, subId] = sub.dataset.tsubtgl.split("|");

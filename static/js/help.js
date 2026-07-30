@@ -23,8 +23,8 @@ const HELP = [
         items: [
             ["<strong>Ver tudo</strong> mostra as tarefas de toda a gente; <strong>Vista resumida/completa</strong> troca entre o resumo por TC e todas as colunas da folha.",
                 "<strong>Show all</strong> lists everyone's tasks; <strong>Compact/Full view</strong> switches between the per-TC summary and every column of the sheet."],
-            ["Na vista resumida, <strong>Lista</strong> e <strong>Caixas</strong> trocam entre a tabela normal e um mural de cartões, um por tarefa. A escolha fica guardada.",
-                "In the compact view, <strong>List</strong> and <strong>Boxes</strong> switch between the normal table and a wall of cards, one per task. Your choice is remembered."],
+            ["<strong>Lista</strong> e <strong>Caixas</strong> trocam entre a tabela normal e um mural de cartões, um por tarefa — nas vistas resumida e completa. A escolha fica guardada.",
+                "<strong>List</strong> and <strong>Boxes</strong> switch between the normal table and a wall of cards, one per task — in both the compact and the full view. Your choice is remembered."],
             ["Clica nos números do resumo (estado, papel, lado) para filtrar; clica outra vez para limpar o filtro.",
                 "Click the summary counters (status, role, side) to filter; click again to clear the filter."],
             ["Na <strong>Pesquisa</strong>, carrega em <strong>Enter</strong> para fixar o texto escrito e continuar a escrever outro termo. O botão <strong>OU/E</strong> ao lado da caixa escolhe se basta um dos termos aparecer (OU) ou se têm de aparecer todos (E). Clica num termo fixado para o remover.",

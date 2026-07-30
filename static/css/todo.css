@@ -288,6 +288,25 @@ tr.todoRow.ccr-done.flagged td {
   opacity: 0.82;
 }
 
+/* cronómetro e "reiniciar" andam sempre juntos e na mesma linha: em células
+   estreitas o ↺ caía para baixo do relógio e desalinhava a linha toda */
+.todoTimerCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+/* células de controlo da lista (feito, estado, cronómetro, origem, remover):
+   tudo centrado na mesma linha, sem quebras */
+tr.todoRow td.todoCtl {
+  white-space: nowrap;
+}
+
+tr.todoRow td.todoCtl>* {
+  vertical-align: middle;
+}
+
 .todoCardMeta {
   display: flex;
   align-items: center;
@@ -306,10 +325,6 @@ tr.todoRow.ccr-done.flagged td {
 /* o ✕ fica sempre encostado à direita, mesmo quando passa para a 2.ª linha */
 .todoCardMeta .ccr-x {
   margin-left: auto;
-}
-
-.todoCardMeta input[type="checkbox"] {
-  margin: 0;
 }
 
 /* subtarefas dentro de um item do TODO */

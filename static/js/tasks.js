@@ -205,6 +205,7 @@ function render() {
 
   if (data.error) {
     tbl.classList.add("hidden");
+    $("taskMode").classList.add("hidden");
     box.classList.remove("hidden");
     let html = `<h2>${esc(data.error)}</h2>`;
     if (data.hint) html += `<p>${esc(data.hint)}</p>`;
@@ -232,8 +233,8 @@ function render() {
   const compact = !showAll ? buildCompact(data) : null;
   $("viewToggle").classList.toggle("hidden", !compact);
   const useCompact = compact && compactView;
-  // a vista em caixas só faz sentido no resumo (a completa tem colunas a mais)
-  $("taskMode").classList.toggle("hidden", !useCompact);
+  // lista/caixas vale para as duas vistas (resumida e completa)
+  $("taskMode").classList.remove("hidden");
   const headers = useCompact ? compact.headers : data.headers;
   const allRows = useCompact ? compact.rows : data.rows;
 
@@ -326,7 +327,7 @@ function render() {
   box.classList.add("hidden");
   tbl.classList.remove("hidden");
   const _narrow = window.innerWidth <= 720;
-  tbl.classList.toggle("cards", useCompact && (taskLayout === "cards" || _narrow));
+  tbl.classList.toggle("cards", taskLayout === "cards" || _narrow);
   $("thead").innerHTML = "<tr>" + headers.map(h => `<th>${esc(h)}</th>`).join("") + `<th class="todoActionCell">${esc(t("hdr_action"))}</th></tr>`;
   currentMeta = rows.map(r =>
     useCompact ? (r[6] || null) : ((data.row_meta || [])[data.rows.indexOf(r)] || null));
