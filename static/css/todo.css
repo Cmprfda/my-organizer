@@ -298,13 +298,18 @@ tr.todoRow.ccr-done.flagged td {
 }
 
 /* células de controlo da lista (feito, estado, cronómetro, origem, remover):
-   tudo centrado na mesma linha, sem quebras */
+   tudo centrado na mesma linha, sem quebras. Cada célula é uma caixa de linha
+   independente, por isso sem um "strut" de altura fixa a linha de base caía em
+   sítios diferentes conforme o conteúdo e os botões ficavam 2-3 px
+   desencontrados de coluna para coluna. */
 tr.todoRow td.todoCtl {
   white-space: nowrap;
+  line-height: 26px;
 }
 
 tr.todoRow td.todoCtl>* {
   vertical-align: middle;
+  line-height: normal;
 }
 
 .todoCardMeta {
