@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="/static/css/tables.css">
   <link rel="stylesheet" href="/static/css/views.css">
   <link rel="stylesheet" href="/static/css/help.css">
+  <link rel="stylesheet" href="/static/css/notes.css">
   <link rel="stylesheet" href="/static/css/picker.css">
   <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
@@ -48,6 +49,7 @@
       <button data-view="excel" data-icon="&#9636;" class="active" draggable="true">Tarefas (Excel)</button>
       <button data-view="ccrs" data-icon="&#9873;" draggable="true">CCRs</button>
       <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
+      <button data-view="notes" data-icon="&#9998;" draggable="true">Notas</button>
       <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
       <button id="settingsBtn" type="button" title="Definições" aria-label="Definições"
         aria-expanded="false">&#9881;</button>
@@ -218,6 +220,34 @@
           </div>
         </div>
 
+        <div id="notesView" class="hidden">
+          <div class="notesLayout">
+            <aside class="notesSide">
+              <div class="notesSideBar">
+                <button type="button" id="noteAdd">+ Nota</button>
+                <button type="button" class="secondary" id="folderAdd">+ Pasta</button>
+              </div>
+              <input type="text" id="noteFilter" placeholder="Procurar notas…">
+              <div class="noteTree" id="noteTree"></div>
+            </aside>
+            <section class="notesMain">
+              <div class="notesHead" id="notesHead">
+                <input type="text" id="noteTitle" placeholder="Título da nota">
+                <select id="noteFolderSel" title="Pasta"></select>
+                <button type="button" class="secondary" id="noteLinkBtn">Ligar a uma tarefa</button>
+                <button type="button" class="ccr-x" id="noteDel" title="Apagar nota">✕</button>
+              </div>
+              <div class="noteCanvas" id="noteCanvas">
+                <div class="noteCanvasHint" id="noteCanvasHint"></div>
+              </div>
+              <div class="state" id="noteEmpty">
+                <h2>Sem notas.</h2>
+                <p>Cria a primeira com o botão + Nota.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+
         <div id="fbView" class="hidden">
           <div class="bar">
             <div class="controls">
@@ -281,6 +311,20 @@
     </div>
   </div>
 
+  <div id="noteLinkOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Ligar a uma tarefa">
+    <div class="helpCard pickerCard">
+      <div class="helpHead">
+        <strong id="noteLinkTitle">Ligar a uma tarefa</strong>
+        <button type="button" class="ccr-x" id="noteLinkClose" title="Fechar">✕</button>
+      </div>
+      <div class="pickerBar">
+        <input type="text" id="noteLinkSearch" placeholder="Procurar tarefa…">
+      </div>
+      <div id="noteLinkBody"></div>
+    </div>
+  </div>
+
   <div id="pickerOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
     aria-label="Escolher livro no OneDrive">
     <div class="helpCard pickerCard">
@@ -306,6 +350,7 @@
   <script src="/static/js/todo.js"></script>
   <script src="/static/js/itembox.js"></script>
   <script src="/static/js/split.js"></script>
+  <script src="/static/js/notes.js"></script>
   <script src="/static/js/feedback.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/picker.js"></script>

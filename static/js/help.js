@@ -58,6 +58,14 @@ const HELP = [
         ],
     },
     {
+        title: ["Notas", "Notes"],
+        items: [
+            [() => t("note_hint"), () => t("note_hint")],
+            ["As notas ficam guardadas no teu computador, tal como as CCRs e a lista Por fazer. Apagar uma pasta nunca apaga as notas: elas sobem um nível.",
+                "Notes are stored on your computer, just like CCRs and the TODO list. Deleting a folder never deletes notes: they move up one level."],
+        ],
+    },
+    {
         title: ["Ecrã dividido", "Split screen"],
         items: [
             ["Arrasta o botão ↗ de um item (ou um separador) para o lado esquerdo/direito do ecrã para ver duas vistas ao mesmo tempo. Arrasta a barra do meio para redimensionar e ⇄ para trocar de lado.",

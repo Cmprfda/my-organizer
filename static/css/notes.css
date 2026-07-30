@@ -1,0 +1,410 @@
+/* My Organizer — quadro de notas: coluna de notas/pastas + caixas soltas */
+
+.notesLayout {
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
+}
+
+/* ---------- coluna da esquerda: notas e pastas ---------- */
+.notesSide {
+    flex: 0 0 250px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-card);
+    box-shadow: var(--ios-shadow);
+    padding: 12px;
+}
+
+.notesSideBar {
+    display: flex;
+    gap: 8px;
+}
+
+.notesSideBar button {
+    flex: 1 1 0;
+    padding: 7px 8px;
+    font-size: 12.5px;
+}
+
+#noteFilter {
+    width: 100%;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    padding: 7px 10px;
+}
+
+.noteTree {
+    flex: 1 1 auto;
+    min-height: 120px;
+    max-height: 62vh;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.noteFolder {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 2px;
+}
+
+.noteFolder .noteFolderTog {
+    flex: 0 0 auto;
+    width: 18px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 2px;
+    cursor: pointer;
+}
+
+.noteFolder .noteFolderName {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.noteFolder .noteCount {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.noteMini {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 3px 4px;
+    border-radius: var(--ios-radius-btn);
+    cursor: pointer;
+}
+
+.noteMini:hover {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+.noteRow {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font: inherit;
+    color: var(--text);
+    padding: 6px 8px;
+    margin: 1px 0;
+    cursor: pointer;
+}
+
+.noteRow:hover {
+    background: var(--accent-soft);
+}
+
+.noteRow.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.noteRowTitle {
+    display: block;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.noteRowMeta {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+.noteTreeEmpty {
+    font-size: 12.5px;
+    color: var(--muted);
+    padding: 6px 2px;
+}
+
+/* ---------- lado direito: cabeçalho + quadro ---------- */
+.notesMain {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.notesHead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-card);
+    box-shadow: var(--ios-shadow);
+    padding: 10px 12px;
+}
+
+#noteTitle {
+    flex: 1 1 200px;
+    min-width: 0;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    padding: 7px 10px;
+}
+
+#noteFolderSel {
+    flex: 0 0 auto;
+    max-width: 180px;
+}
+
+.noteLinkChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 260px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border: 1px solid transparent;
+    border-radius: var(--ios-radius-pill);
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
+.noteLinkChip button {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+}
+
+.noteLinkChip .noteLinkName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.noteCanvas {
+    position: relative;
+    height: min(68vh, 700px);
+    overflow: auto;
+    background-color: var(--surface);
+    background-image: radial-gradient(var(--border) 1px, transparent 1px);
+    background-size: 22px 22px;
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-card);
+    box-shadow: var(--ios-shadow);
+    cursor: crosshair;
+    touch-action: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.noteCanvasHint {
+    position: absolute;
+    left: 14px;
+    top: 12px;
+    max-width: 60%;
+    font-size: 12.5px;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+.noteRubber {
+    position: absolute;
+    border: 1px dashed var(--accent);
+    background: var(--accent-soft);
+    pointer-events: none;
+}
+
+/* ---------- caixas ---------- */
+.noteBox {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--ios-shadow);
+    overflow: hidden;
+    cursor: default;
+}
+
+.noteBox.sel {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
+.noteBox.c-yellow {
+    background: var(--status-doing-bg);
+}
+
+.noteBox.c-blue {
+    background: var(--status-info-bg);
+}
+
+.noteBox.c-green {
+    background: var(--status-done-bg);
+}
+
+.noteBox.c-pink {
+    background: var(--status-blocked-bg);
+}
+
+.noteBox.c-plain {
+    background: var(--surface);
+}
+
+.noteBoxBar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    height: 24px;
+    padding: 0 4px;
+    border-bottom: 1px solid var(--border);
+    cursor: grab;
+}
+
+.noteBoxBar:active {
+    cursor: grabbing;
+}
+
+.noteBoxGrip {
+    flex: 1 1 auto;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    user-select: none;
+}
+
+.noteBoxBar button {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: var(--ios-radius-btn);
+    cursor: pointer;
+}
+
+.noteBoxBar button:hover {
+    color: var(--accent-text);
+}
+
+.noteBoxBar .noteBoxColor {
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+}
+
+.noteBoxBody {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 6px;
+    gap: 6px;
+}
+
+.noteBoxImg {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+.noteBoxText {
+    flex: 1 1 auto;
+    min-height: 22px;
+    width: 100%;
+    resize: none;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text);
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    overflow: auto;
+}
+
+.noteBox:has(.noteBoxImg) .noteBoxText {
+    flex: 0 0 auto;
+    max-height: 40%;
+}
+
+.noteBoxSize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, var(--ink-300) 50%);
+    border-bottom-right-radius: 10px;
+}
+
+/* ---------- escolher a tarefa a ligar ---------- */
+#noteLinkBody {
+    overflow: auto;
+    padding: 8px 10px 14px;
+    -webkit-overflow-scrolling: touch;
+}
+
+#noteLinkBody .pickSub {
+    display: block;
+    font-size: 11.5px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px) {
+    .notesLayout {
+        flex-direction: column;
+    }
+
+    .notesSide {
+        flex: 1 1 auto;
+    }
+
+    .noteTree {
+        max-height: 220px;
+    }
+}

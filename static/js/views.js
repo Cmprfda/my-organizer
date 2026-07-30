@@ -1,6 +1,6 @@
 // My Organizer — navegação entre vistas e painel de definições
 
-const VIEWS = { excel: "excelView", ccrs: "ccrView", todo: "todoView", feedback: "fbView" };
+const VIEWS = { excel: "excelView", ccrs: "ccrView", todo: "todoView", notes: "notesView", feedback: "fbView" };
 // vista que está no painel lateral do ecrã dividido (null = sem divisão)
 let sideView = null;
 
@@ -16,6 +16,7 @@ function showView(name) {
   $("excelSub").classList.toggle("hidden", !(name === "excel" || sideView === "excel"));
   if (name === "ccrs" || sideView === "ccrs") renderCCRs();
   if (name === "todo" || sideView === "todo") renderTodo();
+  if (name === "notes" || sideView === "notes") renderNotes();
 }
 
 document.querySelectorAll(".tabs button[data-view]").forEach(b => b.addEventListener("click", () => {

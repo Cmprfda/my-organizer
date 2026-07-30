@@ -24,6 +24,8 @@ from .feedback import (attach_server_log, deliver, flush_pending,
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
                     graph_logout, graph_pick, graph_state)
 from .logs import LOG_FILE, log_event, trim_log
+from .notepad import apply_action as notepad_action
+from .notepad import image_file, image_type, load_notepad
 from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
                     save_overrides)
 from .tasks import (build_payload, current_stamp, forget_web_cache, push_overrides,
@@ -80,6 +82,21 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.report_crash("GET " + self.path)
 
+    def send_note_image(self, name):
+        """Serve uma imagem colada numa nota (nomes gerados pela app)."""
+        alvo = image_file(name)
+        if not alvo:
+            self._send(404, "Not found", "text/plain")
+            return
+        with open(alvo, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", image_type(name))
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     def report_crash(self, what):
         """Exceção não prevista a servir um pedido: reportar e responder 500."""
         detalhe = traceback.format_exc()
@@ -116,6 +133,10 @@ class Handler(BaseHTTPRequestHandler):
             # pedido leve e repetido: sem registo no log para não o encher
             self._send(200, json.dumps(current_stamp(parse_qs(parsed.query))),
                        "application/json")
+        elif parsed.path == "/api/notepad":
+            self._send(200, json.dumps(load_notepad()), "application/json")
+        elif parsed.path.startswith("/api/notepad/img/"):
+            self.send_note_image(parsed.path[len("/api/notepad/img/"):])
         elif parsed.path == "/api/ping":
             # identificação da instância — usado pela linha de comandos para
             # confirmar que fala com o servidor desta pasta
@@ -413,6 +434,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"ok": True, "todo": todos}), "application/json")
             except Exception as exc:
                 log_event(f"{ip} operação TODO FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/notepad":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                data = notepad_action(payload)
+                log_event(f"{ip} notas: {str(payload.get('action'))[:30]}")
+                self._send(200, json.dumps({"ok": True, "notepad": data}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} operação de notas FALHOU: {exc}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
         if path == "/api/overrides/clear":

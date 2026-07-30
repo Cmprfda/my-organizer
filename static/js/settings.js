@@ -21,6 +21,7 @@ function applyLang() {
   $("themeSel").options[2].textContent = t("theme_dark");
   document.querySelector('.tabs button[data-view="excel"]').textContent = t("tab_tasks");
   document.querySelector('.tabs button[data-view="todo"]').textContent = t("tab_todo");
+  document.querySelector('.tabs button[data-view="notes"]').textContent = t("tab_notes");
   document.querySelector('.tabs button[data-view="feedback"]').textContent = t("tab_feedback");
   const sheetTxt = $("sheetName").textContent, personTxt = $("personName").textContent;
   $("excelSub").innerHTML = `${t("sub_sheet")} <strong id="sheetName">${esc(sheetTxt)}</strong> · ` +
@@ -57,6 +58,18 @@ function applyLang() {
   $("todoModeList").textContent = t("todo_mode_list");
   $("todoModeKanban").textContent = t("todo_mode_kanban");
   $("todoEmpty").innerHTML = `<h2>${t("todo_empty_t")}</h2><p>${t("todo_empty_p")}</p>`;
+  $("noteAdd").textContent = t("btn_note_add");
+  $("folderAdd").textContent = t("btn_folder_add");
+  $("noteFilter").placeholder = t("ph_note_filter");
+  $("noteTitle").placeholder = t("ph_note_title");
+  $("noteFolderSel").title = t("t_note_folder");
+  $("noteLinkBtn").textContent = t("note_link_btn");
+  $("noteDel").title = t("t_note_del");
+  $("noteEmpty").innerHTML = `<h2>${t("note_empty_t")}</h2><p>${t("note_empty_p")}</p>`;
+  $("noteLinkTitle").textContent = t("note_link_title");
+  $("noteLinkClose").title = t("t_close");
+  $("noteLinkSearch").placeholder = t("ph_note_link");
+  $("noteLinkOverlay").setAttribute("aria-label", t("note_link_title"));
   document.querySelector('#dropZones [data-side="left"] span').innerHTML = t("drop_left");
   document.querySelector('#dropZones [data-side="right"] span').innerHTML = t("drop_right");
   $("splitBar").title = t("t_resize");
@@ -84,6 +97,7 @@ function applyLang() {
   $("shareAppBtn").title = t("t_share_app");
   renderHelp();
   if (currentView === "todo" || sideView === "todo") renderTodo();
+  if (currentView === "notes" || sideView === "notes") renderNotes();
 }
 
 $("shareAppBtn").addEventListener("click", () => {
