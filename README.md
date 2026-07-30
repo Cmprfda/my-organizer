@@ -66,8 +66,8 @@ ficam memorizadas. Abas com outra estrutura são mostradas como tabela simples.
   no branch do componente, branch do componente atualizado, branch de review
   atualizado — chips verdes quando feitos) e texto livre (nº de runs, links).
   Guardado no servidor: o mesmo estado em todos os teus dispositivos.
-- **TODO pessoal** com dois modos: **Lista** e **Kanban** (To do, Em curso,
-  Review, Done), com drag&drop entre colunas e suporte a arrastar itens das
+- **TODO pessoal** com dois modos: **Lista** e **Kanban** (Por fazer, Em curso,
+  Pendente, Concluído), com drag&drop entre colunas e suporte a arrastar itens das
   Tarefas/CCRs para o TODO.
 - Nos cartões TODO com detalhe, a nota aparece também em **chip** (📝), no
   estilo visual do board integrado.
