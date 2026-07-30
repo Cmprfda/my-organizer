@@ -268,12 +268,22 @@ td .obs.local {
   background: transparent;
   box-shadow: none;
   margin-top: auto;
-  padding-top: 10px;
+  padding-top: 6px;
+}
+
+/* Em modo de cartões, evitar a faixa vermelha por cima do botão +TODO. */
+.tablebox.cards #tbody tr:hover td.todoActionCell {
+  background: transparent;
 }
 
 .tablebox.cards .todoActionBtn {
+  display: block;
   width: 100%;
   padding: 8px;
+  border: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* ---------- versão fixa no canto inferior direito ---------- */

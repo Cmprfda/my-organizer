@@ -105,19 +105,27 @@ function srcOf(it) {
   return null;
 }
 
+// O servidor corta os textos guardados (título e origem) a 200 caracteres; sem
+// aplicar o mesmo corte aqui, um "o que fazer" longo nunca batia certo com o
+// item já guardado e o botão "+ TODO" continuava à vista.
+function todoText(value) {
+  return String(value == null ? "" : value).trim().slice(0, 200);
+}
+
 // Já está na lista (item por fechar) algo vindo desta origem?
 // Compara-se pela origem e não só pelo título, porque várias linhas do Excel
 // partilham o mesmo nome. Itens antigos foram guardados sem parte da origem —
 // aí só se comparam as chaves que existem.
 function todoHas(kind, title, ref) {
-  if (!title) return false;
+  const wanted = todoText(title);
+  if (!wanted) return false;
   const want = ref || {};
   const keys = kind === "ccr" ? ["ccr"] : kind === "task" ? ["sheet", "fn", "todo"] : [];
   return todos.some(it => {
     if (!it || it.done) return false;
-    if ((it.kind || "manual") !== kind || it.title !== title) return false;
+    if ((it.kind || "manual") !== kind || todoText(it.title) !== wanted) return false;
     const got = it.ref || {};
-    return keys.every(k => !got[k] || got[k] === (want[k] || ""));
+    return keys.every(k => !got[k] || todoText(got[k]) === todoText(want[k]));
   });
 }
 
@@ -177,6 +185,40 @@ function todoTaskInfoHtml(it) {
   return `<div class="todoTaskInfo">${parts.join("")}</div>`;
 }
 
+// Nota do item. As tarefas do Excel e as CCRs trazem o detalhe da origem (e as
+// notas editam-se lá); os itens escritos à mão passam a poder ter a sua.
+function todoNoteHtml(it, kanban) {
+  const manual = (it.kind || "manual") === "manual";
+  const cls = kanban ? "todoCardDetail" : "obs";
+  if (!manual) return it.detail ? `<span class="${cls}">${esc(it.detail)}</span>` : "";
+  const body = it.detail ? esc(it.detail) : `<span class="addnote">${t("addnote")}</span>`;
+  return `<span class="${cls} todoNote" data-tnote="${esc(it.id)}" title="${t("t_edit_note")}">${body}</span>`;
+}
+
+function openTodoNote(el) {
+  const id = el.dataset.tnote;
+  const item = todos.find(it => it.id === id);
+  if (!item) return;
+  el.dataset.editing = "1";
+  editorOpen = true;
+  // sem isto o arrasto da linha/cartão rouba a seleção de texto ao editor
+  const host = el.closest("[data-tid]");
+  if (host) host.draggable = false;
+  el.innerHTML =
+    `<textarea class="noteText" rows="3" placeholder="${t("ph_note")}">${esc(item.detail || "")}</textarea>\n ` +
+    editActions();
+  const box = el.querySelector(".noteText");
+  box.focus();
+  const save = detail => { editorOpen = false; postTodo({ action: "set_detail", id, detail }); };
+  el.querySelector(".actSave").addEventListener("click", e => { e.stopPropagation(); save(box.value); });
+  el.querySelector(".actClear").addEventListener("click", e => { e.stopPropagation(); save(""); });
+  el.querySelector(".actCancel").addEventListener("click", e => {
+    e.stopPropagation();
+    editorOpen = false;
+    renderTodo();
+  });
+}
+
 function renderTodo() {
   $("todoModeList").classList.toggle("active", todoLayout === "list");
   $("todoModeKanban").classList.toggle("active", todoLayout === "kanban");
@@ -196,7 +238,7 @@ function renderTodo() {
         : "";
       return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}" data-tid="${esc(it.id)}">
     <td style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
-    <td>${kindChip(it.kind)}${esc(it.title)}${it.detail ? `<span class="obs">${esc(it.detail)}</span>` : ""}${todoTaskInfoHtml(it)}</td>
+    <td>${kindChip(it.kind)}${esc(it.title)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}</td>
     <td style="width:1%">${todoStatusHtml(it)}</td>
     <td style="width:1%">${todoTimerHtml(it)} ${todoTimerRestartHtml(it)}</td>
     <td style="width:1%">${srcCell}</td>
@@ -215,7 +257,7 @@ function renderTodo() {
         : "";
       return `<article draggable="true" class="todoCard${it.done ? " done" : ""}" data-tid="${esc(it.id)}">
     <div class="todoCardTitle">${kindChip(it.kind)}${esc(it.title)}</div>
-    ${it.detail ? `<div class="todoCardDetail">${esc(it.detail)}</div>` : ""}
+    ${todoNoteHtml(it, true)}
     ${todoTaskInfoHtml(it)}
     <div class="todoCardMeta">
       <input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}>
@@ -315,7 +357,9 @@ $("todoBody").addEventListener("click", e => {
   const del = e.target.closest("[data-tdel]");
   if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
   const src = e.target.closest("[data-src]");
-  if (src) revealSource(srcOf(todos.find(it => it.id === src.dataset.src)));
+  if (src) { revealSource(srcOf(todos.find(it => it.id === src.dataset.src))); return; }
+  const note = e.target.closest("[data-tnote]");
+  if (note && !note.dataset.editing) openTodoNote(note);
 });
 
 $("todoBody").addEventListener("contextmenu", e => {
@@ -339,7 +383,9 @@ $("todoBoard").addEventListener("click", e => {
   const del = e.target.closest("[data-tdel]");
   if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
   const src = e.target.closest("[data-src]");
-  if (src) revealSource(srcOf(todos.find(it => it.id === src.dataset.src)));
+  if (src) { revealSource(srcOf(todos.find(it => it.id === src.dataset.src))); return; }
+  const note = e.target.closest("[data-tnote]");
+  if (note && !note.dataset.editing) openTodoNote(note);
 });
 
 $("todoBoard").addEventListener("contextmenu", e => {
@@ -474,5 +520,5 @@ $("todoBoard").addEventListener("dragleave", e => {
 });
 
 setInterval(() => {
-  if ((currentView === "todo" || sideView === "todo") && hasTodoRunningTimer()) renderTodo();
+  if ((currentView === "todo" || sideView === "todo") && !editorOpen && hasTodoRunningTimer()) renderTodo();
 }, 15000);

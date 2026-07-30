@@ -343,6 +343,14 @@ class Handler(BaseHTTPRequestHandler):
                         target["timer_started"] = int(time.time() * 1000)
                     else:
                         target["timer_started"] = None
+                elif action == "set_detail":
+                    # nota do item (os escritos à mão não têm origem no Excel/CCR
+                    # onde a nota pudesse viver)
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    target["detail"] = str(payload.get("detail") or "").strip()[:1000]
+                    log_event(f'{ip} TODO nota: {str(target.get("title", "?"))[:60]!r}')
                 else:
                     raise ValueError(f"ação inválida: {action}")
                 todos = [normalize_todo_item(t) for t in todos if normalize_todo_item(t)]

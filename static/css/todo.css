@@ -137,11 +137,30 @@ tr.todoRow td {
 }
 
 .todoCardDetail {
+  display: block;
   color: var(--muted);
   font-size: 12px;
   margin-bottom: 6px;
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+
+/* nota dos itens escritos à mão: editável no próprio item */
+.todoNote {
+  cursor: pointer;
+}
+
+.todoNote:hover {
+  color: var(--text);
+}
+
+.todoNote .addnote {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.todoNote[data-editing] {
+  cursor: default;
 }
 
 /* info da linha do Excel (papel, estados e execução) dentro do item */

@@ -436,7 +436,7 @@ async function load(cycle = false, fresh = false) {
   // se ainda mostram o "+ TODO"
   if (lastData && lastData.todo) {
     todos = lastData.todo;
-    if (currentView === "todo") renderTodo();
+    if (currentView === "todo" && !editorOpen) renderTodo();
   }
   if (lastData && lastData.ccrs) {
     ccrs = lastData.ccrs;
