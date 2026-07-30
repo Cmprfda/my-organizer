@@ -1,0 +1,291 @@
+/* My Organizer — tabela de tarefas e resumo */
+
+.summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.summary .pill {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 600;
+}
+
+.summary .pill[data-status],
+.summary .pill[data-role],
+.summary .pill[data-side] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.summary .pill[data-status]:hover,
+.summary .pill[data-role]:hover,
+.summary .pill[data-side]:hover {
+  filter: brightness(1.08);
+}
+
+.summary .pill[data-role] {
+  background: transparent;
+  border: 1.5px solid var(--accent);
+  padding: 4.5px 14px;
+}
+
+.summary .pill.side-my {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+}
+
+.summary .pill.side-done {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+}
+
+.summary .pill.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.summary .pill.zero {
+  opacity: .35;
+  cursor: default;
+}
+
+.summary .pill.zero:hover {
+  filter: none;
+}
+
+td .badge[data-col] {
+  cursor: pointer;
+}
+
+td .badge[data-col]:hover {
+  filter: brightness(1.12);
+}
+
+.badge.local {
+  box-shadow: 0 0 0 2px var(--accent);
+  font-style: italic;
+}
+
+select.statusEdit {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  max-width: 250px;
+}
+
+.tablebox {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  overflow-x: auto;
+  box-shadow: var(--ios-shadow);
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+}
+
+th,
+td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+td {
+  white-space: pre-line;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--ios-glass-bg);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover {
+  background: var(--accent-soft);
+}
+
+td .fn {
+  font-weight: 600;
+}
+
+td .obs {
+  color: var(--muted);
+  font-size: 12.5px;
+  display: block;
+  margin-top: 4px;
+}
+
+/* OBS editável (escreve na coluna OBS do Excel) */
+td .obs[data-obsri] {
+  cursor: pointer;
+}
+
+td .obs[data-obsri]:hover {
+  color: var(--text);
+}
+
+td .obs.local {
+  color: var(--accent-text);
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin: 1px 4px 1px 0;
+}
+
+.badge.done {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+}
+
+.badge.doing {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+}
+
+.badge.blocked {
+  background: var(--status-blocked-bg);
+  color: var(--status-blocked-fg);
+}
+
+.badge.other {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.role {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- vista em caixas (mesma tabela, disposta em cartões) ---------- */
+.tablebox.cards {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow-x: visible;
+}
+
+.tablebox.cards thead {
+  display: none;
+}
+
+.tablebox.cards table,
+.tablebox.cards tr,
+.tablebox.cards td {
+  display: block;
+  width: auto;
+}
+
+.tablebox.cards tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.tablebox.cards tr {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tablebox.cards tbody tr:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.tablebox.cards td {
+  border-bottom: none;
+  padding: 3px 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* sem cabeçalho de tabela, cada célula identifica-se a si própria */
+.tablebox.cards td[data-label]:not(.fn):not(.role)::before {
+  content: attr(data-label);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.tablebox.cards td.fn {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.tablebox.cards td.role {
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: normal;
+}
+
+.tablebox.cards td.todoActionCell {
+  position: static;
+  background: transparent;
+  box-shadow: none;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.tablebox.cards .todoActionBtn {
+  width: 100%;
+  padding: 8px;
+}
+
+/* ---------- versão fixa no canto inferior direito ---------- */
+.verBadge {
+  position: fixed;
+  right: 10px;
+  bottom: 8px;
+  z-index: 40;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--muted);
+  opacity: .75;
+}

@@ -1,0 +1,92 @@
+/* My Organizer — janela de escolha do livro no OneDrive */
+
+.pickerCard {
+    width: min(620px, 100%);
+}
+
+.pickerBar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.pickerBar input {
+    flex: 1 1 220px;
+    min-width: 0;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    padding: 7px 10px;
+}
+
+.pickerPath {
+    flex: 1 1 100%;
+    font-size: 12px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+#pickerBody {
+    overflow: auto;
+    padding: 8px 10px 14px;
+    -webkit-overflow-scrolling: touch;
+}
+
+#pickerBody h4 {
+    margin: 10px 6px 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--muted);
+}
+
+.pickRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    font: inherit;
+    font-size: 13.5px;
+    text-align: left;
+    color: var(--text);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 10px;
+    transition: background-color .15s;
+}
+
+.pickRow:hover {
+    background: var(--accent-soft);
+}
+
+.pickRow .pickName {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.pickRow .pickIcon {
+    flex: 0 0 auto;
+    font-size: 15px;
+}
+
+.pickRow.current .pickName {
+    font-weight: 700;
+    color: var(--accent-text);
+}
+
+.pickNote {
+    padding: 12px 10px;
+    font-size: 13px;
+    color: var(--muted);
+}

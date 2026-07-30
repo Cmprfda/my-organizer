@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Organizer</title>
+  <script>
+    // aplicado antes do primeiro paint para nao haver flash com o tema errado
+    (function () {
+      var dark = false;
+      try {
+        var pref = localStorage.getItem("bsp-tracker-theme") || "auto";
+        dark = pref === "dark" || (pref !== "light" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+      } catch (e) { }
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/layout.css">
+  <link rel="stylesheet" href="/static/css/todo.css">
+  <link rel="stylesheet" href="/static/css/ccr.css">
+  <link rel="stylesheet" href="/static/css/forms.css">
+  <link rel="stylesheet" href="/static/css/tables.css">
+  <link rel="stylesheet" href="/static/css/views.css">
+  <link rel="stylesheet" href="/static/css/help.css">
+  <link rel="stylesheet" href="/static/css/picker.css">
+  <link rel="stylesheet" href="/static/css/responsive.css">
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="ios-top">
+      <header>
+        <div class="eyebrow">CSW.AI.OS</div>
+        <h1>My Organizer</h1>
+        <div class="sub" id="excelSub">Aba <strong id="sheetName">PRJ_CFG1_reworks_julho</strong> · Tarefas de <strong
+            id="personName">Carlos Andrade</strong></div>
+      </header>
+      <button type="button" id="connBadge" class="connBadge" title="Fonte dos dados">
+        <span class="connDot" id="connDot"></span><span id="connText">…</span>
+      </button>
+      <button id="helpBtn" type="button" title="Como usar" aria-label="Como usar" aria-expanded="false">?</button>
+    </div>
+
+    <nav class="tabs">
+      <button data-view="excel" data-icon="&#9636;" class="active" draggable="true">Tarefas (Excel)</button>
+      <button data-view="ccrs" data-icon="&#9873;" draggable="true">CCRs</button>
+      <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
+      <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
+      <button id="settingsBtn" type="button" title="Definições" aria-label="Definições"
+        aria-expanded="false">&#9881;</button>
+    </nav>
+
+    <div id="settingsPanel" class="settingsPanel hidden" role="dialog" aria-label="Definições">
+      <div class="setRow">
+        <label for="themeSel">Tema</label>
+        <select id="themeSel">
+          <option value="auto">Auto</option>
+          <option value="light">Claro</option>
+          <option value="dark">Escuro</option>
+        </select>
+      </div>
+      <div class="setRow">
+        <label for="langSel">Língua</label>
+        <select id="langSel">
+          <option value="pt">PT</option>
+          <option value="en">EN</option>
+        </select>
+      </div>
+      <div class="setRow" id="sourceRow">
+        <label for="sourceSel">Dados</label>
+        <select id="sourceSel">
+          <option value="auto">Automático</option>
+          <option value="onedrive">OneDrive (web)</option>
+          <option value="local">Ficheiro local</option>
+        </select>
+      </div>
+      <div class="setNote hidden" id="graphBox">
+        <span id="graphState"></span>
+        <button type="button" class="mini" id="graphBtn"></button>
+      </div>
+      <div class="setNote hidden" id="bookBox">
+        <span id="bookState"></span>
+        <button type="button" class="mini" id="bookBtn">Escolher</button>
+      </div>
+      <div class="setRow setRowUpdate">
+        <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
+        <span id="appUpdateStatus"></span>
+      </div>
+      <div class="setRow">
+        <button type="button" class="mini" id="shareAppBtn">Partilhar app</button>
+      </div>
+    </div>
+
+    <div id="panes">
+      <div id="paneMain">
+        <div id="excelView">
+          <div class="bar">
+            <div class="controls">
+              <div class="field">
+                <label for="fileSelect">Ficheiro</label>
+                <select id="fileSelect" title="Ficheiro Excel a usar"></select>
+              </div>
+              <div class="field">
+                <label for="sheetSelect">Aba</label>
+                <select id="sheetSelect" title="Aba do Excel"></select>
+              </div>
+              <div class="field hidden" id="bookField">
+                <label for="bookQuick">Livro</label>
+                <button type="button" class="secondary" id="bookQuick"
+                  title="Livro em uso — clica para mudar de livro">—</button>
+              </div>
+              <div class="field">
+                <label for="personInput">Nome</label>
+                <input type="text" id="personInput" placeholder="O teu nome" title="Nome usado para filtrar as tarefas">
+              </div>
+              <div class="field grow">
+                <label for="search">Pesquisa</label>
+                <div class="searchBox">
+                  <input type="text" id="search" placeholder="Filtrar tarefas… (Enter fixa)">
+                  <button type="button" class="searchMode hidden" id="searchMode">OU</button>
+                </div>
+                <div class="searchChips hidden" id="searchChips"></div>
+              </div>
+              <div class="btns">
+                <div class="todoMode" id="taskMode">
+                  <button type="button" id="taskModeList" class="secondary">Lista</button>
+                  <button type="button" id="taskModeCards" class="secondary">Caixas</button>
+                </div>
+                <button class="secondary hidden" id="viewToggle">Vista completa</button>
+                <button class="secondary" id="toggleAll">Ver tudo</button>
+                <button class="secondary hidden" id="clearLocals"
+                  title="Descarta todas as alterações de estado locais (✎) sem as enviar para o Excel">Descartar
+                  locais</button>
+                <button class="secondary" id="clearNotes"
+                  title="Apaga todas as notas de execução (etiquetas, checklists e textos)">Limpar notas</button>
+                <button class="secondary" id="fetchBtn"
+                  title="Descarrega a versão mais recente do SharePoint através do teu browser">Obter do
+                  SharePoint</button>
+                <button class="secondary hidden" id="reloadOnly"
+                  title="Lê outra vez os dados sem enviar as tuas alterações locais">Atualizar sem enviar</button>
+                <button id="refresh">Atualizar</button>
+              </div>
+            </div>
+            <div id="fileInfo" class="fileinfo">A carregar…</div>
+          </div>
+
+          <div class="summary" id="summary"></div>
+
+          <div class="tablebox hidden" id="tablebox">
+            <table>
+              <thead id="thead"></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="state hidden" id="stateBox"></div>
+        </div>
+
+        <div id="ccrView" class="hidden">
+          <div class="bar">
+            <div class="controls">
+              <div class="field">
+                <label for="ccrId">Nova CCR</label>
+                <input type="text" id="ccrId" placeholder="ID (ex.: 29691)">
+              </div>
+              <div class="btns">
+                <button id="ccrAdd">Adicionar</button>
+              </div>
+            </div>
+          </div>
+          <div class="tablebox" id="ccrTablebox">
+            <table>
+              <thead>
+                <tr>
+                  <th>CCR</th>
+                  <th>Antes de fechar</th>
+                  <th>Depois de fechar</th>
+                  <th>Notas</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="ccrBody"></tbody>
+            </table>
+          </div>
+          <div class="state hidden" id="ccrEmpty">
+            <h2>Sem CCRs.</h2>
+            <p>Adiciona a primeira com o campo acima.</p>
+          </div>
+        </div>
+
+        <div id="todoView" class="hidden">
+          <div class="bar">
+            <div class="controls">
+              <div class="field grow">
+                <label for="todoNew">Nova tarefa minha</label>
+                <input type="text" id="todoNew" placeholder="Escreve e carrega Enter…">
+              </div>
+              <div class="btns">
+                <button id="todoAdd">Adicionar</button>
+                <div class="todoMode">
+                  <button type="button" id="todoModeList" class="secondary">Lista</button>
+                  <button type="button" id="todoModeKanban" class="secondary">Kanban</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tablebox" id="todoBox">
+            <table>
+              <tbody id="todoBody"></tbody>
+            </table>
+          </div>
+          <div class="tablebox hidden" id="todoBoardBox">
+            <div class="todoBoard" id="todoBoard"></div>
+          </div>
+          <div class="state hidden" id="todoEmpty">
+            <h2>TODO list vazia.</h2>
+            <p>Adiciona uma tarefa acima ou arrasta linhas das outras vistas.</p>
+          </div>
+        </div>
+
+        <div id="fbView" class="hidden">
+          <div class="bar">
+            <div class="controls">
+              <div class="field grow">
+                <label for="fbText">O teu feedback</label>
+                <textarea id="fbText" class="noteText" rows="6" placeholder="Sugestões, problemas, ideias…"></textarea>
+              </div>
+            </div>
+            <div class="controls">
+              <div class="field">
+                <label for="fbFiles">Imagens (opcional, máx. 15 MB no total)</label>
+                <input type="file" id="fbFiles" accept="image/*" multiple>
+              </div>
+              <div class="btns">
+                <button id="fbSend">Enviar</button>
+              </div>
+            </div>
+            <div class="fileinfo" id="fbList" style="border-top:none;padding-top:0"></div>
+            <div class="fileinfo hidden" id="fbStatus"></div>
+          </div>
+        </div>
+      </div><!-- /paneMain -->
+
+      <div id="splitBar" class="hidden" title="Arrasta para redimensionar"></div>
+
+      <div id="paneSide" class="hidden">
+        <div class="sideHead">
+          <span id="sideTitle" class="grow"></span>
+          <button type="button" class="ccr-x" id="sideSwap" title="Trocar de lado">⇄</button>
+          <button type="button" class="ccr-x" id="sideClose" title="Fechar o painel">✕</button>
+        </div>
+        <div id="sideBody"></div>
+      </div>
+    </div><!-- /panes -->
+  </div>
+
+  <div id="dropZones" class="hidden">
+    <div class="dropZone" data-side="left"><span id="dropLeftTxt">◧ Largar aqui<br>painel à esquerda</span></div>
+    <div class="dropZone" data-side="right"><span id="dropRightTxt">◨ Largar aqui<br>painel à direita</span></div>
+  </div>
+
+  <div id="verBadge" class="verBadge hidden" title="My Organizer — CSW.AI.OS"></div>
+
+  <div id="helpOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Como usar">
+    <div class="helpCard">
+      <div class="helpHead">
+        <strong id="helpTitle">Como usar</strong>
+        <button type="button" class="ccr-x" id="helpClose" title="Fechar">✕</button>
+      </div>
+      <div id="helpBody"></div>
+    </div>
+  </div>
+
+  <div id="pickerOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Escolher livro no OneDrive">
+    <div class="helpCard pickerCard">
+      <div class="helpHead">
+        <strong id="pickerTitle">Escolher livro no OneDrive</strong>
+        <button type="button" class="ccr-x" id="pickerClose" title="Fechar">✕</button>
+      </div>
+      <div class="pickerBar">
+        <input type="text" id="pickerSearch" placeholder="Procurar por nome…">
+        <span id="pickerPath" class="pickerPath"></span>
+      </div>
+      <div id="pickerBody"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/state.js"></script>
+  <script src="/static/js/bugs.js"></script>
+  <script src="/static/js/utils.js"></script>
+  <script src="/static/js/tasks.js"></script>
+  <script src="/static/js/ccrs.js"></script>
+  <script src="/static/js/views.js"></script>
+  <script src="/static/js/todo.js"></script>
+  <script src="/static/js/split.js"></script>
+  <script src="/static/js/feedback.js"></script>
+  <script src="/static/js/settings.js"></script>
+  <script src="/static/js/picker.js"></script>
+  <script src="/static/js/help.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+
+</html>

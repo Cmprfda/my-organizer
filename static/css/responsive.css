@@ -1,0 +1,239 @@
+/* My Organizer — ecrãs estreitos, toast e utilitários */
+
+/* ---------- ecrãs estreitos (telemóvel na vertical) ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    /* espaço em baixo para a pílula de separadores flutuante */
+    padding: 10px 10px calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* o cartão de vidro do topo mantém-se igual ao layout horizontal,
+     apenas mais compacto (a .tabs fixa vive fora dele, por isso o
+     backdrop-filter aqui não a ancora a este elemento) */
+  .ios-top {
+    top: 6px;
+    gap: 8px;
+    padding: 9px 11px;
+    border-radius: var(--ios-radius-card);
+    margin-bottom: 12px;
+  }
+
+  .ios-top header .sub {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* em ecrã estreito a barra não estreita mais, só baixa */
+  body.topShrunk .ios-top {
+    max-width: 100%;
+    padding: 6px 10px;
+  }
+
+  /* separadores: mesma pílula flutuante do desktop, mas com ícones */
+  .tabs {
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 20px);
+    gap: 2px;
+    padding: 5px;
+  }
+
+  .tabs button[data-view] {
+    /* o texto continua no DOM (i18n e ecrã dividido usam-no); mostra-se o ícone */
+    font-size: 0;
+    padding: 9px 13px;
+    color: var(--muted);
+  }
+
+  .tabs button[data-view]::before {
+    content: attr(data-icon);
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  /* sem palavras, a vista ativa precisa de cor para se distinguir */
+  .tabs button[data-view].active {
+    color: var(--accent-text);
+  }
+
+  .tabs #settingsBtn {
+    margin-left: 2px;
+    padding: 9px 12px;
+  }
+
+  /* painel de definições sobe do fundo, por cima da barra */
+  .settingsPanel {
+    top: auto;
+    left: 10px;
+    right: 10px;
+    transform: none;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+
+  header h1 {
+    font-size: 19px;
+  }
+
+  .bar {
+    padding: 12px;
+  }
+
+  .field,
+  .field.grow {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .field input[type=text],
+  #personInput,
+  .bar select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .btns {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* na vertical, vista de tarefas fica sempre em caixas — sem opção de troca */
+  #taskMode {
+    display: none;
+  }
+
+  .btns button {
+    flex: 1 1 auto;
+  }
+
+  .summary {
+    gap: 6px;
+    font-size: 12.5px;
+    margin-bottom: 12px;
+  }
+
+  .summary .pill {
+    padding: 5px 11px;
+  }
+
+  /* as tabelas largas passam a cartões empilhados, sem scroll horizontal */
+  #tablebox table,
+  #ccrTablebox table,
+  #tablebox tbody,
+  #ccrTablebox tbody,
+  #tablebox tr,
+  #ccrTablebox tr,
+  #tablebox td,
+  #ccrTablebox td {
+    display: block;
+    width: auto;
+  }
+
+  #tablebox thead,
+  #ccrTablebox thead {
+    display: none;
+  }
+
+  #tablebox tr,
+  #ccrTablebox tr {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #tablebox tr:last-child,
+  #ccrTablebox tr:last-child {
+    border-bottom: none;
+  }
+
+  #tablebox td,
+  #ccrTablebox td {
+    border-bottom: none;
+    padding: 3px 0;
+    white-space: normal;
+    /* nomes tipo POSBSP_PRJ_CFG1_... não têm espaços e furavam a largura */
+    overflow-wrap: anywhere;
+  }
+
+  /* sem cabeçalho de tabela, cada célula identifica-se a si própria */
+  #tbody td[data-label]:not(.fn):not(.role)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+
+  #tbody td.fn {
+    font-size: 15.5px;
+  }
+
+  #tbody td.role {
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  /* já não há scroll horizontal, o botão deixa de precisar de ficar colado */
+  #thead th.todoActionCell,
+  #tbody td.todoActionCell {
+    position: static;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #tbody td.todoActionCell,
+  #ccrBody td.todoActionCell {
+    margin-top: 8px;
+  }
+
+  .todoActionBtn {
+    width: 100%;
+    padding: 9px;
+  }
+
+  td.execCell {
+    min-width: 0;
+  }
+
+  .chk,
+  .ccr-chk label {
+    white-space: normal;
+  }
+
+  #todoBody td {
+    padding: 8px 6px;
+  }
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  z-index: 60;
+  box-shadow: var(--ios-shadow-lg);
+}
+
+.hidden {
+  display: none;
+}
+
+/* tem de vir depois da regra base do #toast para a sobrepor */
+@media (max-width: 720px) {
+  #toast {
+    left: 10px;
+    right: 10px;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    text-align: center;
+  }
+}

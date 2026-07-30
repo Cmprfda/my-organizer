@@ -1,0 +1,42 @@
+# User runtime data (CRITICAL: Do not commit)
+status_overrides.json
+notes.json
+ccrs.json
+todo.json
+bug_reports.json
+tracker.log
+projects_to_add
+workbooks.json
+feedback_pending/
+
+# Credentials / local Graph configuration (NEVER commit)
+graph_config.json
+graph_token.json
+
+# Workbooks (company data)
+*.xlsx
+*.xlsm
+
+# Temporary test copies
+*_TESTCOPY.xlsx
+
+# Build output / release artefacts
+.dist/
+*.zip
+
+# Local rollback snapshots
+_rollback/
+
+# Local tool settings
+.claude/settings.local.json
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# OS Metadata
+.DS_Store
+Thumbs.db

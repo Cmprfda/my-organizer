@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run DEV Server (Port 8766)",
+      "type": "shell",
+      "command": ".\\run-dev.bat",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Publish Release (make-release)",
+      "type": "shell",
+      "command": ".\\make-release.bat",
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

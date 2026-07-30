@@ -1,0 +1,260 @@
+/* My Organizer — estados, editores, ecrã dividido */
+
+.state {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--muted);
+  box-shadow: var(--ios-shadow);
+}
+
+.state h2 {
+  color: var(--text);
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+
+.state ul {
+  text-align: left;
+  display: inline-block;
+  margin: 12px 0 0;
+}
+
+/* ---- botão "ver item original" ---- */
+.srcBtn {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid transparent;
+  border-radius: var(--ios-radius-btn);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.srcBtn:hover {
+  border-color: var(--accent);
+}
+
+.srcBtn:active {
+  cursor: grabbing;
+}
+
+.todoActionBtn,
+.todoStatusBtn {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid transparent;
+  border-radius: var(--ios-radius-btn);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.todoActionBtn:hover,
+.todoStatusBtn:hover {
+  border-color: var(--accent);
+}
+
+.todoActionBtn:active,
+.todoStatusBtn:active {
+  cursor: grabbing;
+}
+
+.todoActionCell {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* A coluna de acao fica colada a direita para continuar alcancavel
+   quando a tabela tem scroll horizontal (janela estreita / split screen). */
+#thead th.todoActionCell,
+#tbody td.todoActionCell {
+  position: sticky;
+  right: 0;
+  background: var(--surface);
+  box-shadow: -8px 0 10px -8px rgba(0, 0, 0, .25);
+}
+
+#tbody td.todoActionCell {
+  z-index: 2;
+}
+
+#thead th.todoActionCell {
+  z-index: 4;
+}
+
+#tbody tr:hover td.todoActionCell {
+  background:
+    linear-gradient(var(--accent-soft), var(--accent-soft)),
+    var(--surface);
+}
+
+/* linha de origem destacada depois do salto */
+@keyframes flashRow {
+
+  0%,
+  70% {
+    background: var(--accent-soft);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+tr.flashSrc td {
+  animation: flashRow 2.6s ease-out;
+}
+
+tr.flashSrc td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* ---- ecrã dividido ---- */
+body.split .wrap {
+  max-width: none;
+}
+
+body.split #panes {
+  display: flex;
+  align-items: flex-start;
+}
+
+body.split.side-left #panes {
+  flex-direction: row-reverse;
+}
+
+body.split #paneMain {
+  flex: 0 0 var(--split, 50%);
+  min-width: 0;
+}
+
+body.split #paneSide {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* cada painel rola por si: mexer na tabela não arrasta a TODO list */
+body.split #paneMain,
+body.split #paneSide {
+  align-self: stretch;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+#paneSide>.sideHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ios-glass-bg);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--ios-glass-border);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+#paneSide>.sideHead .grow {
+  flex: 1;
+}
+
+#splitBar {
+  flex: 0 0 14px;
+  align-self: stretch;
+  cursor: col-resize;
+  position: relative;
+  touch-action: none;
+}
+
+#splitBar::before {
+  content: "";
+  position: absolute;
+  inset: 0 6px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+#splitBar:hover::before,
+#splitBar.dragging::before {
+  background: var(--accent);
+}
+
+body.dragging-src {
+  cursor: grabbing;
+}
+
+/* zonas onde se larga o botão para dividir o ecrã */
+#dropZones {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+#dropZones .dropZone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 22vw;
+  min-width: 130px;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  opacity: .55;
+  border: 2px dashed var(--accent);
+  transition: opacity .12s;
+}
+
+#dropZones .dropZone[data-side="left"] {
+  left: 0;
+  border-left: none;
+}
+
+#dropZones .dropZone[data-side="right"] {
+  right: 0;
+  border-right: none;
+}
+
+#dropZones .dropZone.over {
+  opacity: 1;
+}
+
+/* em ecrãs estreitos os painéis empilham-se */
+@media (max-width: 900px) {
+
+  body.split #panes,
+  body.split.side-left #panes {
+    display: block;
+  }
+
+  #splitBar {
+    display: none;
+  }
+
+  #dropZones .dropZone {
+    width: 40vw;
+  }
+}

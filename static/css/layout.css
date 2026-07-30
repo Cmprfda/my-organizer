@@ -1,0 +1,326 @@
+/* My Organizer — estrutura da página: barra superior, separadores, definições */
+
+.wrap {
+  max-width: 1260px;
+  margin: 0 auto;
+  /* espaço em baixo para a barra de separadores flutuante */
+  padding: 16px 14px 92px;
+}
+
+.ios-top {
+  position: sticky;
+  top: 8px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  margin: 0 auto 14px;
+  background: var(--ios-glass-bg);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--ios-glass-border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow);
+  padding: 12px 14px;
+  transition: max-width var(--dur-base) var(--ease-standard),
+    padding var(--dur-base) var(--ease-standard),
+    gap var(--dur-base) var(--ease-standard);
+}
+
+/* ao descer a página a barra fica mais estreita e só com o essencial */
+body.topShrunk .ios-top {
+  max-width: 520px;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.ios-top .eyebrow,
+.ios-top header .sub {
+  overflow: hidden;
+  max-height: 22px;
+  opacity: 1;
+  transition: max-height var(--dur-base) var(--ease-standard), opacity var(--dur-fast);
+}
+
+body.topShrunk .ios-top .eyebrow,
+body.topShrunk .ios-top header .sub {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+}
+
+.ios-top header h1 {
+  transition: font-size var(--dur-base) var(--ease-standard);
+}
+
+body.topShrunk .ios-top header h1 {
+  font-size: 15px;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.topShrunk .connBadge {
+  font-size: 11.5px;
+  padding: 4px 10px;
+}
+
+body.topShrunk .ios-top #helpBtn {
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+}
+
+.ios-top header {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* estado da ligação aos dados, no canto superior direito */
+.connBadge {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.15s;
+}
+
+.connBadge:active {
+  transform: scale(0.96);
+  opacity: 0.82;
+}
+
+.connDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: 0 0 auto;
+}
+
+.connDot.ok {
+  background: var(--ios-green);
+  box-shadow: 0 0 0 3px rgba(30, 142, 90, .22);
+}
+
+.connDot.err {
+  background: var(--ios-red);
+  box-shadow: 0 0 0 3px rgba(192, 0, 0, .22);
+}
+
+.connBadge.ok {
+  color: var(--ok-text);
+  border-color: rgba(30, 142, 90, .45);
+}
+
+.connBadge.err {
+  color: var(--accent-text);
+  border-color: rgba(192, 0, 0, .45);
+}
+
+/* botão "como usar", à direita do estado da ligação */
+.ios-top #helpBtn {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.15s, color 0.2s;
+}
+
+.ios-top #helpBtn:active {
+  transform: scale(0.94);
+  opacity: 0.82;
+}
+
+.ios-top #helpBtn.active,
+.ios-top #helpBtn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* barra de separadores flutuante no rodapé (tem de estar fora da .ios-top:
+   o backdrop-filter do antecessor ancoraria o position:fixed a esse elemento) */
+.tabs {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  background: var(--ios-glass-bg);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--ios-glass-border);
+  box-shadow: var(--ios-shadow-lg);
+  border-radius: var(--ios-radius-card);
+  padding: 6px;
+}
+
+.tabs button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: var(--ios-radius-btn);
+  padding: 8px 14px;
+  transition: transform var(--dur-fast) var(--ease-standard), opacity var(--dur-fast), background-color var(--dur-base);
+}
+
+.tabs button:active {
+  transform: scale(0.96);
+  opacity: 0.82;
+}
+
+.tabs button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+
+.tabs button.dropready {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.tabs button[data-view] {
+  cursor: grab;
+}
+
+.tabs button[data-view]:active {
+  cursor: grabbing;
+}
+
+.tabs #settingsBtn {
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 1;
+  padding: 8px 12px;
+  color: var(--muted);
+}
+
+.tabs #settingsBtn.active,
+.tabs #settingsBtn:hover {
+  color: var(--text);
+}
+
+.settingsPanel {
+  position: fixed;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: grid;
+  gap: 10px;
+  min-width: 230px;
+  padding: 12px;
+  background: var(--ios-glass-bg);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--ios-glass-border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow-lg);
+}
+
+.settingsPanel .setRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settingsPanel label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--muted);
+}
+
+.settingsPanel select {
+  font: inherit;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  padding: 7px 10px;
+}
+
+.settingsPanel .setNote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  max-width: 280px;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.settingsPanel .setNote button {
+  flex: 0 0 auto;
+}
+
+/* a regra .hidden é menos específica do que as de cima */
+.settingsPanel .setRow.hidden,
+.settingsPanel .setNote.hidden {
+  display: none;
+}
+
+.settingsPanel .setRowUpdate {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settingsPanel .setRowUpdate span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+header h1 {
+  margin: 0 0 2px;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+header .sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}

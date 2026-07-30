@@ -1,0 +1,281 @@
+/* My Organizer — TODO list: linhas, cronómetro, kanban */
+
+tr.todoRow {
+  cursor: grab;
+}
+
+tr.todoRow td {
+  font-size: 13.5px;
+}
+
+.todoMode {
+  display: inline-flex;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(138, 144, 156, 0.18);
+  padding: 3px;
+}
+
+.todoMode button,
+.todoMode button.secondary {
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-right: none;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  border-radius: 4px;
+}
+
+.todoMode button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--ios-shadow);
+}
+
+/* o segmentado não inverte para tinta sólida como os botões .secondary */
+.todoMode button.secondary:hover {
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+}
+
+.todoMode button.secondary.active:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.todoBoard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.todoCol {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--ios-shadow);
+}
+
+.todoColHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  font-weight: 500;
+}
+
+.todoColCount {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 600;
+}
+
+.todoColBody {
+  /* ocupa toda a altura livre da coluna: largar em qualquer ponto da coluna
+     (e não só por cima dos cartões) tem de contar como largar na coluna */
+  flex: 1 1 auto;
+  min-height: 130px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.todoColBody.over,
+.todoCol.over .todoColBody {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.todoCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--ios-shadow);
+  padding: 10px;
+  cursor: grab;
+  transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.todoCard:hover {
+  box-shadow: var(--ios-shadow-lg);
+  transform: translateY(-3px);
+}
+
+.todoCard:active {
+  transform: scale(0.98);
+  opacity: 0.84;
+}
+
+.todoCard.done {
+  text-decoration: line-through;
+  opacity: .58;
+}
+
+.todoCardTitle {
+  font-size: 13px;
+  line-height: 1.3;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.todoCardDetail {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* info da linha do Excel (papel, estados e execução) dentro do item */
+.todoTaskInfo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 5px;
+  margin: 5px 0 0;
+}
+
+.todoCard .todoTaskInfo {
+  margin-bottom: 6px;
+}
+
+.todoTaskInfo .role {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.todoTaskInfo .badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  margin: 0;
+  white-space: normal;
+}
+
+.todoTaskInfo .chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0;
+}
+
+.todoTaskInfo .chip {
+  margin: 0;
+}
+
+.todoTaskInfo .obs {
+  flex-basis: 100%;
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.todoTimer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+  font-variant-numeric: tabular-nums;
+  border: none;
+}
+
+.todoTimer.running {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+}
+
+.todoTimer .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green-600);
+  animation: card-timer-pulse 1.4s ease-in-out infinite;
+}
+
+.todoTimerBtn {
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.15s;
+}
+
+.todoTimerBtn:active {
+  transform: scale(0.96);
+  opacity: 0.84;
+}
+
+.todoTimerBtn:hover {
+  filter: brightness(0.96);
+}
+
+.todoTimerReset {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.todoTimerReset:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.todoTimerReset:active {
+  transform: scale(0.96);
+  opacity: 0.82;
+}
+
+.todoCardMeta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  /* com cronómetro + reiniciar + origem, os botões não cabem numa linha
+     em colunas estreitas: em vez de saírem para fora do cartão, quebram */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.todoCardMeta .spacer {
+  flex: 1;
+}
+
+/* o ✕ fica sempre encostado à direita, mesmo quando passa para a 2.ª linha */
+.todoCardMeta .ccr-x {
+  margin-left: auto;
+}
+
+.todoCardMeta input[type="checkbox"] {
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  .todoBoard {
+    grid-template-columns: 1fr;
+  }
+}

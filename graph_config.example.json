@@ -1,0 +1,13 @@
+{
+    "_comment": "Copia este ficheiro para graph_config.json. Indica o site do SharePoint e o nome do livro (a app procura-o) ou, em alternativa, o file_url direto. Depois carrega em 'Ligar' nas Definicoes e autentica-te no browser.",
+    "site_url": "https://criticalsoftwaresa.sharepoint.com/sites/WRSHALLOWFORD",
+    "file_name": "BSP-G2_Daily_Tracker.xlsx",
+    "use_azure_cli": true,
+    "client_id": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+    "scopes": "https://graph.microsoft.com/.default",
+    "tenant_id": "organizations",
+    "_alternativas": {
+        "file_url": "https://criticalsoftwaresa.sharepoint.com/:x:/r/sites/WRSHALLOWFORD/.../BSP-G2_Daily_Tracker.xlsx",
+        "login_mode": "device: usa um codigo em vez de abrir o browser (pode ser bloqueado pelas politicas da organizacao)"
+    }
+}

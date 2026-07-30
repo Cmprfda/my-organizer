@@ -1,0 +1,243 @@
+/* My Organizer — tema Critical Software (design system oficial)
+   Tokens de marca: Critical Red #C00000, maroon #63090D, warm sand #ECA682,
+   rampa neutra "ink" e tipografia Aptos. Os nomes antigos (--ios-*) mantêm-se
+   como aliases para não partir o CSS existente. */
+
+/* ── Tipografia da marca: Aptos (self-hosted em /static/fonts) ───────────── */
+@font-face {
+  font-family: "Aptos";
+  src: url("/static/fonts/Aptos.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aptos";
+  src: url("/static/fonts/Aptos-SemiBold.ttf") format("truetype");
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aptos Narrow";
+  src: url("/static/fonts/Aptos-Narrow-Bold.ttf") format("truetype");
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aptos Mono";
+  src: url("/static/fonts/Aptos-Mono.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* — Marca: Critical Red — */
+  --csw-red-900: #63090d;
+  --csw-red-700: #8e0407;
+  --csw-red-600: #c00000;
+  --csw-red-500: #d42626;
+  --csw-red-300: #e08b8b;
+  --csw-red-100: #f3cccc;
+  --csw-red-50: #fbeaea;
+
+  /* — Marca: Warm Sand (acento secundário) — */
+  --csw-sand-600: #e08c5f;
+  --csw-sand-400: #eca682;
+  --csw-sand-200: #f4c9af;
+  --csw-sand-100: #fae6da;
+  --csw-sand-50: #fdf4ee;
+
+  /* — Rampa neutra "ink" — */
+  --ink-950: #0c0e11;
+  --ink-900: #14161a;
+  --ink-800: #1f232a;
+  --ink-700: #2c313a;
+  --ink-600: #474d58;
+  --ink-500: #656c78;
+  --ink-400: #8a909c;
+  --ink-300: #b6bbc4;
+  --ink-200: #d8dbe1;
+  --ink-150: #e5e7ec;
+  --ink-100: #eeeff2;
+  --ink-50: #f6f7f9;
+  --white: #ffffff;
+
+  /* — Estados semânticos — */
+  --green-600: #1e8e5a;
+  --green-50: #e7f4ed;
+  --amber-600: #b97608;
+  --amber-50: #fbf1de;
+  --blue-600: #1f5fa8;
+  --blue-50: #e7eff7;
+
+  /* — Tipografia — */
+  --font-sans: "Aptos", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --font-display: "Aptos Narrow", "Aptos", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Aptos Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --tracking-tight: -0.01em;
+  --tracking-eyebrow: 0.14em;
+
+  /* — Movimento (rápido e intencional, sem bounce) — */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+
+  /* ── Aliases usados pelo resto do CSS ──────────────────────────────────── */
+  --ios-bg-primary: var(--ink-50);
+  --ios-bg-secondary: var(--white);
+  --ios-bg-grouped: var(--ink-50);
+  /* o design system usa vidro/blur raramente: superfícies quase sólidas */
+  --ios-glass-bg: rgba(255, 255, 255, 0.92);
+  --ios-glass-border: var(--ink-150);
+  --ios-blur: none;
+  --ios-blue: var(--csw-red-600);
+  --ios-green: var(--green-600);
+  --ios-red: var(--csw-red-600);
+  --ios-orange: var(--amber-600);
+  --ios-gray: var(--ink-500);
+  --ios-gray-light: var(--ink-150);
+  --ios-text-primary: var(--ink-900);
+  --ios-text-secondary: var(--ink-500);
+  --ios-font: var(--font-sans);
+  /* cantos nítidos: cartões 12px, botões/campos 4px */
+  --ios-radius-card: 12px;
+  --ios-radius-btn: 4px;
+  --ios-radius-pill: 999px;
+  --ios-shadow: 0 1px 3px rgba(20, 22, 26, 0.08), 0 1px 2px rgba(20, 22, 26, 0.04);
+  --ios-shadow-lg: 0 12px 32px rgba(20, 22, 26, 0.12), 0 4px 8px rgba(20, 22, 26, 0.05);
+
+  --bg: var(--ios-bg-primary);
+  --surface: var(--ios-bg-secondary);
+  --text: var(--ios-text-primary);
+  --muted: var(--ios-text-secondary);
+  --border: var(--ink-150);
+  --accent: var(--csw-red-600);
+  --accent-hover: var(--csw-red-700);
+  --accent-soft: var(--csw-red-50);
+  /* vermelho/verde usados como TEXTO: no tema escuro têm de ser mais claros
+     do que a cor de marca, senão o texto dilui-se no fundo preto */
+  --accent-text: var(--csw-red-600);
+  --ok-text: var(--green-600);
+  --accent-warm: var(--csw-sand-400);
+  --accent-warm-soft: var(--csw-sand-50);
+  --focus-ring: 0 0 0 3px rgba(192, 0, 0, 0.28);
+
+  /* — Estados (badges, pills, cronómetro) — */
+  --status-done-bg: var(--green-50);
+  --status-done-fg: #166a43;
+  --status-doing-bg: var(--amber-50);
+  --status-doing-fg: #8b5806;
+  --status-blocked-bg: var(--csw-red-50);
+  --status-blocked-fg: var(--csw-red-700);
+  --status-info-bg: var(--blue-50);
+  --status-info-fg: #17477e;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* tema escuro por atributo (e nao por prefers-color-scheme) para permitir
+   a escolha manual auto/claro/escuro; o JS resolve o "auto" no arranque */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ios-bg-primary: var(--ink-950);
+  --ios-bg-secondary: var(--ink-900);
+  --ios-bg-grouped: var(--ink-950);
+  --ios-glass-bg: rgba(20, 22, 26, 0.94);
+  --ios-glass-border: rgba(255, 255, 255, 0.16);
+  --ios-text-primary: var(--white);
+  --ios-text-secondary: var(--ink-300);
+  --ios-gray-light: var(--ink-800);
+  --ios-gray: var(--ink-300);
+  --ios-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ios-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.35);
+  --border: rgba(255, 255, 255, 0.16);
+  --accent: var(--csw-red-500);
+  --accent-hover: var(--csw-red-600);
+  --accent-soft: rgba(212, 38, 38, 0.16);
+  --accent-text: var(--csw-red-300);
+  --ok-text: #6fd39a;
+  --accent-warm-soft: rgba(236, 166, 130, 0.14);
+  --focus-ring: 0 0 0 3px rgba(212, 38, 38, 0.32);
+
+  --status-done-bg: rgba(30, 142, 90, 0.22);
+  --status-done-fg: #6fd39a;
+  --status-doing-bg: rgba(185, 118, 8, 0.24);
+  --status-doing-fg: #ecc25c;
+  --status-blocked-bg: rgba(212, 38, 38, 0.22);
+  --status-blocked-fg: #f0a3a3;
+  --status-info-bg: rgba(31, 95, 168, 0.26);
+  --status-info-fg: #9fc2f3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--ios-font);
+  /* fundos planos: o design system evita gradientes decorativos */
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+}
+
+::selection {
+  background: var(--csw-red-600);
+  color: #fff;
+}
+
+/* motivo "// LABEL" — o kicker monoespaçado da marca */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.eyebrow::before {
+  content: "// ";
+  opacity: 0.65;
+}
+
+/* no fundo escuro o texto pequeno precisa de mais peso para se ler bem */
+html[data-theme="dark"] .eyebrow,
+html[data-theme="dark"] .field label,
+html[data-theme="dark"] #toast {
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,36 @@
+/* My Organizer — CCRs */
+
+tr.ccr-ready td {
+  background: rgba(30, 142, 90, .12);
+}
+
+tr.ccr-done td {
+  text-decoration: line-through;
+  opacity: .5;
+}
+
+.ccr-chk label {
+  display: block;
+  font-size: 12.5px;
+  margin: 3px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ccr-x {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+td.ccrNote {
+  cursor: pointer;
+  min-width: 160px;
+}
+
+.ccr-x:hover {
+  color: var(--accent-text);
+}

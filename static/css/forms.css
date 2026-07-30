@@ -1,0 +1,376 @@
+/* My Organizer — botões, campos, barras de ação */
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ios-glass-bg);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--ios-glass-border);
+  border-radius: var(--ios-radius-card);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--ios-shadow);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+.field.grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.field.grow input {
+  width: 100%;
+}
+
+/* pesquisa: caixa de texto + botão E/OU + termos fixados */
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.searchBox input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+button.searchMode {
+  flex: 0 0 auto;
+  align-self: stretch;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+  cursor: pointer;
+  color: var(--accent-text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--ios-radius-btn);
+  padding: 7px 10px;
+  transition: transform var(--dur-fast) var(--ease-standard), opacity var(--dur-fast);
+}
+
+button.searchMode:active {
+  transform: scale(0.96);
+  opacity: 0.82;
+}
+
+.searchChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.searchChips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.searchChips .chip:hover {
+  border-color: var(--accent);
+}
+
+.searchChips .chip b {
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.searchChips .chip:hover b {
+  color: var(--accent-text);
+}
+
+#personInput {
+  width: 170px;
+}
+
+.btns {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.fileinfo {
+  font-size: 12.5px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 9px;
+}
+
+.fileinfo code {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.fileinfo .warn {
+  color: var(--status-doing-fg);
+  font-weight: 600;
+}
+
+/* assinatura da app: presente mas discreta */
+.fileinfo .appver {
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--muted);
+  opacity: .55;
+  white-space: nowrap;
+}
+
+.devbadge {
+  display: inline-block;
+  background: var(--ios-red);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: .08em;
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+body.devmode {
+  border-top: 4px solid var(--ios-red);
+}
+
+.fileinfo .notice {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.mini {
+  padding: 5px 11px;
+  font-size: 12px;
+  margin-left: 8px;
+  border-radius: var(--ios-radius-btn);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-standard), background-color var(--dur-fast);
+}
+
+.mini:active {
+  transform: scale(0.96);
+  opacity: 0.84;
+}
+
+td.execCell {
+  cursor: pointer;
+  min-width: 150px;
+}
+
+td.execCell .addnote {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+td.execCell .mini {
+  margin: 0 6px 0 0;
+}
+
+/* ações de um editor (guardar / cancelar / limpar): só o símbolo, em botões
+   redondos pequenos com fundo tingido, como os controlos do iOS */
+.editActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.iconbtn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.15s;
+}
+
+.iconbtn:active {
+  transform: scale(0.9);
+  opacity: 0.7;
+}
+
+.iconbtn.ok {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+}
+
+.iconbtn.neutral {
+  background: rgba(138, 144, 156, 0.2);
+  color: var(--ios-gray);
+}
+
+.iconbtn.danger {
+  background: var(--status-blocked-bg);
+  color: var(--status-blocked-fg);
+}
+
+.noteText {
+  font: inherit;
+  font-size: 12.5px;
+  width: 100%;
+  min-width: 170px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  margin: 6px 0;
+  box-sizing: border-box;
+}
+
+.chips {
+  display: block;
+  margin-top: 3px;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 2px 7px;
+  margin: 1px 3px 1px 0;
+  background: var(--accent-soft);
+  color: var(--muted);
+  opacity: .55;
+  white-space: nowrap;
+}
+
+.chip.done {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+  opacity: 1;
+}
+
+.chkList {
+  margin: 6px 0 0;
+}
+
+.chk {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 400;
+  margin: 3px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button,
+input[type=text],
+textarea,
+select {
+  font: inherit;
+  border-radius: var(--ios-radius-btn);
+  border: 1px solid var(--border);
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 9px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform var(--dur-fast) var(--ease-standard), background-color var(--dur-fast), color var(--dur-fast), filter var(--dur-fast);
+}
+
+button:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+/* no design system o hover escurece (vermelho 600 -> 700), nunca clareia */
+button:hover {
+  filter: brightness(0.94);
+}
+
+button.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--ink-400);
+}
+
+/* secundário inverte para tinta sólida, como no design system */
+button.secondary:hover {
+  background: var(--ink-900);
+  color: var(--white);
+  border-color: var(--ink-900);
+}
+
+html[data-theme="dark"] button.secondary:hover {
+  background: var(--white);
+  color: var(--ink-900);
+  border-color: var(--white);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+input[type=text],
+textarea,
+select {
+  background: var(--surface);
+  color: var(--text);
+}
+
+input[type=text] {
+  padding: 8px 12px;
+  width: 220px;
+}
+
+.bar select {
+  font: inherit;
+  border-radius: var(--ios-radius-btn);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  max-width: 230px;
+}

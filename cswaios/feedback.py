@@ -1,0 +1,234 @@
+# -*- coding: utf-8 -*-
+"""Feedback e reporte automático de erros na pasta partilhada."""
+
+import hashlib
+import json
+import os
+import re
+import shutil
+from datetime import datetime
+
+from . import config
+from .config import APP_VERSION, FEEDBACK_SHARE_URL, HERE
+from .logs import LOG_FILE, _log_lock, log_event
+from .updates import find_releases_dir
+
+# ---- reporte automático de bugs ----------------------------------------
+# Erros do browser e exceções do servidor viram uma entrada em feedback\,
+# para entrarem no mesmo circuito do feedback escrito à mão.
+BUGS_STATE_FILE = os.path.join(HERE, "bug_reports.json")
+
+# O feedback é montado sempre aqui e só depois entregue: pelo link partilhado
+# (Microsoft Graph, escrita aberta a toda a Critical Software) ou, em último
+# caso, pela pasta partilhada sincronizada. Se nenhuma via estiver disponível
+# (sem sessão, sem rede), fica cá e segue mais tarde.
+PENDING_DIR = os.path.join(HERE, "feedback_pending")
+
+
+def share_url():
+    """Link da pasta partilhada onde o feedback aterra (BSP_FEEDBACK_SHARE
+    permite apontar para outra pasta em testes; vazio desliga esta via)."""
+    value = os.environ.get("BSP_FEEDBACK_SHARE")
+    return FEEDBACK_SHARE_URL if value is None else value
+
+
+def feedback_root():
+    """Onde vivem as pastas de feedback sincronizadas localmente
+    (BSP_FEEDBACK_DIR permite testar sem tocar na pasta partilhada)."""
+    return os.environ.get("BSP_FEEDBACK_DIR") or find_releases_dir() or HERE
+
+
+def stage_feedback_folder(nome):
+    """Pasta local onde o feedback é montado antes de ser entregue."""
+    destino = os.path.join(PENDING_DIR, nome)
+    os.makedirs(destino, exist_ok=True)
+    return destino
+
+
+def _upload_folder(nome, folder):
+    """Envia o conteúdo da pasta para o link partilhado, via Graph."""
+    from . import graph                      # importado aqui: evita ciclos
+    url = share_url()
+    if not url:
+        raise graph.GraphError("sem link de partilha para o feedback")
+    drive, item = graph.share_subfolder(url, nome)
+    for name in sorted(os.listdir(folder)):
+        full = os.path.join(folder, name)
+        if not os.path.isfile(full):
+            continue
+        with open(full, "rb") as f:
+            graph.share_upload(drive, item, name, f.read())
+
+
+def _move_into(origem, destino):
+    """Move os ficheiros de uma pasta para outra, sem apagar o que lá esteja
+    (a pasta de destino pode já existir, no caso de um erro repetido)."""
+    os.makedirs(destino, exist_ok=True)
+    for name in sorted(os.listdir(origem)):
+        src = os.path.join(origem, name)
+        if not os.path.isfile(src):
+            continue
+        dest = os.path.join(destino, name)
+        if os.path.exists(dest):
+            base, ext = os.path.splitext(name)
+            dest = os.path.join(destino, f"{base}_{datetime.now():%H%M%S}{ext}")
+        shutil.move(src, dest)
+    shutil.rmtree(origem, ignore_errors=True)
+
+
+def deliver(folder):
+    """Entrega uma pasta montada. Devolve "share"/"local" conforme a via usada,
+    ou "" se ficou pendente (segue na próxima tentativa)."""
+    nome = os.path.basename(folder)
+    if not os.path.isdir(folder):
+        return ""
+    try:
+        _upload_folder(nome, folder)
+        shutil.rmtree(folder, ignore_errors=True)
+        log_event(f"feedback: {nome} entregue no link partilhado")
+        return "share"
+    except Exception as exc:
+        log_event(f"feedback: link partilhado indisponivel ({exc}) - "
+                  f"a tentar a pasta sincronizada")
+    try:
+        _move_into(folder, os.path.join(feedback_root(), "feedback", nome))
+        log_event(f"feedback: {nome} entregue na pasta sincronizada")
+        return "local"
+    except OSError as exc:
+        log_event(f"feedback: pasta sincronizada indisponivel ({exc}) - "
+                  f"fica em feedback_pending\\{nome}")
+    return ""
+
+
+def delivered_folder_exists(nome):
+    """True se a pasta de feedback ainda estiver por tratar (por entregar, na
+    partilha sincronizada ou no destino do link). Serve para distinguir um
+    erro repetido de uma regressão (pasta já arrumada em Fixed\\)."""
+    if not nome:
+        return False
+    if os.path.isdir(os.path.join(PENDING_DIR, nome)):
+        return True
+    if os.path.isdir(os.path.join(feedback_root(), "feedback", nome)):
+        return True
+    try:
+        from . import graph
+        url = share_url()
+        return bool(url and graph.share_child(url, nome))
+    except Exception:
+        return False
+
+
+def flush_pending():
+    """Tenta entregar o feedback que ficou guardado localmente. Devolve
+    quantas pastas foram entregues."""
+    if not os.path.isdir(PENDING_DIR):
+        return 0
+    entregues = 0
+    for nome in sorted(os.listdir(PENDING_DIR)):
+        origem = os.path.join(PENDING_DIR, nome)
+        if not os.path.isdir(origem):
+            continue
+        if deliver(origem):
+            entregues += 1
+        else:
+            break            # continua sem acesso: tenta outra vez mais tarde
+    if entregues:
+        log_event(f"feedback: {entregues} pasta(s) pendente(s) entregues")
+    return entregues
+
+
+def attach_server_log(folder):
+    """Junta as últimas linhas do log — costumam ter o contexto do erro."""
+    try:
+        with _log_lock:
+            with open(LOG_FILE, encoding="utf-8") as lf:
+                lines = lf.readlines()[-500:]
+        with open(os.path.join(folder, "server.log"), "w", encoding="utf-8") as f:
+            f.writelines(lines)
+    except OSError:
+        pass
+
+
+def load_bug_state():
+    try:
+        with open(BUGS_STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def report_bug(origem, mensagem, detalhe="", ip="?", quem="", extra=None):
+    """Cria (ou atualiza) uma entrada de feedback para um erro.
+
+    Só reporta uma vez por erro distinto: repetições incrementam um contador.
+    Se a pasta já tiver sido arrumada para Fixed e o erro voltar, é tratado
+    como regressão e reportado de novo. Nunca levanta exceções — reportar um
+    bug não pode partir a app."""
+    try:
+        if config.DEV_MODE:                       # a instância de dev não polui o feedback
+            log_event(f"[dev] bug nao reportado ({origem}): {str(mensagem)[:120]}")
+            return None
+        assinatura = hashlib.sha1(
+            f"{origem}|{mensagem}|{str(detalhe).splitlines()[0] if detalhe else ''}"
+            .encode("utf-8", "replace")).hexdigest()[:12]
+
+        estado = load_bug_state()
+        anterior = estado.get(assinatura)
+        agora = datetime.now()
+        # se a pasta anterior já não está em feedback\ (foi para Fixed), o erro
+        # voltou depois de dado como resolvido: vale um reporte novo.
+        repetido = bool(anterior) and delivered_folder_exists(anterior.get("pasta", ""))
+
+        if repetido:
+            anterior["ocorrencias"] = anterior.get("ocorrencias", 1) + 1
+            anterior["ultima"] = agora.strftime("%d/%m/%Y %H:%M")
+            estado[assinatura] = anterior
+            # a pasta original pode já estar entregue: junta-se-lhe um ficheiro
+            # novo com a repetição, em vez de reescrever o que lá está
+            pasta = stage_feedback_folder(anterior["pasta"])
+            with open(os.path.join(pasta, f"repeticao_{anterior['ocorrencias']:02d}.txt"),
+                      "w", encoding="utf-8") as f:
+                f.write(f"[repetiu {anterior['ocorrencias']}x] "
+                        f"{anterior['ultima']} ({ip})\n\n{mensagem}\n")
+            attach_server_log(pasta)
+            deliver(pasta)
+        else:
+            safe = re.sub(r"[^A-Za-z0-9_-]+", "_", quem or "auto")[:30]
+            nome = f"BUG_{agora:%Y%m%d_%H%M%S}_{safe}"
+            pasta = stage_feedback_folder(nome)
+            linhas = [
+                "*** Reporte automático de erro ***",
+                f"Origem: {origem}",
+                f"De: {quem or '(desconhecido)'} ({ip})",
+                f"Data: {agora:%d/%m/%Y %H:%M}",
+                f"App: v{APP_VERSION}",
+                f"Assinatura: {assinatura}"
+                + (f"  (regressão — já tinha sido reportado e arrumado)" if anterior else ""),
+                "",
+                str(mensagem),
+            ]
+            if detalhe:
+                linhas += ["", "Detalhe:", str(detalhe)[:4000]]
+            if extra:
+                linhas += ["", "Contexto:"] + [f"  {k}: {v}" for k, v in extra.items()]
+            with open(os.path.join(pasta, "feedback.txt"), "w", encoding="utf-8") as f:
+                f.write("\n".join(linhas) + "\n")
+            attach_server_log(pasta)
+            deliver(pasta)
+            estado[assinatura] = {"pasta": nome, "ocorrencias": 1,
+                                  "primeira": agora.strftime("%d/%m/%Y %H:%M"),
+                                  "ultima": agora.strftime("%d/%m/%Y %H:%M"),
+                                  "versao": APP_VERSION, "mensagem": str(mensagem)[:200]}
+            log_event(f"BUG reportado automaticamente ({origem}) -> {nome}: "
+                      f"{str(mensagem)[:120]}")
+
+        with open(BUGS_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(estado, f, ensure_ascii=False, indent=1)
+        return estado[assinatura]["pasta"]
+    except Exception as exc:               # nunca deixar o reporte partir a app
+        try:
+            log_event(f"reporte automatico de bug FALHOU: {exc}")
+        except Exception:
+            pass
+        return None
