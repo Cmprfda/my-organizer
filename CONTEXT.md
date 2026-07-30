@@ -36,6 +36,7 @@
 
 **Automação de release**
 - Scripts: [make_release.py](make_release.py), [make-release.bat](make-release.bat), [run-dev.bat](run-dev.bat), [run.bat](run.bat), [setup.bat](setup.bat).
+- Cada release termina com **commit + push** para `origin/main` (repositório privado `Cmprfda/my-organizer`); o passo 9 do `make_release.py` publica ainda o zip em GitHub Releases com a tag `vN`.
 
 ---
 
@@ -104,7 +105,8 @@ Frontend (feedback manual ou erro JS) + backend (exceções) -> `feedback.stage_
   - Setup inicial (Python/dependências/atalho).
 
 - [make_release.py](make_release.py)
-  - Publicação de release (changelog/latest/zip espelho).
+  - Publicação de release (changelog/latest/zip espelho + GitHub Release com tag `vN`).
+  - Depois de publicar: `git commit` + `git push origin main` das alterações da versão.
 
 - [README.md](README.md)
   - Manual operacional e notas de integração.
