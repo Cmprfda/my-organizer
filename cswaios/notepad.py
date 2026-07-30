@@ -186,6 +186,13 @@ def normalize_ref(raw):
     return ref
 
 
+def normalized_list(raw, normalize, limit):
+    """Lista validada item a item — o que vier torto é simplesmente ignorado."""
+    if not isinstance(raw, list):
+        return []
+    return [x for x in (normalize(x) for x in raw) if x][:limit]
+
+
 def normalize_note(raw):
     if not isinstance(raw, dict):
         return None
@@ -311,6 +318,25 @@ def store_image(raw_name, raw_data):
     return name
 
 
+def copy_image(name):
+    """Duplica no disco a imagem de uma caixa copiada e devolve o nome novo.
+
+    Cada caixa tem de ter o seu ficheiro: se duas caixas partilhassem o mesmo
+    nome, apagar uma delas deixava a outra sem imagem.
+    """
+    path = image_file(name)
+    if not path:
+        return ""
+    ext = str(path).rsplit(".", 1)[-1].lower()
+    if ext not in IMAGE_TYPES:
+        ext = "png"
+    new_name = f"{new_id('img')}.{ext}"
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+    with open(path, "rb") as src, open(os.path.join(IMAGES_DIR, new_name), "wb") as dst:
+        dst.write(src.read())
+    return new_name
+
+
 def drop_images(boxes):
     """Apaga do disco as imagens de caixas que deixaram de existir."""
     for box in boxes or []:
@@ -322,10 +348,32 @@ def drop_images(boxes):
                 pass
 
 
+def used_images(data):
+    """Nomes de imagens ainda usados por alguma caixa de alguma nota."""
+    return {b.get("image") for note in (data.get("notes") or [])
+            for b in (note.get("boxes") or []) if isinstance(b, dict) and b.get("image")}
+
+
+def drop_unused_images(data, boxes):
+    """Apaga as imagens das caixas indicadas que mais nenhuma caixa usa.
+
+    Chamar só depois de o estado já não ter essas caixas — o que ficar
+    referenciado (por exemplo por uma cópia colada) nunca é apagado.
+    """
+    keep = used_images(data)
+    drop_images([b for b in (boxes or [])
+                 if isinstance(b, dict) and b.get("image") and b.get("image") not in keep])
+
+
 # -------------------------------------------------------------------- ações
 
 def _find(items, item_id):
     return next((x for x in items if x.get("id") == item_id), None)
+
+
+def _note_id(payload):
+    """Id da nota de uma ação — "id" como em todas as outras, "note" também serve."""
+    return _text(payload.get("id") or payload.get("note"), 40)
 
 
 def _stamp(note):
@@ -517,6 +565,87 @@ def _apply_action(payload):
         note["connectors"] = [c for c in note["connectors"] if c["from"] != box_id and c["to"] != box_id]
         _stamp(note)
 
+    elif action == "delete_boxes":
+        # apagar várias caixas de uma vez (seleção múltipla no quadro)
+        note = _find(notes, _note_id(payload))
+        if note is None:
+            raise ValueError("nota não encontrada")
+        ids_raw = payload.get("box_ids")
+        wanted = {_text(x, 40) for x in ids_raw if _text(x, 40)} if isinstance(ids_raw, list) else set()
+        gone = [b for b in note["boxes"] if b["id"] in wanted]
+        if not gone:
+            raise ValueError("caixa não encontrada")
+        note["boxes"] = [b for b in note["boxes"] if b["id"] not in wanted]
+        note["connectors"] = [c for c in note["connectors"]
+                              if c["from"] not in wanted and c["to"] not in wanted]
+        drop_unused_images(data, gone)
+        _stamp(note)
+
+    elif action == "paste_boxes":
+        # colar cópias de caixas: cada imagem é duplicada no disco, para as
+        # caixas nova e original ficarem independentes
+        note = _find(notes, _note_id(payload))
+        if note is None:
+            raise ValueError("nota não encontrada")
+        boxes_raw = payload.get("boxes")
+        if not isinstance(boxes_raw, list) or not boxes_raw:
+            raise ValueError("nada para colar")
+        if len(note["boxes"]) + len(boxes_raw) > MAX_BOXES:
+            raise ValueError("demasiadas caixas nesta nota")
+        pasted = []
+        for raw in boxes_raw:
+            if not isinstance(raw, dict):
+                continue
+            box = normalize_box({"id": new_id("b"), "x": raw.get("x"), "y": raw.get("y"),
+                                 "w": raw.get("w"), "h": raw.get("h"),
+                                 "text": raw.get("text"), "color": raw.get("color"),
+                                 "image": copy_image(raw.get("image"))})
+            if box is None:
+                continue
+            note["boxes"].append(box)
+            pasted.append(box["id"])
+        if not pasted:
+            raise ValueError("nada para colar")
+        _stamp(note)
+        data["new_boxes"] = pasted
+
+    elif action == "clear_note":
+        # esvaziar o quadro: a nota (título, pasta e ligações) fica
+        note = _find(notes, _note_id(payload))
+        if note is None:
+            raise ValueError("nota não encontrada")
+        gone = note["boxes"]
+        note["boxes"] = []
+        note["strokes"] = []
+        note["shapes"] = []
+        note["connectors"] = []
+        note["frames"] = []
+        drop_unused_images(data, gone)
+        _stamp(note)
+
+    elif action == "restore_note":
+        # voltar atrás (Ctrl+Z): o quadro passa a ser exatamente o que o
+        # browser enviou, depois de tudo validado item a item
+        note = _find(notes, _note_id(payload))
+        if note is None:
+            raise ValueError("nota não encontrada")
+        before = note["boxes"]
+        note["boxes"] = normalized_list(payload.get("boxes"), normalize_box, MAX_BOXES)
+        note["strokes"] = normalized_list(payload.get("strokes"), normalize_stroke, MAX_STROKES)
+        note["shapes"] = normalized_list(payload.get("shapes"), normalize_shape, MAX_SHAPES)
+        note["connectors"] = normalized_list(payload.get("connectors"), normalize_connector,
+                                             MAX_CONNECTORS)
+        note["frames"] = normalized_list(payload.get("frames"), normalize_frame, MAX_FRAMES)
+        # imagens que já foram apagadas do disco não voltam: a caixa regressa
+        # como caixa de texto, em vez de mostrar uma imagem partida
+        for box in note["boxes"]:
+            if box["image"] and not image_file(box["image"]):
+                box["image"] = ""
+        # ao desfazer uma colagem/printscreen a imagem correspondente deixa de
+        # ter dono: não vale a pena guardá-la no disco
+        drop_unused_images(data, before)
+        _stamp(note)
+
     elif action == "add_stroke":
         note = _find(notes, _text(payload.get("id"), 40))
         if note is None:
@@ -669,8 +798,11 @@ def _apply_action(payload):
         raise ValueError(f"ação inválida: {action}")
 
     new_box = data.pop("new_box", "")
+    new_boxes = data.pop("new_boxes", [])
     clean = normalize_notepad(data)
     save_notepad(clean)
     if new_box:
         clean["new_box"] = new_box
+    if new_boxes:
+        clean["new_boxes"] = new_boxes
     return clean

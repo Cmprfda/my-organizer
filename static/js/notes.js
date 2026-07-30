@@ -8,16 +8,23 @@ const noteShut = new Set((() => {
   try { return JSON.parse(localStorage.getItem("bsp-tracker-note-shut") || "[]"); }
   catch (e) { return []; }
 })());
-let noteBoxSel = null;      // caixa selecionada — é nela que o Ctrl+V cola
+let noteSelBoxes = [];      // ids das caixas selecionadas (seleção múltipla)
 let noteTyping = false;     // texto a ser escrito: não refazer o quadro por baixo
 let noteTextTimer = null;   // gravação do texto com atraso
+let noteTextSnap = false;   // instantâneo desta sessão de escrita já guardado
 let notePoint = { x: 24, y: 24 };   // último ponto tocado no quadro
 let noteTool = "select";      // "select" | "pen" | "line" | "rect" | "ellipse" | "connector" | "frame"
 let noteStrokeColor = "yellow";
-let noteDrawSel = null;        // { type: "stroke"|"shape"|"connector", id } — selecionado para apagar
+let noteDrawSel = [];         // [{ type: "stroke"|"shape"|"connector", id }] selecionados
 let noteConnectFrom = null;   // { id } da caixa já escolhida ao ligar duas caixas
+let noteClip = [];            // caixas copiadas com Ctrl+C (só nesta janela)
 const NOTE_MIN_W = 120, NOTE_MIN_H = 80;
 const NOTE_BOARD = 4000;
+const NOTE_PASTE_OFFSET = 24;   // desvio da cópia colada em relação à original
+
+// histórico por nota: pilha de instantâneos do quadro para o Ctrl+Z
+const noteUndo = new Map();
+const NOTE_UNDO_MAX = 20;
 
 function notesVisible() {
   return currentView === "notes" || sideView === "notes";
@@ -34,8 +41,8 @@ function currentNote() {
 function setCurrentNote(id) {
   noteId = id || "";
   localStorage.setItem("bsp-tracker-note", noteId);
-  noteBoxSel = null;
-  noteDrawSel = null;
+  noteSelBoxes = [];
+  noteDrawSel = [];
   noteConnectFrom = null;
   renderNotes();
 }
@@ -218,12 +225,57 @@ async function commitNotePath(raw) {
   await postNotepad({ action: "rename_note", id: note.id, title });
 }
 
+// ---------- escolher a pasta (grupo) da nota no cabeçalho ----------
+const NOTE_FOLDER_NEW = "nova";   // valor da opção "+ Nova pasta…"
+
+// a hierarquia das pastas é dada pela indentação (com espaços inquebráveis,
+// que as <option> não descartam)
+function noteFolderOptionsHtml(parent, depth) {
+  let html = "";
+  for (const f of notepad.folders.filter(x => x.parent === parent)) {
+    const pad = "  ".repeat(depth);
+    html += `<option value="${esc(f.id)}">${esc(`${pad}${depth ? "└ " : ""}${f.name}`)}</option>` +
+      noteFolderOptionsHtml(f.id, depth + 1);
+  }
+  return html;
+}
+
+function renderNoteFolderSel(note) {
+  const sel = $("noteFolderSelect");
+  sel.innerHTML = `<option value="">${esc(t("note_folder_root"))}</option>` +
+    noteFolderOptionsHtml("", 0) +
+    `<option value="${NOTE_FOLDER_NEW}">${esc(t("note_folder_add"))}</option>`;
+  sel.value = note.folder || "";
+}
+
+$("noteFolderSelect").addEventListener("change", async () => {
+  const sel = $("noteFolderSelect");
+  const note = currentNote();
+  if (!note) return;
+  const target = sel.value;
+  if (target === NOTE_FOLDER_NEW) {
+    sel.value = note.folder || "";   // a opção não é uma pasta: não fica escolhida
+    const name = prompt(t("note_ask_folder"), t("note_folder_new"));
+    if (name === null || !name.trim()) return;
+    // a pasta nova nasce dentro da pasta atual da nota (ou na raiz, se não tiver)
+    const out = await postNotepad({ action: "add_folder", name: name.trim(), parent: note.folder }, true);
+    if (!out) return;
+    const created = (out.notepad.folders[out.notepad.folders.length - 1] || {}).id || "";
+    if (!await postNotepad({ action: "move_note", id: note.id, folder: created })) return;
+    revealFolder(created);
+    return;
+  }
+  if (target === (note.folder || "")) return;
+  if (!await postNotepad({ action: "move_note", id: note.id, folder: target })) return;
+  revealFolder(target);
+});
+
 // ---------- quadro ----------
 function noteBoxHtml(b) {
   const img = b.image
     ? `<img class="noteBoxImg" src="/api/notepad/img/${encodeURIComponent(b.image)}" alt="">`
     : "";
-  return `<div class="noteBox c-${esc(b.color)}${b.id === noteBoxSel ? " sel" : ""}" data-bid="${esc(b.id)}"
+  return `<div class="noteBox c-${esc(b.color)}${noteSelBoxes.includes(b.id) ? " sel" : ""}" data-bid="${esc(b.id)}"
     style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px">
     <div class="noteBoxBar" title="${esc(t("t_box_drag"))}">
       <span class="noteBoxGrip">⠿</span>
@@ -255,13 +307,13 @@ function svgPoints(points) {
 }
 
 function noteStrokeSvg(s) {
-  const sel = noteDrawSel && noteDrawSel.type === "stroke" && noteDrawSel.id === s.id ? " sel" : "";
+  const sel = drawSelHas("stroke", s.id) ? " sel" : "";
   return `<polyline class="noteStroke c-${esc(s.color)}${sel}" data-sid="${esc(s.id)}"
     points="${esc(svgPoints(s.points))}" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
 }
 
 function noteShapeSvg(s) {
-  const sel = noteDrawSel && noteDrawSel.type === "shape" && noteDrawSel.id === s.id ? " sel" : "";
+  const sel = drawSelHas("shape", s.id) ? " sel" : "";
   const cls = `noteShape c-${esc(s.color)}${sel}`;
   if (s.kind === "line")
     return `<line class="${cls}" data-shid="${esc(s.id)}" x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke-width="3"/>`;
@@ -278,7 +330,7 @@ function noteConnectorSvg(note, c) {
   const a = note.boxes.find(b => b.id === c.from);
   const b = note.boxes.find(b => b.id === c.to);
   if (!a || !b) return "";
-  const sel = noteDrawSel && noteDrawSel.type === "connector" && noteDrawSel.id === c.id ? " sel" : "";
+  const sel = drawSelHas("connector", c.id) ? " sel" : "";
   return `<line class="noteConnector c-${esc(c.color)}${sel}" data-cid="${esc(c.id)}"
     x1="${a.x + a.w / 2}" y1="${a.y + a.h / 2}" x2="${b.x + b.w / 2}" y2="${b.y + b.h / 2}" stroke-width="2"/>`;
 }
@@ -295,8 +347,10 @@ function renderNoteBoard(focusBoxId) {
   $("notesHead").classList.toggle("hidden", !has);
   $("noteCanvas").classList.toggle("hidden", !has);
   $("noteEmpty").classList.toggle("hidden", has);
+  renderNoteUndoBtn();
   if (!has) return;
   if (document.activeElement !== $("notePathInput")) $("notePathInput").value = notePathString(note);
+  renderNoteFolderSel(note);
   renderNoteLink(note);
   if (noteTyping && !focusBoxId) return;   // a escrever: não mexer nas caixas
   const canvas = $("noteCanvas");
@@ -482,7 +536,9 @@ $("noteDel").addEventListener("click", async () => {
   const note = currentNote();
   if (!note || !confirm(tf("cfm_del_note", note.title))) return;
   const out = await postNotepad({ action: "delete_note", id: note.id });
-  if (out) setCurrentNote((out.notepad.notes[0] || {}).id);
+  if (!out) return;
+  noteUndo.delete(note.id);   // a nota já não existe: histórico fora
+  setCurrentNote((out.notepad.notes[0] || {}).id);
 });
 
 // ---------- ligação a uma tarefa ----------
@@ -573,20 +629,138 @@ function canvasPoint(e) {
   };
 }
 
-function selectBox(id) {
-  noteBoxSel = id;
-  $("noteCanvas").querySelectorAll(".noteBox").forEach(el =>
-    el.classList.toggle("sel", el.dataset.bid === id));
+// ---------- seleção (caixas + desenhos), com vários itens de cada vez ----------
+function drawSelHas(type, id) {
+  return noteDrawSel.some(s => s.type === type && s.id === id);
 }
 
-// arrastar em cima do quadro vazio desenha a caixa nova
-function startBoxCreate(e) {
+function drawSelAttr(type) {
+  return type === "stroke" ? "data-sid" : type === "shape" ? "data-shid" : "data-cid";
+}
+
+// marca a seleção no que já está no ecrã, sem refazer o quadro
+function paintNoteSel() {
+  const canvas = $("noteCanvas");
+  canvas.querySelectorAll(".noteBox").forEach(el =>
+    el.classList.toggle("sel", noteSelBoxes.includes(el.dataset.bid)));
+  const layer = $("noteDrawLayer");
+  if (!layer) return;
+  layer.querySelectorAll(".sel").forEach(el => el.classList.remove("sel"));
+  for (const s of noteDrawSel) {
+    const el = layer.querySelector(`[${drawSelAttr(s.type)}="${CSS.escape(s.id)}"]`);
+    if (el) el.classList.add("sel");
+  }
+}
+
+// clique simples numa caixa: passa a ser a única coisa selecionada
+function selectBox(id) {
+  noteSelBoxes = id ? [id] : [];
+  noteDrawSel = [];
+  paintNoteSel();
+}
+
+// Ctrl/Shift+clique: junta (ou tira) a caixa à seleção
+function toggleBoxSel(id) {
+  noteSelBoxes = noteSelBoxes.includes(id)
+    ? noteSelBoxes.filter(x => x !== id)
+    : [...noteSelBoxes, id];
+  paintNoteSel();
+}
+
+function clearNoteSel() {
+  noteSelBoxes = [];
+  noteDrawSel = [];
+  paintNoteSel();
+}
+
+function noteSelCount() {
+  return noteSelBoxes.length + noteDrawSel.length;
+}
+
+// ---------- reverter (Ctrl+Z): histórico do quadro só nesta janela ----------
+// guarda como está o quadro ANTES de o alterar; o botão ↺ volta a esse estado
+function pushNoteUndo(note) {
+  const target = note || currentNote();
+  if (!target) return;
+  const stack = noteUndo.get(target.id) || [];
+  stack.push({
+    boxes: JSON.parse(JSON.stringify(target.boxes || [])),
+    strokes: JSON.parse(JSON.stringify(target.strokes || [])),
+    shapes: JSON.parse(JSON.stringify(target.shapes || [])),
+    connectors: JSON.parse(JSON.stringify(target.connectors || [])),
+    frames: JSON.parse(JSON.stringify(target.frames || [])),
+  });
+  while (stack.length > NOTE_UNDO_MAX) stack.shift();
+  noteUndo.set(target.id, stack);
+  renderNoteUndoBtn();
+}
+
+function noteUndoStack() {
+  const note = currentNote();
+  return note ? (noteUndo.get(note.id) || []) : [];
+}
+
+function renderNoteUndoBtn() {
+  const btn = $("noteUndoBtn");
+  if (btn) btn.disabled = !noteUndoStack().length;
+}
+
+async function revertNote() {
+  const note = currentNote();
+  if (!note) return;
+  const stack = noteUndo.get(note.id) || [];
+  const snap = stack[stack.length - 1];
+  if (!snap) { toast(t("note_undo_none")); return; }
+  flushNoteText();   // o texto pendente não pode gravar depois de reverter
+  noteTyping = false;
+  noteTextSnap = false;
+  noteSelBoxes = [];
+  noteDrawSel = [];
+  const out = await postNotepad({ action: "restore_note", id: note.id, ...snap });
+  if (out) stack.pop();   // só consome o passo de undo se a reposição foi bem sucedida
+  renderNoteUndoBtn();
+}
+
+// o que uma área do quadro apanhou: caixas e desenhos totalmente dentro dela
+// (contenção total, não só toque, para um arrasto que apenas roça outro item
+// ao criar uma caixa nova não ser lido como uma seleção)
+function noteItemsInRect(note, r) {
+  const contains = (x, y, w, h) => x >= r.x && y >= r.y && x + w <= r.x + r.w && y + h <= r.y + r.h;
+  const boxes = (note.boxes || []).filter(b => contains(b.x, b.y, b.w, b.h)).map(b => b.id);
+  const draw = [];
+  for (const s of note.strokes || []) {
+    const pts = s.points || [];
+    if (pts.length && pts.every(p => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h))
+      draw.push({ type: "stroke", id: s.id });
+  }
+  for (const s of note.shapes || []) {
+    if (contains(Math.min(s.x1, s.x2), Math.min(s.y1, s.y2),
+      Math.abs(s.x2 - s.x1), Math.abs(s.y2 - s.y1))) draw.push({ type: "shape", id: s.id });
+  }
+  for (const c of note.connectors || []) {
+    const from = (note.boxes || []).find(b => b.id === c.from);
+    const to = (note.boxes || []).find(b => b.id === c.to);
+    if (!from || !to) continue;
+    const ax = from.x + from.w / 2, ay = from.y + from.h / 2;
+    const bx = to.x + to.w / 2, by = to.y + to.h / 2;
+    if (contains(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay)))
+      draw.push({ type: "connector", id: c.id });
+  }
+  return { boxes, draw };
+}
+
+// arrastar no espaço vazio do quadro: se a área apanhar caixas ou desenhos,
+// seleciona-os; se não apanhar nada, é ali que nasce a caixa nova
+// (com Ctrl/Shift a área só seleciona, juntando ao que já estava escolhido)
+function startCanvasBand(e) {
   const note = currentNote();
   if (!note) return;
   const start = canvasPoint(e);
   notePoint = start;
-  selectBox(null);
-  selectDrawn(null);
+  const add = e.ctrlKey || e.metaKey || e.shiftKey;
+  const keepBoxes = add ? [...noteSelBoxes] : [];
+  const keepDraw = add ? [...noteDrawSel] : [];
+  if (!add) clearNoteSel();
   const band = document.createElement("div");
   band.className = "noteRubber";
   $("noteCanvas").appendChild(band);
@@ -604,10 +778,19 @@ function startBoxCreate(e) {
     window.removeEventListener("pointerup", up);
     band.remove();
     const w = Math.abs(last.x - start.x), h = Math.abs(last.y - start.y);
+    const rect = { x: Math.min(start.x, last.x), y: Math.min(start.y, last.y), w, h };
+    const found = noteTool === "select" ? noteItemsInRect(note, rect) : { boxes: [], draw: [] };
+    if (add || found.boxes.length || found.draw.length) {
+      noteSelBoxes = [...new Set([...keepBoxes, ...found.boxes])];
+      noteDrawSel = keepDraw.concat(found.draw.filter(
+        s => !keepDraw.some(k => k.type === s.type && k.id === s.id)));
+      paintNoteSel();
+      return;
+    }
     if (w < 40 || h < 30) return;   // clique simples: não cria nada
+    pushNoteUndo(note);
     postNotepad({
-      action: "add_box", id: note.id,
-      x: Math.min(start.x, last.x), y: Math.min(start.y, last.y),
+      action: "add_box", id: note.id, x: rect.x, y: rect.y,
       w: Math.max(NOTE_MIN_W, w), h: Math.max(NOTE_MIN_H, h),
     });
   };
@@ -635,6 +818,7 @@ function startPenDraw(e) {
     window.removeEventListener("pointerup", up);
     el.remove();
     if (pts.length < 2) return;   // clique simples: não cria nada
+    pushNoteUndo(note);
     postNotepad({ action: "add_stroke", id: note.id, points: pts, color: noteStrokeColor });
   };
   window.addEventListener("pointermove", move);
@@ -676,6 +860,7 @@ function startShapeDraw(e, kind) {
     window.removeEventListener("pointerup", up);
     el.remove();
     if (Math.abs(last.x - start.x) < 4 && Math.abs(last.y - start.y) < 4) return;   // clique simples: não cria nada
+    pushNoteUndo(note);
     postNotepad({ action: "add_shape", id: note.id, kind, x1: start.x, y1: start.y, x2: last.x, y2: last.y, color: noteStrokeColor });
   };
   window.addEventListener("pointermove", move);
@@ -702,7 +887,9 @@ function handleConnectorClick(e) {
   const from = noteConnectFrom;
   noteConnectFrom = null;
   highlightConnectFrom(null);
-  if (note) postNotepad({ action: "add_connector", id: note.id, from, to: id, color: noteStrokeColor });
+  if (!note) return;
+  pushNoteUndo(note);
+  postNotepad({ action: "add_connector", id: note.id, from, to: id, color: noteStrokeColor });
 }
 
 // ---------- grupos ----------
@@ -727,6 +914,7 @@ function startFrameCreate(e) {
     band.remove();
     const w = Math.abs(last.x - start.x), h = Math.abs(last.y - start.y);
     if (w < 60 || h < 60) return;   // clique simples: não cria nada
+    pushNoteUndo(note);
     postNotepad({
       action: "add_frame", id: note.id,
       x: Math.min(start.x, last.x), y: Math.min(start.y, last.y),
@@ -776,6 +964,7 @@ function startFrameDrag(e, frameEl, mode) {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     if (next.x === base.x && next.y === base.y && next.w === base.w && next.h === base.h) return;
+    pushNoteUndo(note);
     if (mode === "move") {
       postNotepad({ action: "move_frame", id: note.id, frame_id: model.id, dx: next.x - base.x, dy: next.y - base.y });
     } else {
@@ -793,7 +982,8 @@ function startBoxDrag(e, box, mode) {
   const model = note.boxes.find(b => b.id === box.dataset.bid);
   if (!model) return;
   e.preventDefault();
-  selectBox(model.id);
+  // arrastar uma caixa que já faz parte de uma seleção não a desfaz
+  if (!noteSelBoxes.includes(model.id)) selectBox(model.id);
   const start = canvasPoint(e);
   const base = { x: model.x, y: model.y, w: model.w, h: model.h };
   const next = { ...base };
@@ -816,6 +1006,7 @@ function startBoxDrag(e, box, mode) {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     if (next.x === base.x && next.y === base.y && next.w === base.w && next.h === base.h) return;
+    pushNoteUndo(note);   // antes de mexer no modelo local: guarda a posição antiga
     Object.assign(model, next);
     postNotepad({ action: "update_box", id: note.id, box_id: model.id, ...next }, true);
   };
@@ -848,8 +1039,15 @@ $("noteCanvas").addEventListener("pointerdown", e => {
   if (noteTool === "frame" && !frameEl) { startFrameCreate(e); return; }
 
   const box = e.target.closest(".noteBox");
-  if (!box) { startBoxCreate(e); return; }
+  if (!box) { startCanvasBand(e); return; }
   if (e.target.closest("[data-bsize]")) { startBoxDrag(e, box, "size"); return; }
+  // Ctrl/Cmd/Shift+clique junta (ou tira) a caixa à seleção, sem a arrastar
+  // (dentro do texto não: aí o Shift+clique serve para marcar o texto)
+  if ((e.ctrlKey || e.metaKey || e.shiftKey) && !e.target.closest(".noteBoxText")) {
+    e.preventDefault();
+    toggleBoxSel(box.dataset.bid);
+    return;
+  }
   if (e.target.closest(".noteBoxBar") && !e.target.closest("button")) {
     startBoxDrag(e, box, "move");
     return;
@@ -865,6 +1063,7 @@ $("noteCanvas").addEventListener("click", e => {
   if (!note) return;
   const del = e.target.closest("[data-bdel]");
   if (del) {
+    pushNoteUndo(note);
     postNotepad({ action: "delete_box", id: note.id, box_id: del.dataset.bdel });
     return;
   }
@@ -874,40 +1073,107 @@ $("noteCanvas").addEventListener("click", e => {
     if (!frame) return;
     const name = prompt(t("note_ask_folder"), frame.name);
     if (name === null || !name.trim()) return;
+    pushNoteUndo(note);
     postNotepad({ action: "rename_frame", id: note.id, frame_id: frame.id, name: name.trim() });
     return;
   }
   const frmdel = e.target.closest("[data-frmdel]");
   if (frmdel) {
+    pushNoteUndo(note);
     postNotepad({ action: "delete_frame", id: note.id, frame_id: frmdel.dataset.frmdel });
     return;
   }
   // com a ferramenta de desenho ativa o clique é para desenhar, não para selecionar
   if (noteTool === "select") {
+    const add = e.ctrlKey || e.metaKey || e.shiftKey;
     const strokeEl = e.target.closest("[data-sid]");
-    if (strokeEl) { selectDrawn({ type: "stroke", id: strokeEl.dataset.sid }); return; }
+    if (strokeEl) { selectDrawn({ type: "stroke", id: strokeEl.dataset.sid }, add); return; }
     const shapeEl = e.target.closest("[data-shid]");
-    if (shapeEl) { selectDrawn({ type: "shape", id: shapeEl.dataset.shid }); return; }
+    if (shapeEl) { selectDrawn({ type: "shape", id: shapeEl.dataset.shid }, add); return; }
     const connEl = e.target.closest("[data-cid]");
-    if (connEl) { selectDrawn({ type: "connector", id: connEl.dataset.cid }); return; }
+    if (connEl) { selectDrawn({ type: "connector", id: connEl.dataset.cid }, add); return; }
   }
   const color = e.target.closest("[data-bcolor]");
   if (color) {
     const box = note.boxes.find(b => b.id === color.dataset.bcolor);
     if (!box) return;
-    const next = NOTE_COLORS[(NOTE_COLORS.indexOf(box.color) + 1) % NOTE_COLORS.length];
-    postNotepad({ action: "update_box", id: note.id, box_id: box.id, color: next });
+    openNoteColorPop(color, box.color, next => {
+      const live = currentNote();   // a escolha chega depois: reler o estado
+      if (!live || next === box.color) return;
+      pushNoteUndo(live);
+      postNotepad({ action: "update_box", id: live.id, box_id: box.id, color: next });
+    });
   }
 });
 
+// ---------- escolher a cor: pequeno painel junto ao botão ----------
+let noteColorPop = null;        // { el, anchor } do painel de cores aberto
+let noteColorPopHold = false;   // clicar outra vez no mesmo botão fecha (não reabre)
+
+function closeNoteColorPop() {
+  if (!noteColorPop) return;
+  noteColorPop.el.remove();
+  noteColorPop = null;
+}
+
+// `onPick(cor)` é chamado com a cor escolhida; o painel fecha-se sozinho
+function openNoteColorPop(anchor, current, onPick) {
+  if (noteColorPopHold) { noteColorPopHold = false; return; }
+  closeNoteColorPop();
+  const el = document.createElement("div");
+  el.className = "noteColorPop";
+  el.innerHTML = NOTE_COLORS.map(c => `<button type="button" class="noteColorDot c-${c}${
+    c === current ? " active" : ""}" data-ncolor="${c}" title="${esc(t(`color_${c}`))}"></button>`).join("");
+  document.body.appendChild(el);
+  const r = anchor.getBoundingClientRect();
+  const left = Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.left - 6));
+  const below = r.bottom + 6;
+  el.style.left = `${left}px`;
+  el.style.top = `${below + el.offsetHeight > window.innerHeight
+    ? Math.max(6, r.top - el.offsetHeight - 6) : below}px`;
+  el.addEventListener("click", ev => {
+    const dot = ev.target.closest("[data-ncolor]");
+    if (!dot) return;
+    ev.stopPropagation();
+    closeNoteColorPop();
+    onPick(dot.dataset.ncolor);
+  });
+  noteColorPop = { el, anchor };
+}
+
+// clicar fora fecha; no próprio botão fecha e não deixa reabrir no mesmo clique
+document.addEventListener("pointerdown", e => {
+  if (!noteColorPop || e.target.closest(".noteColorPop")) return;
+  noteColorPopHold = noteColorPop.anchor.contains(e.target);
+  closeNoteColorPop();
+}, true);
+
+// o painel fica preso ao ecrã: se o quadro rolar, deixa de estar junto ao botão
+$("noteCanvas").addEventListener("scroll", closeNoteColorPop);
+
+// em captura: com o painel de cores aberto o Esc só o fecha (o ecrã dividido
+// e as ferramentas de desenho têm os seus tratadores de Esc, registados antes)
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !noteColorPop) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  closeNoteColorPop();
+}, true);
+
 // ---------- barra de ferramentas de desenho ----------
-function selectDrawn(sel) {
-  noteDrawSel = sel;
-  $("noteDrawLayer").querySelectorAll(".sel").forEach(el => el.classList.remove("sel"));
-  if (!sel) return;
-  const attr = sel.type === "stroke" ? "data-sid" : sel.type === "shape" ? "data-shid" : "data-cid";
-  const el = $("noteDrawLayer").querySelector(`[${attr}="${CSS.escape(sel.id)}"]`);
-  if (el) el.classList.add("sel");
+// `add` = Ctrl/Shift+clique: junta (ou tira) o traço/forma/ligação à seleção
+function selectDrawn(sel, add) {
+  if (!sel) {
+    noteDrawSel = [];
+  } else if (add) {
+    noteDrawSel = drawSelHas(sel.type, sel.id)
+      ? noteDrawSel.filter(s => !(s.type === sel.type && s.id === sel.id))
+      : [...noteDrawSel, sel];
+  } else {
+    noteSelBoxes = [];
+    noteDrawSel = [sel];
+  }
+  paintNoteSel();
 }
 
 function setNoteTool(tool) {
@@ -923,9 +1189,30 @@ $("noteToolbar").addEventListener("click", e => {
   const toolBtn = e.target.closest("[data-tool]");
   if (toolBtn) { setNoteTool(toolBtn.dataset.tool); return; }
   if (e.target.closest("#noteToolColor")) {
-    noteStrokeColor = NOTE_COLORS[(NOTE_COLORS.indexOf(noteStrokeColor) + 1) % NOTE_COLORS.length];
-    $("noteToolColor").className = `noteToolColor c-${noteStrokeColor}`;
+    // a cor do traço é só do lado do browser: não há nada para gravar
+    openNoteColorPop($("noteToolColor"), noteStrokeColor, next => {
+      noteStrokeColor = next;
+      $("noteToolColor").className = `noteToolColor c-${noteStrokeColor}`;
+    });
   }
+});
+
+$("noteUndoBtn").addEventListener("click", () => revertNote());
+
+// limpar o quadro: pergunta primeiro e fica revertível com o ↺ / Ctrl+Z
+$("noteClearBtn").addEventListener("click", async () => {
+  const note = currentNote();
+  if (!note) return;
+  const total = note.boxes.length + (note.strokes || []).length + (note.shapes || []).length +
+    (note.connectors || []).length + (note.frames || []).length;
+  if (!total) { toast(t("note_clear_empty")); return; }
+  if (!confirm(tf("cfm_clear_note", note.title))) return;
+  pushNoteUndo(note);
+  flushNoteText();
+  noteTyping = false;
+  noteSelBoxes = [];
+  noteDrawSel = [];
+  await postNotepad({ action: "clear_note", id: note.id });
 });
 
 // Esc sai de qualquer ferramenta de desenho e volta a "selecionar" — só
@@ -934,19 +1221,47 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && notesVisible() && noteTool !== "select") setNoteTool("select");
 });
 
-// Delete/Backspace apaga o traço, a forma ou a ligação selecionada
+// a escrever num campo de texto o teclado é dele (Delete, Ctrl+Z, Ctrl+C/V…)
+function noteTextFocused() {
+  const el = document.activeElement;
+  if (!el) return false;
+  return el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable;
+}
+
+// apaga tudo o que estiver selecionado (caixas, traços, formas e ligações)
+async function deleteNoteSel(note, boxIds, drawn) {
+  pushNoteUndo(note);
+  noteSelBoxes = [];
+  noteDrawSel = [];
+  if (boxIds.length &&
+    !await postNotepad({ action: "delete_boxes", id: note.id, box_ids: boxIds })) return;
+  for (const sel of drawn) {
+    const body = sel.type === "stroke" ? { action: "delete_stroke", id: note.id, stroke_id: sel.id }
+      : sel.type === "shape" ? { action: "delete_shape", id: note.id, shape_id: sel.id }
+        : { action: "delete_connector", id: note.id, connector_id: sel.id };
+    if (!await postNotepad(body)) return;
+  }
+}
+
+// Delete/Backspace apaga as caixas e os desenhos selecionados
 document.addEventListener("keydown", e => {
   if (e.key !== "Delete" && e.key !== "Backspace") return;
-  if (!notesVisible() || !noteDrawSel) return;
-  const tag = (document.activeElement || {}).tagName;
-  if (tag === "TEXTAREA" || tag === "INPUT") return;   // não interferir com edição de texto
+  if (!notesVisible() || noteTextFocused()) return;   // não interferir com edição de texto
   const note = currentNote();
-  if (!note) return;
-  const sel = noteDrawSel;
-  noteDrawSel = null;
-  if (sel.type === "stroke") postNotepad({ action: "delete_stroke", id: note.id, stroke_id: sel.id });
-  else if (sel.type === "shape") postNotepad({ action: "delete_shape", id: note.id, shape_id: sel.id });
-  else postNotepad({ action: "delete_connector", id: note.id, connector_id: sel.id });
+  if (!note || !noteSelCount()) return;
+  e.preventDefault();
+  deleteNoteSel(note, [...noteSelBoxes], [...noteDrawSel]);
+});
+
+// Ctrl+Z reverte a última alteração do quadro (dentro de um texto o Ctrl+Z é
+// o do próprio campo, para não desfazer o que se está a escrever)
+document.addEventListener("keydown", e => {
+  if (e.key !== "z" && e.key !== "Z") return;
+  if (!e.ctrlKey && !e.metaKey) return;
+  if (e.shiftKey || e.altKey) return;
+  if (!notesVisible() || noteTextFocused() || !currentNote()) return;
+  e.preventDefault();
+  revertNote();
 });
 
 // ---------- texto das caixas ----------
@@ -961,6 +1276,9 @@ $("noteCanvas").addEventListener("input", e => {
   if (!area || !note) return;
   const model = note.boxes.find(b => b.id === area.dataset.btext);
   if (!model) return;
+  // um instantâneo por sessão de escrita: o Ctrl+Z do quadro devolve o texto
+  // como ele estava antes de a caixa ganhar o foco
+  if (!noteTextSnap) { pushNoteUndo(note); noteTextSnap = true; }
   model.text = area.value;
   clearTimeout(noteTextTimer);
   // o texto é lido da caixa no momento de gravar: entretanto o estado pode
@@ -975,13 +1293,15 @@ $("noteCanvas").addEventListener("focusin", e => {
   const area = e.target.closest("[data-btext]");
   if (!area) return;
   noteTyping = true;
-  selectBox(area.dataset.btext);
+  noteTextSnap = false;
+  if (!noteSelBoxes.includes(area.dataset.btext)) selectBox(area.dataset.btext);
 });
 
 $("noteCanvas").addEventListener("focusout", e => {
   const area = e.target.closest("[data-btext]");
   const note = currentNote();
   noteTyping = false;
+  noteTextSnap = false;
   if (!area || !note) return;
   const model = note.boxes.find(b => b.id === area.dataset.btext);
   if (!model || model.text === area.value && !noteTextTimer) return;
@@ -1025,6 +1345,7 @@ async function pasteImageBox(file) {
   const data = await readAsBase64(file);
   // cai ao lado do último ponto tocado, com um desvio por cada caixa já lá
   const step = (note.boxes.length % 6) * 18;
+  pushNoteUndo(note);
   await postNotepad({
     action: "add_box", id: note.id,
     x: Math.min(NOTE_BOARD - size.w, notePoint.x + step),
@@ -1038,12 +1359,55 @@ document.addEventListener("paste", async e => {
   if (!notesVisible() || !currentNote()) return;
   const imgs = [...((e.clipboardData && e.clipboardData.items) || [])]
     .filter(it => it.type && it.type.startsWith("image/"));
-  if (!imgs.length) return;
-  e.preventDefault();
-  for (const it of imgs) {
-    const file = it.getAsFile();
-    if (file) await pasteImageBox(file);
+  if (imgs.length) {
+    e.preventDefault();
+    for (const it of imgs) {
+      const file = it.getAsFile();
+      if (file) await pasteImageBox(file);
+    }
+    return;
   }
+  // sem imagem na área de transferência: colar as caixas copiadas com Ctrl+C
+  // (dentro de um texto não, para lá continuar a colar-se texto normalmente)
+  if (!noteClip.length || noteTextFocused()) return;
+  e.preventDefault();
+  await pasteNoteClip();
+});
+
+// ---------- copiar/colar caixas (só dentro desta janela) ----------
+function copyNoteSel() {
+  const note = currentNote();
+  if (!note) return;
+  noteClip = noteSelBoxes
+    .map(id => note.boxes.find(b => b.id === id))
+    .filter(Boolean)
+    .map(b => ({ x: b.x, y: b.y, w: b.w, h: b.h, text: b.text, color: b.color, image: b.image }));
+  if (noteClip.length) toast(tf("note_copied", noteClip.length), "ok");
+}
+
+// cada cópia cai um pouco ao lado da original; colar outra vez volta a descer
+async function pasteNoteClip() {
+  const note = currentNote();
+  if (!note || !noteClip.length) return;
+  const boxes = noteClip.map(b => ({
+    ...b,
+    x: Math.min(NOTE_BOARD - b.w, b.x + NOTE_PASTE_OFFSET),
+    y: Math.min(NOTE_BOARD - b.h, b.y + NOTE_PASTE_OFFSET),
+  }));
+  pushNoteUndo(note);
+  const out = await postNotepad({ action: "paste_boxes", id: note.id, boxes });
+  if (!out) return;
+  noteClip = boxes;
+  noteSelBoxes = out.notepad.new_boxes || [];
+  noteDrawSel = [];
+  paintNoteSel();
+}
+
+document.addEventListener("copy", e => {
+  if (!notesVisible() || noteTextFocused()) return;
+  if (!currentNote() || !noteSelBoxes.length) return;
+  e.preventDefault();
+  copyNoteSel();
 });
 
 loadNotepad();

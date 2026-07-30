@@ -218,6 +218,23 @@
     color: var(--accent-text);
 }
 
+.noteToolBtn:disabled {
+    opacity: .35;
+    cursor: default;
+}
+
+.noteToolBtn:disabled:hover {
+    background: transparent;
+}
+
+.noteToolSep {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 18px;
+    margin: 0 4px;
+    background: var(--border);
+}
+
 .noteToolColor {
     width: 20px;
     height: 20px;
@@ -227,6 +244,40 @@
     padding: 0;
     margin-left: 4px;
 }
+
+/* ---------- painel de cores (caixas e traço) ---------- */
+.noteColorPop {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    box-shadow: var(--ios-shadow-lg);
+}
+
+.noteColorDot {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.noteColorDot.active {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
+.noteColorDot.c-yellow { background: var(--status-doing-bg); }
+.noteColorDot.c-blue { background: var(--status-info-bg); }
+.noteColorDot.c-green { background: var(--status-done-bg); }
+.noteColorDot.c-pink { background: var(--status-blocked-bg); }
+.noteColorDot.c-plain { background: var(--ink-900); }
 
 .noteToolColor.c-yellow { background: var(--status-doing-bg); }
 .noteToolColor.c-blue { background: var(--status-info-bg); }
@@ -260,6 +311,19 @@
     border: none;
     box-shadow: none;
     padding: 4px 2px;
+}
+
+/* escolher a pasta (grupo) da nota */
+.noteFolderSel {
+    flex: 0 0 auto;
+    max-width: 190px;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    padding: 5px 8px;
 }
 
 .linkBtn {

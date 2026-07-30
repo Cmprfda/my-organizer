@@ -73,6 +73,9 @@ function applyLang() {
   $("noteToolbar").querySelector('[data-tool="connector"]').title = t("t_tool_connector");
   $("noteToolbar").querySelector('[data-tool="frame"]').title = t("t_tool_frame");
   $("noteToolColor").title = t("t_tool_color");
+  $("noteFolderSelect").title = t("t_note_folder");
+  $("noteUndoBtn").title = t("t_note_undo");
+  $("noteClearBtn").title = t("t_note_clear");
   $("noteEmpty").innerHTML = `<h2>${t("note_empty_t")}</h2><p>${t("note_empty_p")}</p>`;
   $("noteLinkTitle").textContent = t("note_link_title");
   $("noteLinkClose").title = t("t_close");

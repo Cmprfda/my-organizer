@@ -236,6 +236,7 @@
                   <span class="notePathSlash">/</span>
                   <input type="text" id="notePathInput" placeholder="pasta/título">
                 </div>
+                <select class="noteFolderSel" id="noteFolderSelect" title="Pasta desta nota"></select>
                 <span class="noteLinkChips" id="noteLinkChips"></span>
                 <button type="button" class="linkBtn" id="noteLinkBtn">Ligar a uma tarefa</button>
                 <button type="button" class="ccr-x" id="noteDel" title="Apagar nota">✕</button>
@@ -248,7 +249,10 @@
                 <button type="button" class="noteToolBtn" data-tool="ellipse" title="Elipse">◯</button>
                 <button type="button" class="noteToolBtn" data-tool="connector" title="Ligar caixas">⤳</button>
                 <button type="button" class="noteToolBtn" data-tool="frame" title="Criar grupo">▢</button>
-                <button type="button" class="noteToolColor c-yellow" id="noteToolColor" title="Cor do traço (clica para mudar)"></button>
+                <button type="button" class="noteToolColor c-yellow" id="noteToolColor" title="Cor do traço (clica para escolher)"></button>
+                <span class="noteToolSep"></span>
+                <button type="button" class="noteToolBtn" id="noteUndoBtn" title="Reverter a última alteração (Ctrl+Z)" disabled>↺</button>
+                <button type="button" class="noteToolBtn" id="noteClearBtn" title="Limpar o quadro">🗑</button>
               </div>
               <div class="noteCanvas" id="noteCanvas">
                 <svg class="noteDrawLayer" id="noteDrawLayer" width="4000" height="4000"></svg>
