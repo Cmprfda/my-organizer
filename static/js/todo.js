@@ -413,20 +413,12 @@ async function addTodoWithFeedback(body) {
 }
 
 function addTodoFromTaskRow(btn) {
-  const ri = +btn.dataset.todoadd;
-  if (Number.isNaN(ri)) return;
   const tr = btn.closest("tr");
-  // no Kanban das Tarefas o botão vive num cartão (.taskCard), que não tem
-  // .cells — aí o nome e o detalhe vêm dos atributos data-drag-*
-  const card = tr ? null : btn.closest(".taskCard");
-  if (!tr && !card) return;
-  const fn = tr
-    ? (tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "")
-    : (card.dataset.dragFn || "");
+  const ri = +btn.dataset.todoadd;
+  if (!tr || Number.isNaN(ri)) return;
+  const fn = tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "";
   if (!fn) return;
-  const detail = (tr
-    ? (tr.cells[3] ? tr.cells[3].innerText : "")
-    : (card.dataset.dragDetail || "")).trim().slice(0, 300);
+  const detail = (tr.cells[3] ? tr.cells[3].innerText : "").trim().slice(0, 300);
   const meta = currentMeta[ri] || {};
   const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
   addTodoWithFeedback({ action: "add", title: fn, kind: "task", detail, ref, col: "todo" });
@@ -589,18 +581,6 @@ $("tbody").addEventListener("dragstart", e => {
   // ...e as chaves exatas da linha, para se poder voltar a ela mais tarde
   const meta = currentMeta[[...$("tbody").rows].indexOf(tr)] || {};
   const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
-  e.dataTransfer.setData("application/json", JSON.stringify({ kind: "task", title: fn, detail, ref }));
-  e.dataTransfer.effectAllowed = "copy";
-});
-// no Kanban das Tarefas o cartão não é um <tr>: a mesma informação vem dos
-// atributos data-drag-* preenchidos em taskCardHtml (ver tasks.js)
-$("taskBoard").addEventListener("dragstart", e => {
-  const card = e.target.closest(".taskCard");
-  if (!card) return;
-  const fn = card.dataset.dragFn || "";
-  if (!fn) return;
-  const detail = (card.dataset.dragDetail || "").trim().slice(0, 300);
-  const ref = { sheet: card.dataset.dragSheet || "", fn, todo: card.dataset.dragTodo || "" };
   e.dataTransfer.setData("application/json", JSON.stringify({ kind: "task", title: fn, detail, ref }));
   e.dataTransfer.effectAllowed = "copy";
 });

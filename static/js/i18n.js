@@ -24,8 +24,6 @@ const TR = {
   task_mode_list: ["Lista", "List"], task_mode_cards: ["Caixas", "Boxes"],
   t_task_mode_list: ["Ver as tarefas em tabela", "Show tasks as a table"],
   t_task_mode_cards: ["Ver as tarefas em caixas", "Show tasks as boxes"],
-  task_mode_kanban: ["Kanban", "Kanban"],
-  t_task_mode_kanban: ["Ver as tarefas em Kanban, agrupadas por lado", "Show tasks as a Kanban board, grouped by side"],
   btn_all: ["Ver tudo", "Show all"], btn_only: ["Só", "Only"],
   btn_locals: ["Descartar locais", "Discard local"],
   btn_notes: ["Limpar notas", "Clear notes"],

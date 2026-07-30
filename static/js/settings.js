@@ -37,13 +37,10 @@ function applyLang() {
   $("viewToggle").textContent = compactView ? t("btn_full") : t("btn_compact");
   $("taskModeList").textContent = t("task_mode_list");
   $("taskModeCards").textContent = t("task_mode_cards");
-  $("taskModeKanban").textContent = t("task_mode_kanban");
   $("taskModeList").title = t("t_task_mode_list");
   $("taskModeCards").title = t("t_task_mode_cards");
-  $("taskModeKanban").title = t("t_task_mode_kanban");
   $("taskModeList").classList.toggle("active", taskLayout === "list");
   $("taskModeCards").classList.toggle("active", taskLayout === "cards");
-  $("taskModeKanban").classList.toggle("active", taskLayout === "kanban");
   $("toggleAll").textContent = showAll ? `${t("btn_only")} ${PERSON.split(" ")[0]}` : t("btn_all");
   $("clearLocals").textContent = t("btn_locals");
   $("clearNotes").textContent = t("btn_notes");
