@@ -222,7 +222,7 @@
 
         <div id="notesView" class="hidden">
           <div class="notesLayout">
-            <aside class="notesSide">
+            <aside class="notesSide" id="notesSide">
               <div class="notesSideBar">
                 <button type="button" id="noteAdd">+ Nota</button>
                 <button type="button" class="secondary" id="folderAdd">+ Pasta</button>
@@ -230,6 +230,7 @@
               <input type="text" id="noteFilter" placeholder="Procurar notas…">
               <div class="noteTree" id="noteTree"></div>
             </aside>
+            <div class="noteSideResize" id="noteSideResize"></div>
             <section class="notesMain">
               <div class="notesHead" id="notesHead">
                 <div class="notePath">

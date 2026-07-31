@@ -24,6 +24,10 @@ const NOTE_PASTE_OFFSET = 24;   // desvio da cópia colada em relação à origi
 const NOTE_ZOOM_MIN = 0.25, NOTE_ZOOM_MAX = 2, NOTE_ZOOM_STEP = 0.1;
 let noteZoom = Math.min(NOTE_ZOOM_MAX, Math.max(NOTE_ZOOM_MIN,
   parseFloat(localStorage.getItem("bsp-tracker-note-zoom")) || 1));
+const NOTE_SIDE_MIN = 200, NOTE_SIDE_MAX = 480;
+let noteSideW = Math.min(NOTE_SIDE_MAX, Math.max(NOTE_SIDE_MIN,
+  parseInt(localStorage.getItem("bsp-tracker-note-side-w"), 10) || 250));
+document.documentElement.style.setProperty("--notes-side-w", noteSideW + "px");
 
 // histórico por nota: pilha de instantâneos do quadro para o Ctrl+Z
 const noteUndo = new Map();
@@ -102,11 +106,14 @@ function noteRowHtml(n, depth) {
   }
   bits.push(`${n.boxes.length} ${t(n.boxes.length === 1 ? "note_box_1" : "note_boxes")}`);
   if (n.updated) bits.push(n.updated);
-  return `<button type="button" class="noteRow${n.id === noteId ? " active" : ""}" data-nopen="${esc(n.id)}"
-    draggable="true" data-nid="${esc(n.id)}"
+  return `<div class="noteRow${n.id === noteId ? " active" : ""}" draggable="true" data-nid="${esc(n.id)}"
     style="padding-left:${8 + depth * 12}px">
-    <span class="noteRowTitle">${esc(n.title)}</span>
-    <span class="noteRowMeta">${esc(bits.join(" · "))}</span></button>`;
+    <button type="button" class="noteRowOpen" data-nopen="${esc(n.id)}">
+      <span class="noteRowTitle">${esc(n.title)}</span>
+      <span class="noteRowMeta">${esc(bits.join(" · "))}</span>
+    </button>
+    <button type="button" class="noteMini" data-ndel="${esc(n.id)}" title="${esc(t("t_note_del"))}">✕</button>
+  </div>`;
 }
 
 function noteBranchHtml(parent, depth, q) {
@@ -288,15 +295,55 @@ function noteShapeSvg(s) {
   return `<ellipse class="${cls}" data-shid="${esc(s.id)}" cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}" fill="none" stroke-width="3"/>`;
 }
 
-// ligação entre duas caixas: linha de centro a centro, refeita sempre que as
+// ponto na borda do retângulo mais próximo do centro do OUTRO extremo da
+// ligação — assim a linha nasce/acaba na moldura da caixa, não no meio dela
+function noteBorderPoint(rect, towardX, towardY) {
+  const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+  const dx = towardX - cx, dy = towardY - cy;
+  if (!dx && !dy) return { x: cx, y: cy };
+  const hw = rect.w / 2, hh = rect.h / 2;
+  const scale = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh);
+  return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
+function noteConnectorEndpoints(fromRect, toRect) {
+  const fromCenter = { x: fromRect.x + fromRect.w / 2, y: fromRect.y + fromRect.h / 2 };
+  const toCenter = { x: toRect.x + toRect.w / 2, y: toRect.y + toRect.h / 2 };
+  return {
+    a: noteBorderPoint(fromRect, toCenter.x, toCenter.y),
+    b: noteBorderPoint(toRect, fromCenter.x, fromCenter.y),
+  };
+}
+
+// ligação entre duas caixas: linha de borda a borda, refeita sempre que as
 // caixas mudam de sítio
 function noteConnectorSvg(note, c) {
   const a = note.boxes.find(b => b.id === c.from);
   const b = note.boxes.find(b => b.id === c.to);
   if (!a || !b) return "";
   const sel = drawSelHas("connector", c.id) ? " sel" : "";
+  const pts = noteConnectorEndpoints(a, b);
   return `<line class="noteConnector c-${esc(c.color)}${sel}" data-cid="${esc(c.id)}"
-    x1="${a.x + a.w / 2}" y1="${a.y + a.h / 2}" x2="${b.x + b.w / 2}" y2="${b.y + b.h / 2}" stroke-width="2"/>`;
+    x1="${pts.a.x}" y1="${pts.a.y}" x2="${pts.b.x}" y2="${pts.b.y}" stroke-width="2"/>`;
+}
+
+// durante um arrasto: reposiciona no ecrã (sem gravar) as ligações que tocam
+// nalguma caixa que esteja a mover-se — `overrides` dá a posição já em curso
+// dessas caixas (as outras usam a posição estática do modelo)
+function updateLiveConnectors(note, overrides) {
+  const layer = $("noteDrawLayer");
+  if (!layer) return;
+  for (const c of note.connectors || []) {
+    if (!overrides[c.from] && !overrides[c.to]) continue;
+    const fromRect = overrides[c.from] || note.boxes.find(b => b.id === c.from);
+    const toRect = overrides[c.to] || note.boxes.find(b => b.id === c.to);
+    if (!fromRect || !toRect) continue;
+    const el = layer.querySelector(`[data-cid="${CSS.escape(c.id)}"]`);
+    if (!el) continue;
+    const pts = noteConnectorEndpoints(fromRect, toRect);
+    el.setAttribute("x1", pts.a.x); el.setAttribute("y1", pts.a.y);
+    el.setAttribute("x2", pts.b.x); el.setAttribute("y2", pts.b.y);
+  }
 }
 
 function noteDrawSvgInner(note) {
@@ -391,6 +438,27 @@ function renderNotes(focusBoxId) {
   renderNoteBoard(focusBoxId);
 }
 
+// ids de todas as subpastas (direta ou indiretamente) dentro de `id`
+function folderDescendantIds(id) {
+  const out = [];
+  const stack = [id];
+  while (stack.length) {
+    const cur = stack.pop();
+    for (const f of notepad.folders) {
+      if (f.parent === cur) { out.push(f.id); stack.push(f.id); }
+    }
+  }
+  return out;
+}
+
+// quantas subpastas e notas (em toda a subárvore) ficam dentro de uma pasta
+function folderSubtreeCounts(id) {
+  const ids = folderDescendantIds(id);
+  const all = new Set([id, ...ids]);
+  const notes = notepad.notes.filter(n => all.has(n.folder)).length;
+  return { subfolders: ids.length, notes };
+}
+
 // ---------- criar/apagar notas e pastas ----------
 $("noteAdd").addEventListener("click", async () => {
   const note = currentNote();
@@ -434,11 +502,25 @@ $("noteTree").addEventListener("click", async e => {
     await postNotepad({ action: "rename_folder", id: folder.id, name: name.trim() });
     return;
   }
+  const ndel = e.target.closest("[data-ndel]");
+  if (ndel) {
+    deleteNoteById(notepad.notes.find(n => n.id === ndel.dataset.ndel));
+    return;
+  }
   const del = e.target.closest("[data-fdel]");
   if (del) {
     const folder = notepad.folders.find(f => f.id === del.dataset.fdel);
-    if (!folder || !confirm(tf("cfm_del_folder", folder.name))) return;
-    await postNotepad({ action: "delete_folder", id: folder.id });
+    if (!folder) return;
+    const { subfolders, notes: noteCount } = folderSubtreeCounts(folder.id);
+    if (!subfolders && !noteCount) {
+      if (confirm(tf("cfm_del_folder", folder.name))) await postNotepad({ action: "delete_folder", id: folder.id });
+      return;
+    }
+    if (confirm(tf("cfm_del_folder_recursive", folder.name, noteCount, subfolders))) {
+      await postNotepad({ action: "delete_folder", id: folder.id, recursive: true });
+      return;
+    }
+    if (confirm(tf("cfm_del_folder", folder.name))) await postNotepad({ action: "delete_folder", id: folder.id });
   }
 });
 
@@ -454,6 +536,7 @@ function noteDropTarget(el) {
 $("noteTree").addEventListener("dragstart", e => {
   const noteEl = e.target.closest("[data-nid]");
   if (noteEl) {
+    if (e.target.closest("[data-ndel]")) { e.preventDefault(); return; }   // ✕ : não arrastar
     noteDrag = { type: "note", id: noteEl.dataset.nid };
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", noteEl.dataset.nid);
@@ -511,14 +594,15 @@ $("notePathInput").addEventListener("keydown", e => {
 
 $("notePathInput").addEventListener("change", () => commitNotePath($("notePathInput").value));
 
-$("noteDel").addEventListener("click", async () => {
-  const note = currentNote();
+async function deleteNoteById(note) {
   if (!note || !confirm(tf("cfm_del_note", note.title))) return;
   const out = await postNotepad({ action: "delete_note", id: note.id });
   if (!out) return;
   noteUndo.delete(note.id);   // a nota já não existe: histórico fora
-  setCurrentNote((out.notepad.notes[0] || {}).id);
-});
+  if (note.id === noteId) setCurrentNote((out.notepad.notes[0] || {}).id);
+}
+
+$("noteDel").addEventListener("click", () => deleteNoteById(currentNote()));
 
 // ---------- ligação a uma tarefa ----------
 $("notesHead").addEventListener("click", e => {
@@ -563,11 +647,12 @@ function renderNoteLinkList() {
   const all = noteLinkOptions();
   const q = norm($("noteLinkSearch").value || "");
   noteLinkRows = all.filter(o => !q || norm(o.label + " " + o.sub).includes(q)).slice(0, 200);
+  const excelReady = !!(lastData && !lastData.error && lastData.headers);
   $("noteLinkBody").innerHTML = noteLinkRows.length
     ? noteLinkRows.map((o, i) => `<button type="button" class="pickRow" data-nlink="${i}">
         <span class="pickIcon">${o.kind === "todo" ? "✓" : "▤"}</span>
         <span class="pickName">${esc(o.label)}<span class="pickSub">${esc(o.sub)}</span></span></button>`).join("")
-    : `<div class="noteTreeEmpty">${esc(t(all.length ? "none_search" : "note_no_tasks"))}</div>`;
+    : `<div class="noteTreeEmpty">${esc(t(all.length ? "none_search" : excelReady ? "note_no_tasks" : "note_no_excel"))}</div>`;
 }
 
 function setNoteLinkOpen(open) {
@@ -660,6 +745,29 @@ $("noteCanvas").addEventListener("wheel", e => {
   e.preventDefault();
   setNoteZoom(noteZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX, e.clientY);
 }, { passive: false });
+
+// coluna da esquerda: arrastar a barra lateral para redimensionar
+$("noteSideResize").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  const handle = $("noteSideResize");
+  handle.setPointerCapture(e.pointerId);
+  handle.classList.add("dragging");
+  const rect = $("notesSide").getBoundingClientRect();
+  const move = ev => {
+    noteSideW = Math.min(NOTE_SIDE_MAX, Math.max(NOTE_SIDE_MIN, ev.clientX - rect.left));
+    document.documentElement.style.setProperty("--notes-side-w", noteSideW + "px");
+  };
+  const up = () => {
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", up);
+    handle.removeEventListener("pointercancel", up);
+    handle.classList.remove("dragging");
+    localStorage.setItem("bsp-tracker-note-side-w", String(Math.round(noteSideW)));
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", up);
+  handle.addEventListener("pointercancel", up);
+});
 
 // ---------- seleção (caixas + desenhos), com vários itens de cada vez ----------
 function drawSelHas(type, id) {
@@ -1011,10 +1119,18 @@ function startFrameDrag(e, frameEl, mode, corner = "se") {
   const next = { ...base };
   const growsRight = corner === "se" || corner === "ne";
   const growsDown = corner === "se" || corner === "sw";
-  const members = mode === "move"
-    ? note.boxes.filter(b => b.x >= base.x && b.y >= base.y && b.x + b.w <= base.x + base.w && b.y + b.h <= base.y + base.h)
-    : [];
+  const contains = (x, y, w, h) =>
+    x >= base.x && y >= base.y && x + w <= base.x + base.w && y + h <= base.y + base.h;
+  const members = mode === "move" ? note.boxes.filter(b => contains(b.x, b.y, b.w, b.h)) : [];
   const memberEls = members.map(b => $("noteCanvas").querySelector(`[data-bid="${CSS.escape(b.id)}"]`));
+  const strokeMembers = mode === "move"
+    ? (note.strokes || []).filter(s => (s.points || []).length && s.points.every(p => contains(p.x, p.y, 0, 0)))
+    : [];
+  const strokeEls = strokeMembers.map(s => $("noteDrawLayer").querySelector(`[data-sid="${CSS.escape(s.id)}"]`));
+  const shapeMembers = mode === "move"
+    ? (note.shapes || []).filter(s => contains(Math.min(s.x1, s.x2), Math.min(s.y1, s.y2), Math.abs(s.x2 - s.x1), Math.abs(s.y2 - s.y1)))
+    : [];
+  const shapeEls = shapeMembers.map(s => $("noteDrawLayer").querySelector(`[data-shid="${CSS.escape(s.id)}"]`));
 
   const move = ev => {
     const p = canvasPoint(ev);
@@ -1027,6 +1143,26 @@ function startFrameDrag(e, frameEl, mode, corner = "se") {
       members.forEach((b, i) => {
         const el = memberEls[i];
         if (el) { el.style.left = (b.x + dx) + "px"; el.style.top = (b.y + dy) + "px"; }
+      });
+      const overrides = {};
+      members.forEach(b => { overrides[b.id] = { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h }; });
+      updateLiveConnectors(note, overrides);
+      strokeMembers.forEach((s, i) => {
+        const el = strokeEls[i];
+        if (el) el.setAttribute("points", svgPoints(s.points.map(p => ({ x: p.x + dx, y: p.y + dy }))));
+      });
+      shapeMembers.forEach((s, i) => {
+        const el = shapeEls[i];
+        if (!el) return;
+        if (s.kind === "line") {
+          el.setAttribute("x1", s.x1 + dx); el.setAttribute("y1", s.y1 + dy);
+          el.setAttribute("x2", s.x2 + dx); el.setAttribute("y2", s.y2 + dy);
+          return;
+        }
+        const x = Math.min(s.x1, s.x2) + dx, y = Math.min(s.y1, s.y2) + dy;
+        const w = Math.abs(s.x2 - s.x1), h = Math.abs(s.y2 - s.y1);
+        if (s.kind === "rect") { el.setAttribute("x", x); el.setAttribute("y", y); }
+        else { el.setAttribute("cx", x + w / 2); el.setAttribute("cy", y + h / 2); }
       });
     } else {
       const dx = p.x - start.x, dy = p.y - start.y;
@@ -1092,6 +1228,7 @@ function startBoxDrag(e, box, mode) {
       box.style.width = next.w + "px";
       box.style.height = next.h + "px";
     }
+    updateLiveConnectors(note, { [model.id]: next });
   };
   const up = () => {
     window.removeEventListener("pointermove", move);

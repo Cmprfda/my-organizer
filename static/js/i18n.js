@@ -110,7 +110,7 @@ const TR = {
   source_auto: ["Automático", "Automatic"],
   source_web: ["OneDrive (web)", "OneDrive (web)"],
   source_local: ["Ficheiro local", "Local file"],
-  graph_off: ["OneDrive: por ligar", "OneDrive: not connected"],
+  graph_off: ["OneDrive: pronto a ligar", "OneDrive: ready to connect"],
   graph_on: ["OneDrive: ligado", "OneDrive: connected"],
   graph_on_cli: ["OneDrive: ligado (sessão da Azure CLI)", "OneDrive: connected (Azure CLI session)"],
   graph_need_cli: ["Corre 'az login' neste PC ou define um client_id em graph_config.json.",
@@ -171,7 +171,7 @@ const TR = {
   fb_need: ["Escreve texto ou junta pelo menos uma imagem.", "Write some text or attach at least one image."],
   fb_big: ["Imagens demasiado grandes (máximo 15 MB no total).", "Images too large (max. 15 MB total)."],
   conn_web: ["OneDrive ligado", "OneDrive connected"],
-  conn_web_off: ["OneDrive por ligar", "OneDrive not connected"],
+  conn_web_off: ["OneDrive pronto a ligar", "OneDrive ready to connect"],
   conn_local: ["Ficheiro local", "Local file"],
   t_synced_copy: ["Lido da cópia sincronizada no computador (mostra as alterações do Excel sem esperar pelo OneDrive)",
     "Read from the synced copy on this computer (shows Excel changes without waiting for OneDrive)"],
@@ -215,6 +215,7 @@ const TR = {
     "Drag the mouse here to create a box. Ctrl+V pastes a screenshot."],
   note_no_tasks: ["Sem tarefas nem itens do TODO para ligar.",
     "No tasks or TODO items to link to."],
+  note_no_excel: ["Seleciona um Excel em Definições para ligar tarefas.", "Pick an Excel workbook in Settings to link tasks."],
   note_img_big: ["Imagem demasiado grande (máximo 8 MB).", "Image too large (max. 8 MB)."],
   note_path_not_found: ["Pasta não encontrada.", "Folder not found."],
   note_hint: ["Cada nota é um quadro: arrasta o rato no espaço vazio para criar uma caixa, escreve lá dentro e cola printscreens com Ctrl+V. Arrasta a barra de cima da caixa para a mover e o canto inferior direito para a redimensionar; o círculo muda a cor. A barra de ferramentas em cima do quadro tem um lápis para desenhar à mão e linha/rectângulo/elipse para formas, uma ferramenta para ligar duas caixas com uma linha (clica numa, depois na outra — a linha acompanha-as quando as moves) e outra para criar grupos (arrasta uma moldura à volta das caixas; mover a moldura arrasta tudo o que estiver lá dentro, e o ✕ desfaz o grupo sem apagar as caixas). O círculo de cor escolhe a cor do que desenhas e, com a ferramenta de selecionar, clicas num traço, forma ou ligação para o escolher e Delete apaga-o. Na coluna da esquerda organizas as notas por pastas e podes ligar cada nota a uma tarefa do Excel (📌 leva-te à tarefa). No cabeçalho escreves o caminho completo da nota (por exemplo Projeto/Título) para lhe mudar a pasta e o nome de uma só vez — as pastas que faltarem são criadas, e se escreveres o caminho de outra nota é essa que se abre; termina em \"/\" para ver só essa pasta na árvore. Na coluna da esquerda também podes arrastar notas e pastas para as reorganizar; larga em \"Raiz\" para tirar da pasta onde estão.",
@@ -259,6 +260,8 @@ const TR = {
   cfm_del_note: ["Apagar a nota \"{0}\" e todas as suas caixas?", "Delete note \"{0}\" and all its boxes?"],
   cfm_del_folder: ["Apagar a pasta \"{0}\"? As notas lá dentro passam para o nível de cima.",
     "Delete folder \"{0}\"? The notes inside move up one level."],
+  cfm_del_folder_recursive: ["Apagar a pasta \"{0}\" e tudo lá dentro ({1} nota(s), {2} subpasta(s))? Não é possível reverter. Cancelar aqui, e a seguir confirmar, apaga só a pasta (o conteúdo sobe um nível).",
+    "Delete folder \"{0}\" and everything inside it ({1} note(s), {2} subfolder(s))? This cannot be undone. Cancel here, then confirm, to delete just the folder (its contents move up a level)."],
 };
 const t = key => (TR[key] || [key, key])[LANG === "en" ? 1 : 0];
 const tf = (key, ...args) => args.reduce((s, a, i) => s.replaceAll(`{${i}}`, a), t(key));

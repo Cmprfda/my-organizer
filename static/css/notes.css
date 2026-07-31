@@ -8,7 +8,7 @@
 
 /* ---------- coluna da esquerda: notas e pastas ---------- */
 .notesSide {
-    flex: 0 0 250px;
+    flex: 0 0 var(--notes-side-w, 250px);
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -18,6 +18,19 @@
     border-radius: var(--ios-radius-card);
     box-shadow: var(--ios-shadow);
     padding: 12px;
+}
+
+.noteSideResize {
+    flex: 0 0 6px;
+    align-self: stretch;
+    cursor: col-resize;
+    border-radius: 3px;
+    background: transparent;
+}
+
+.noteSideResize:hover,
+.noteSideResize.dragging {
+    background: var(--accent-soft);
 }
 
 .notesSideBar {
@@ -127,17 +140,13 @@
 }
 
 .noteRow {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 4px;
     width: 100%;
-    text-align: left;
-    background: transparent;
     border: 1px solid transparent;
     border-radius: 8px;
-    font: inherit;
-    color: var(--text);
-    padding: 6px 8px;
     margin: 1px 0;
-    cursor: pointer;
 }
 
 .noteRow:hover {
@@ -147,6 +156,19 @@
 .noteRow.active {
     background: var(--accent-soft);
     border-color: var(--accent);
+}
+
+.noteRowOpen {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: block;
+    text-align: left;
+    background: transparent;
+    border: none;
+    font: inherit;
+    color: var(--text);
+    padding: 6px 8px 6px 0;
+    cursor: pointer;
 }
 
 .noteRowTitle {
@@ -611,6 +633,15 @@
     cursor: pointer;
 }
 
+.noteDrawLayer .noteConnector {
+    opacity: .6;
+    stroke-dasharray: 5 4;
+}
+
+.noteDrawLayer .noteConnector.sel {
+    opacity: 1;
+}
+
 .noteDrawLayer .sel {
     stroke-width: 5 !important;
 }
@@ -776,6 +807,10 @@
 
     .notesSide {
         flex: 1 1 auto;
+    }
+
+    .noteSideResize {
+        display: none;
     }
 
     .noteTree {

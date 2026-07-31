@@ -102,7 +102,7 @@ def cmd_status(args):
         print(f"Atualizacao: v{shared} disponivel (corre: app.py update)")
     state = graph_state()
     detalhe = state.get("error") or (f"ligado ({state['method']})"
-                                     if state["connected"] else "por ligar (corre: app.py login)")
+                                     if state["connected"] else "pronto a ligar (corre: app.py login)")
     print(f"OneDrive:   {detalhe}")
     print(f"Livro:      {state.get('book_path') or state.get('book') or 'nenhum escolhido'}")
     files = find_tracker_files()

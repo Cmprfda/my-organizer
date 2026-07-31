@@ -83,6 +83,7 @@ function applyLang() {
   document.querySelector('#dropZones [data-side="left"] span').innerHTML = t("drop_left");
   document.querySelector('#dropZones [data-side="right"] span').innerHTML = t("drop_right");
   $("splitBar").title = t("t_resize");
+  $("noteSideResize").title = t("t_resize");
   $("sideSwap").title = t("t_swap");
   $("sideClose").title = t("t_closepane");
   if (sideView) $("sideTitle").textContent = tabLabel(sideView);

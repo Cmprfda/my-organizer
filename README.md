@@ -47,7 +47,7 @@ ficam memorizadas. Abas com outra estrutura são mostradas como tabela simples.
 - **Botão `?`** (na barra do topo, à direita do indicador de ligação): abre o
   **"Como usar"** com todas as instruções de utilização da app.
 - **Distintivo no canto superior direito**: mostra de onde vêm os dados —
-  verde (OneDrive ligado), vermelho (por ligar / sem servidor) ou cinzento
+  verde (OneDrive ligado), vermelho (pronto a ligar / sem servidor) ou cinzento
   (ficheiro local). Clica nele para abrir as Definições.
 - **Vista resumida** (por omissão): TCs/Funções · Papel (Autor/Reviewer de TC/TP) · Estado · O que fazer
 - Botões-filtro (podes combinar vários):

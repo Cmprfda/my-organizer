@@ -438,16 +438,34 @@ def _apply_action(payload):
         folder = _find(folders, _text(payload.get("id"), 40))
         if folder is None:
             raise ValueError("pasta não encontrada")
-        # o que estava lá dentro sobe um nível — apagar uma pasta nunca
-        # deita fora notas
-        parent = folder["parent"]
-        for other in folders:
-            if other["parent"] == folder["id"]:
-                other["parent"] = parent
-        for note in notes:
-            if note["folder"] == folder["id"]:
-                note["folder"] = parent
-        data["folders"] = [f for f in folders if f["id"] != folder["id"]]
+        if payload.get("recursive"):
+            # a pasta e tudo o que está lá dentro (subpastas e notas, com as
+            # respetivas imagens) desaparece — ao contrário do caso normal,
+            # que nunca deita fora notas
+            doomed = {folder["id"]}
+            changed = True
+            while changed:
+                changed = False
+                for f in folders:
+                    if f["parent"] in doomed and f["id"] not in doomed:
+                        doomed.add(f["id"])
+                        changed = True
+            doomed_notes = [n for n in notes if n["folder"] in doomed]
+            for note in doomed_notes:
+                drop_images(note.get("boxes"))
+            data["notes"] = [n for n in notes if n["folder"] not in doomed]
+            data["folders"] = [f for f in folders if f["id"] not in doomed]
+        else:
+            # o que estava lá dentro sobe um nível — apagar uma pasta nunca
+            # deita fora notas
+            parent = folder["parent"]
+            for other in folders:
+                if other["parent"] == folder["id"]:
+                    other["parent"] = parent
+            for note in notes:
+                if note["folder"] == folder["id"]:
+                    note["folder"] = parent
+            data["folders"] = [f for f in folders if f["id"] != folder["id"]]
 
     elif action == "move_folder":
         folder = _find(folders, _text(payload.get("id"), 40))
@@ -781,13 +799,39 @@ def _apply_action(payload):
             raise ValueError("grupo não encontrado")
         dx = _clamp(payload.get("dx"), -BOARD_W, BOARD_W, 0)
         dy = _clamp(payload.get("dy"), -BOARD_H, BOARD_H, 0)
-        members = [b for b in note["boxes"] if b["x"] >= frame["x"] and b["y"] >= frame["y"]
-                   and b["x"] + b["w"] <= frame["x"] + frame["w"] and b["y"] + b["h"] <= frame["y"] + frame["h"]]
+
+        def _inside(x, y, w, h):
+            return (x >= frame["x"] and y >= frame["y"]
+                    and x + w <= frame["x"] + frame["w"] and y + h <= frame["y"] + frame["h"])
+
+        members = [b for b in note["boxes"] if _inside(b["x"], b["y"], b["w"], b["h"])]
+        # traços e formas dentro da moldura andam com o grupo tal como as
+        # caixas — a mesma regra de "contenção total" usada para os selecionar
+        # com o retângulo de seleção (ver noteItemsInRect no notes.js)
+        stroke_members = [s for s in note["strokes"]
+                          if s["points"] and all(_inside(p["x"], p["y"], 0, 0) for p in s["points"])]
+        shape_members = []
+        for s in note["shapes"]:
+            x = min(s["x1"], s["x2"])
+            y = min(s["y1"], s["y2"])
+            w = abs(s["x2"] - s["x1"])
+            h = abs(s["y2"] - s["y1"])
+            if _inside(x, y, w, h):
+                shape_members.append(s)
+
         frame["x"] = _clamp(frame["x"] + dx, 0, BOARD_W)
         frame["y"] = _clamp(frame["y"] + dy, 0, BOARD_H)
         for b in members:
             b["x"] = _clamp(b["x"] + dx, 0, BOARD_W)
             b["y"] = _clamp(b["y"] + dy, 0, BOARD_H)
+        for s in stroke_members:
+            s["points"] = [{"x": _clamp(p["x"] + dx, 0, BOARD_W), "y": _clamp(p["y"] + dy, 0, BOARD_H)}
+                           for p in s["points"]]
+        for s in shape_members:
+            s["x1"] = _clamp(s["x1"] + dx, 0, BOARD_W)
+            s["y1"] = _clamp(s["y1"] + dy, 0, BOARD_H)
+            s["x2"] = _clamp(s["x2"] + dx, 0, BOARD_W)
+            s["y2"] = _clamp(s["y2"] + dy, 0, BOARD_H)
         _stamp(note)
 
     elif action == "delete_frame":
