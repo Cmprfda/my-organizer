@@ -329,6 +329,57 @@ body.topShrunk .ios-top #helpBtn {
   flex: 1 1 100%;
 }
 
+/* mapa de colunas da vista resumida: título, dica e uma linha por campo */
+.settingsPanel #viewMapBox {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.settingsPanel #viewMapTitle {
+  flex: 1 1 100%;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--text);
+}
+
+.settingsPanel .setHint {
+  flex: 1 1 100%;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.settingsPanel .viewMapRows {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 6px;
+}
+
+.settingsPanel .viewMapRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settingsPanel .viewMapRow span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--muted);
+}
+
+.settingsPanel .viewMapRow select {
+  flex: 0 1 160px;
+  min-width: 0;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
 .settingsPanel .setRowUpdate {
   border-top: 1px solid var(--border);
   padding-top: 10px;

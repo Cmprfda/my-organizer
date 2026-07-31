@@ -47,6 +47,8 @@ function applyLang() {
   $("clearNotes").textContent = t("btn_notes");
   $("fetchBtn").textContent = t("btn_fetch");
   $("reloadOnly").textContent = t("btn_reload_only");
+  $("refreshTodo").title = t("t_push_todo");
+  // o texto certo (Atualizar / Enviar (N)) vem do render(), com o nº pendente
   document.querySelector('label[for="ccrId"]').textContent = t("lbl_newccr");
   $("ccrAdd").textContent = t("btn_add");
   document.querySelector("#ccrTablebox thead tr").innerHTML =
@@ -286,4 +288,44 @@ $("sourceSel").addEventListener("change", () => {
   SOURCE = $("sourceSel").value;
   localStorage.setItem("bsp-tracker-source", SOURCE);
   load();
+});
+
+// ---------- vista resumida à medida (folhas sem as colunas do tracker) ----------
+// Só aparece nas folhas que não têm a vista resumida do tracker: aí o
+// utilizador escolhe que coluna alimenta cada campo do resumo. O mapa fica
+// guardado neste browser por livro+aba (ver loadViewMap/saveViewMap em tasks.js).
+let viewMapSig = "";
+
+function renderViewMap(data) {
+  const box = $("viewMapBox");
+  const mostra = !!(data && !data.error && (data.headers || []).length && !hasCanonicalCompact(data));
+  box.classList.toggle("hidden", !mostra);
+  if (!mostra) { viewMapSig = ""; return; }
+  const map = loadViewMap(data) || {};
+  // só reconstrói quando algo mudou — senão a atualização automática fechava
+  // um dropdown aberto (como em populateSelectors)
+  const sig = JSON.stringify([data.file, data.sheet, data.headers, map, LANG]);
+  if (sig === viewMapSig) return;
+  viewMapSig = sig;
+  $("viewMapTitle").textContent = t("viewmap_title");
+  $("viewMapHint").textContent = t("viewmap_hint");
+  $("viewMapRows").innerHTML = VIEWMAP_SLOTS.map(([slot, label]) =>
+    `<label class="viewMapRow"><span>${esc(t(label))}</span>` +
+    `<select data-slot="${slot}">` +
+    `<option value="">${esc(t("viewmap_none"))}</option>` +
+    data.headers.map(h =>
+      `<option value="${esc(h)}"${map[slot] === h ? " selected" : ""}>${esc(h)}</option>`).join("") +
+    `</select></label>`
+  ).join("");
+}
+
+$("viewMapRows").addEventListener("change", e => {
+  const sel = e.target.closest("select[data-slot]");
+  if (!sel || !lastData) return;
+  const map = loadViewMap(lastData) || {};
+  map[sel.dataset.slot] = sel.value;
+  saveViewMap(lastData, map);
+  viewMapSig = "";      // o mapa mudou: a lista tem de ser refeita
+  clearFilters();
+  render();
 });

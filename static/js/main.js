@@ -40,10 +40,13 @@ $("fetchBtn").addEventListener("click", async () => {
   setTimeout(poll, 4000);
 });
 
-$("refresh").addEventListener("click", async () => {
+// Envio das alterações locais (✎) para o Excel. O mesmo botão existe na vista
+// das Tarefas e na de Por fazer — `btn` é o que foi carregado, para ser esse a
+// mostrar "A enviar…" enquanto o pedido decorre.
+async function doPush(btn) {
   if (lastData && lastData.pending) {
-    $("refresh").disabled = true;
-    $("refresh").textContent = t("btn_pushing");
+    btn.disabled = true;
+    btn.textContent = t("btn_pushing");
     try {
       const res = await fetch("/api/push", {
         method: "POST",
@@ -59,10 +62,14 @@ $("refresh").addEventListener("click", async () => {
     } catch (err) {
       alert("Push falhou: " + err);
     }
-    $("refresh").disabled = false;
+    btn.disabled = false;
   }
+  // o render() do load() volta a pôr a etiqueta certa nos dois botões
   load(true, true);
-});
+}
+
+$("refresh").addEventListener("click", () => doPush($("refresh")));
+$("refreshTodo").addEventListener("click", () => doPush($("refreshTodo")));
 $("reloadOnly").addEventListener("click", () => load(true, true));
 $("clearLocals").addEventListener("click", async () => {
   if (!confirm(t("cfm_locals"))) return;

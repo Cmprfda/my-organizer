@@ -38,6 +38,77 @@ document.querySelectorAll(".tabs button[data-view]").forEach(b => b.addEventList
   showView(b.dataset.view);
 }));
 
+// ---------- ordem dos separadores (arrastar um para cima de outro) ----------
+// A ordem é a ordem real dos <button> dentro do .tabs (mexer no DOM, não em
+// CSS), por isso convive com o "hidden" que esconde o separador do Jira ou das
+// Tarefas (Excel): um separador escondido continua a mudar de lugar e volta a
+// aparecer no lugar novo. Fica guardada neste browser, como o tamanho do ecrã
+// dividido. O botão das Definições (sem data-view) nunca se mexe.
+const TAB_ORDER_KEY = "bsp-tracker-tab-order";
+
+const tabOrderButtons = () => [...document.querySelectorAll(".tabs button[data-view]")];
+
+function saveTabOrder() {
+  localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrderButtons().map(b => b.dataset.view)));
+}
+
+// separadores que a ordem guardada não conheça (ex.: acrescentados numa versão
+// nova da app) ficam no fim, pela ordem em que vêm no index.html
+function applyStoredTabOrder() {
+  const nav = document.querySelector(".tabs");
+  if (!nav) return;
+  let stored = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(TAB_ORDER_KEY) || "null");
+  } catch (e) {
+    stored = null;
+  }
+  if (!Array.isArray(stored) || !stored.length) return;
+  const left = new Map(tabOrderButtons().map(b => [b.dataset.view, b]));
+  const ordered = [];
+  stored.forEach(view => {
+    const b = left.get(view);
+    if (b) { ordered.push(b); left.delete(view); }
+  });
+  left.forEach(b => ordered.push(b));
+  // inserir antes do botão das Definições mantém-no sempre no fim
+  const anchor = $("settingsBtn");
+  ordered.forEach(b => nav.insertBefore(b, anchor));
+}
+applyStoredTabOrder();
+
+// só os separadores respondem ao arrasto; as faixas de largada do ecrã dividido
+// (#dropZones) são outros elementos, com os seus próprios tratadores em split.js
+const tabsNav = document.querySelector(".tabs");
+if (tabsNav) {
+  const tabDropTarget = e => (e.target && e.target.closest)
+    ? e.target.closest(".tabs button[data-view]") : null;
+
+  tabsNav.addEventListener("dragover", e => {
+    // "application/json" = arrasto interno da app (só esses podem reordenar);
+    // ficheiros/links vindos de fora continuam a não ser largáveis aqui
+    if (!tabDropTarget(e) || ![...e.dataTransfer.types].includes("application/json")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  });
+
+  tabsNav.addEventListener("drop", e => {
+    const target = tabDropTarget(e);
+    if (!target) return;
+    e.preventDefault();
+    // o mesmo payload que o dragstart do split.js já põe no arrasto
+    const p = dragPayload(e);
+    if (!p || p.kind !== "tab" || !p.view) return;
+    const dragged = tabOrderButtons().find(b => b.dataset.view === p.view);
+    if (!dragged || dragged === target) return;
+    // metade esquerda do separador de destino = antes dele, direita = depois
+    const r = target.getBoundingClientRect();
+    const after = r.width ? (e.clientX - r.left) > r.width / 2 : false;
+    target.parentNode.insertBefore(dragged, after ? target.nextSibling : target);
+    saveTabOrder();
+  });
+}
+
 // ---------- definições (tema + língua) ----------
 function setSettingsOpen(open) {
   $("settingsPanel").classList.toggle("hidden", !open);

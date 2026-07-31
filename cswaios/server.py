@@ -668,12 +668,20 @@ class Handler(BaseHTTPRequestHandler):
                 def _restart():
                     time.sleep(0.8)
                     env = dict(os.environ, BSP_SKIP_UPDATE="1")
-                    # o browser já está aberto (foi de lá que veio o pedido) e vai
-                    # recarregar sozinho (location.reload() em settings.js) — não
-                    # abrir uma segunda janela/aba ao reiniciar
                     argv = [a for a in sys.argv[1:] if a != "--no-browser"]
-                    subprocess.Popen([sys.executable,
-                                      os.path.join(HERE, "app.py"), "--no-browser"] + argv,
+                    try:
+                        import webview  # noqa: F401
+                        has_webview = True
+                    except ImportError:
+                        has_webview = False
+                    # janela nativa (pywebview): é deste processo, por isso morre
+                    # com ele — o processo novo tem de abrir a sua própria janela,
+                    # não pode levar --no-browser. Sem pywebview a UI é uma aba do
+                    # browser normal, que sobrevive a este processo e recarrega-se
+                    # sozinha (location.reload() em settings.js); nesse caso mantém-se
+                    # --no-browser para não abrir uma segunda aba.
+                    new_argv = argv if has_webview else (["--no-browser"] + argv)
+                    subprocess.Popen([sys.executable, os.path.join(HERE, "app.py")] + new_argv,
                                      cwd=HERE, env=env)
                     os._exit(0)
                 threading.Thread(target=_restart, daemon=True).start()
@@ -688,7 +696,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             column = payload["column"]
-            if column not in ("Status TC", "Status TP", "OBS"):
+            if column not in ("Status TC", "Status TP", "OBS", "Function/TC", "To Do"):
                 raise ValueError(f"coluna inválida: {column}")
             key = f'{payload["sheet"]}||{payload.get("fn", "")}||{payload.get("todo", "")}'
 

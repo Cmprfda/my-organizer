@@ -1,18 +1,32 @@
 // My Organizer — vista do Excel: leitura, tabela e editores
 
-/* Constrói a vista resumida a partir das colunas do tracker:
-   TCs/Funções · Papel (Autor/Reviewer de TC/TP) · Estado · O que fazer */
-function buildCompact(data) {
-  const h = data.headers.map(norm);
+// índices das colunas do tracker nesta folha (-1 = a coluna não existe)
+function compactIdx(data) {
+  const h = (data.headers || []).map(norm);
   const col = name => h.findIndex(x => x === norm(name));
-  const idx = {
+  return {
     fn: col("Function/TC"),
     todo: col("To Do"),
     authorTC: col("Author TC"), reviewerTC: col("Reviewer TC"), statusTC: col("Status TC"),
     authorTP: col("Author TP"), reviewerTP: col("Reviewer TP"), statusTP: col("Status TP"),
     obs: col("OBS"),
   };
-  if (idx.fn < 0 || idx.authorTC < 0 || idx.statusTC < 0) return null;
+}
+
+// Esta folha tem mesmo as colunas do tracker? Só nesse caso a vista resumida
+// normal (editável) existe — as outras folhas dependem do mapa de colunas
+// escolhido nas Definições (ver buildCustomCompact).
+function hasCanonicalCompact(data) {
+  if (!data || data.error || !(data.headers || []).length) return false;
+  const idx = compactIdx(data);
+  return idx.fn >= 0 && idx.authorTC >= 0 && idx.statusTC >= 0;
+}
+
+/* Constrói a vista resumida a partir das colunas do tracker:
+   TCs/Funções · Papel (Autor/Reviewer de TC/TP) · Estado · O que fazer */
+function buildCompact(data) {
+  if (!hasCanonicalCompact(data)) return null;
+  const idx = compactIdx(data);
 
   const me = norm(PERSON);
   const meTokens = me.split(" ").filter(t => t.length >= 4);
@@ -27,7 +41,26 @@ function buildCompact(data) {
   // "N/A" ou vazio significa que não é suposto ser feita
   const applicable = s => { const t = norm(s); return t !== "" && t !== "n/a"; };
 
+  // quem está na linha (autor/reviewer de cada vertente), para as linhas que
+  // não são minhas: sem isto ficava só "Mencionado", sem dizer de quem é
+  // (os nomes vêm do row_meta; a célula da linha serve de reserva, porque uma
+  // coluna toda vazia é retirada da resposta e deixa de ter índice aqui)
+  const peopleOf = (meta, row) => {
+    const p = (meta && meta.people) || {};
+    const quem = (k, i) => String(p[k] || val(row, i) || "").trim();
+    return [
+      [t("role_author_tc"), quem("author_tc", idx.authorTC)],
+      [t("role_reviewer_tc"), quem("reviewer_tc", idx.reviewerTC)],
+      [t("role_author_tp"), quem("author_tp", idx.authorTP)],
+      [t("role_reviewer_tp"), quem("reviewer_tp", idx.reviewerTP)],
+      // "N/A" na coluna do autor/reviewer quer dizer "ninguém", não um nome
+    ].filter(([, nome]) => nome && norm(nome) !== "n/a");
+  };
+
   const rows = data.rows.map((row, ri) => {
+    // elementos 4+ não são colunas visíveis: side (filtros), meta e
+    // colunas de cada linha de estado (edição de estados)
+    const meta = (data.row_meta || [])[ri] || null;
     const okTC = applicable(val(row, idx.statusTC));
     const okTP = applicable(val(row, idx.statusTP));
     const rolesTC = [];
@@ -45,17 +78,40 @@ function buildCompact(data) {
       if (scopes.length) parts.push(`${role} ${scopes.join("+")}`);
     }
     let papel = parts.join(", ");
+    // chave de papel usada pelos filtros/contadores (elemento 9): continua a
+    // ser "Autor"/"Reviewer"/"Mencionado" mesmo quando a coluna passa a mostrar
+    // nomes de outras pessoas, para os botões do resumo não mudarem de sentido
+    let roleKey = papel;
+    const sTC = val(row, idx.statusTC), sTP = val(row, idx.statusTP);
     if (!parts.length) {
       const soVertentesNA = [idx.authorTC, idx.reviewerTC, idx.authorTP, idx.reviewerTP]
         .some(i => isMe(row, i));
-      if (soVertentesNA) return null;   // nada é suposto ser feito nesta tarefa
-      papel = t("role_mentioned");
+      // nada é suposto ser feito nesta tarefa (só me toca em vertentes N/A) —
+      // em "Ver tudo" a linha fica na mesma, senão a vista escondia linhas
+      if (soVertentesNA && !showAll) return null;
+      // nomes/"sem responsável" só em "Ver tudo" — na vista pessoal mantém-se
+      // "Mencionado" como sempre foi, para não mudar o que já lá estava
+      if (showAll) {
+        const quem = peopleOf(meta, row);
+        if (quem.length) papel = quem.map(([r, nome]) => `${r}: ${nome}`).join("\n");
+        // ninguém atribuído numa linha que é mesmo para fazer: é preciso saber-se
+        else if (applicable(sTC) || applicable(sTP)) papel = t("role_unassigned");
+        else papel = t("role_mentioned");
+        roleKey = papel === t("role_unassigned") ? t("role_unassigned") : t("role_mentioned");
+      } else {
+        papel = t("role_mentioned");
+        roleKey = t("role_mentioned");
+      }
     }
 
     const lines = [], linesCols = [];
-    const sTC = val(row, idx.statusTC), sTP = val(row, idx.statusTP);
     if (rolesTC.length && sTC && norm(sTC) !== "n/a") { lines.push("TC: " + sTC); linesCols.push("Status TC"); }
     if (rolesTP.length && sTP && norm(sTP) !== "n/a") { lines.push("TP: " + sTP); linesCols.push("Status TP"); }
+    // linha que não é minha: mostra as vertentes que existem mesmo
+    if (!lines.length && !parts.length) {
+      if (applicable(sTC)) { lines.push("TC: " + sTC); linesCols.push("Status TC"); }
+      if (applicable(sTP)) { lines.push("TP: " + sTP); linesCols.push("Status TP"); }
+    }
     if (!lines.length && sTC) { lines.push(sTC); linesCols.push("Status TC"); }
     const estado = lines.length === 1 ? lines[0].replace(/^TC: |^TP: /, "") : lines.join("\n");
 
@@ -70,6 +126,10 @@ function buildCompact(data) {
             : "On the other side";
 
     let resumo = val(row, idx.todo);
+    // valor cru da coluna "To Do" (antes do resumo gerado e antes de lhe ser
+    // colada a OBS): é este que o editor grava, para nunca escrever na folha
+    // o texto que a app gerou sozinha
+    const rawTodo = resumo;
     if (!resumo) {
       // linhas de review costumam ter o "To Do" vazio — gera um resumo a partir do papel
       const gen = [];
@@ -80,18 +140,86 @@ function buildCompact(data) {
     const obs = val(row, idx.obs);
     if (obs) resumo += "\u001F" + obs;   // separador interno para formatar a OBS à parte
 
-    // elementos 4+ não são colunas visíveis: side (filtros), meta e
-    // colunas de cada linha de estado (edição de estados)
-    const meta = (data.row_meta || [])[ri] || null;
-    const n = meta && meta.note;
-    const feitos = n && n.checks
-      ? CHECKS.filter(([k]) => n.checks[k]).map(([, , s]) => s).join(" ")
-      : "";
-    const execDisplay = n ? [n.tag, feitos, n.note].filter(Boolean).join("\n") : "";
-    return [val(row, idx.fn), papel, estado, resumo, execDisplay, side, meta, linesCols];
+    const execDisplay = execSummary(meta);
+    return [val(row, idx.fn), papel, estado, resumo, execDisplay, side, meta, linesCols, rawTodo, roleKey];
   }).filter(Boolean);
 
-  return { headers: [t("hdr_fn"), t("hdr_role"), t("hdr_status"), t("hdr_todo"), t("hdr_exec")], rows };
+  return { headers: compactHeaders(), rows };
+}
+
+// resumo de texto da nota de execução (etiqueta + checklist + nota)
+function execSummary(meta) {
+  const n = meta && meta.note;
+  if (!n) return "";
+  const feitos = n.checks
+    ? CHECKS.filter(([k]) => n.checks[k]).map(([, , s]) => s).join(" ")
+    : "";
+  return [n.tag, feitos, n.note].filter(Boolean).join("\n");
+}
+
+const compactHeaders = () =>
+  [t("hdr_fn"), t("hdr_role"), t("hdr_status"), t("hdr_todo"), t("hdr_exec")];
+
+/* ---------- vista resumida à medida (qualquer folha, só leitura) ----------
+   Para folhas sem as colunas do tracker, o utilizador escolhe nas Definições
+   que coluna alimenta cada campo da vista resumida. Como as colunas não são as
+   do tracker, nada aqui se edita nem se escreve no Excel: as células saem como
+   texto simples, sem os editores da vista resumida normal. */
+const VIEWMAP_PREFIX = "bsp-tracker-viewmap";
+// campos da vista resumida que se podem mapear: [chave, chave i18n do rótulo]
+const VIEWMAP_SLOTS = [
+  ["fn", "viewmap_fn"], ["author", "viewmap_author"], ["reviewer", "viewmap_reviewer"],
+  ["status", "viewmap_status"], ["todo", "viewmap_todo"],
+];
+
+function viewMapKey(data) {
+  return `${VIEWMAP_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
+}
+
+function loadViewMap(data) {
+  if (!data || !data.sheet) return null;
+  try {
+    const raw = JSON.parse(localStorage.getItem(viewMapKey(data)) || "null");
+    return raw && typeof raw === "object" ? raw : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveViewMap(data, map) {
+  if (!data || !data.sheet) return;
+  const limpo = {};
+  Object.entries(map || {}).forEach(([k, v]) => { if (v) limpo[k] = v; });
+  if (Object.keys(limpo).length) localStorage.setItem(viewMapKey(data), JSON.stringify(limpo));
+  else localStorage.removeItem(viewMapKey(data));
+}
+
+function buildCustomCompact(data) {
+  if (!data || data.error || !(data.headers || []).length) return null;
+  if (hasCanonicalCompact(data)) return null;   // a folha do tracker tem vista própria
+  const map = loadViewMap(data);
+  if (!map) return null;
+  const h = data.headers.map(norm);
+  const col = name => (name ? h.findIndex(x => x === norm(name)) : -1);
+  const idx = {
+    fn: col(map.fn), author: col(map.author), reviewer: col(map.reviewer),
+    status: col(map.status), todo: col(map.todo),
+  };
+  // nenhuma das colunas escolhidas existe nesta folha (mudou de aba ou de livro)
+  if (!Object.values(idx).some(i => i >= 0)) return null;
+
+  const cel = (row, i) => (i >= 0 && row[i]) ? String(row[i]).trim() : "";
+  const rows = data.rows.map((row, ri) => {
+    const meta = (data.row_meta || [])[ri] || null;
+    const quem = [[t("role_author"), cel(row, idx.author)], [t("role_reviewer"), cel(row, idx.reviewer)]]
+      .filter(([, nome]) => nome);
+    // side/linesCols/rawTodo/roleKey ficam vazios: sem os papéis e os estados do
+    // tracker não há "lado" nem coluna do Excel para onde escrever
+    return [cel(row, idx.fn), quem.map(([r, nome]) => `${r}: ${nome}`).join("\n"),
+      cel(row, idx.status), cel(row, idx.todo), "", null, meta, [], "", ""];
+  });
+
+  return { headers: compactHeaders(), rows, readonly: true };
 }
 
 let lastSelectorsSig = "";
@@ -135,6 +263,31 @@ function obsHtml(obs, meta) {
     : "";
   if (!obs) return editable ? `<span class="obs addnote"${attrs}>${t("addobs")}</span>` : "";
   return `<span class="obs${local ? " local" : ""}"${attrs}>${t("obs_prefix")} ${esc(obs)}${local ? " ✎" : ""}</span>`;
+}
+
+// O Function/TC também é editável: fica alteração local (✎) até ao Push.
+// data-fncur leva o valor atual (já com qualquer alteração local aplicada),
+// porque meta.orig guarda sempre o valor da folha — sem isto, reabrir o editor
+// antes do Push mostrava o valor antigo em vez do que se acabou de escrever.
+function fnHtml(fn, meta) {
+  const editable = !!(meta && lastData && (lastData.xlcols || {})["Function/TC"]);
+  const local = !!(meta && meta.over && meta.over["Function/TC"]);
+  const attrs = editable
+    ? ` data-fnxlrow="${esc(meta.xlrow)}" data-fncur="${esc(fn || "")}" title="${local ? t("t_local") : t("t_edit_fn")}"`
+    : "";
+  return `<span class="fnText${local ? " local" : ""}"${attrs}>${esc(fn)}${local ? " ✎" : ""}</span>`;
+}
+
+// O "To Do" também é editável, tal como a OBS — grava como alteração local e
+// só chega à folha no Push. rawTodo é o valor real da coluna (sem o resumo
+// gerado quando a célula está vazia), para o editor nunca gravar texto gerado.
+function todoTextHtml(display, rawTodo, meta) {
+  const editable = !!(meta && lastData && (lastData.xlcols || {})["To Do"]);
+  const local = !!(meta && meta.over && meta.over["To Do"]);
+  const attrs = editable
+    ? ` data-todoxlrow="${esc(meta.xlrow)}" data-todocur="${esc(rawTodo || "")}" title="${local ? t("t_local") : t("t_edit_todo")}"`
+    : "";
+  return `<span class="todoText${local ? " local" : ""}"${attrs}>${esc(display)}${local ? " ✎" : ""}</span>`;
 }
 
 // conteúdo da célula de execução (etiqueta, checklist e nota)
@@ -245,6 +398,7 @@ function render() {
   if (!data) return;
   populateSelectors(data);
   renderVersionBadge(data);
+  renderViewMap(data);
   // instância de desenvolvimento: marcar bem, para não se confundir com a estável
   if (data.mode === "dev" && !document.body.classList.contains("devmode")) {
     document.body.classList.add("devmode");
@@ -258,9 +412,15 @@ function render() {
   // fonte web: não há ficheiro local para descarregar nem Excel para fechar
   $("fetchBtn").classList.toggle("hidden", web);
   const pending = data.pending || 0;
-  $("refresh").textContent = pending ? `${t("btn_push")} (${pending})` : t("btn_refresh");
+  const pushLabel = pending ? `${t("btn_push")} (${pending})` : t("btn_refresh");
+  $("refresh").textContent = pushLabel;
   $("reloadOnly").classList.toggle("hidden", !pending);
   $("clearLocals").classList.toggle("hidden", !pending);
+  // o mesmo botão na página Por fazer, para não ser preciso voltar às Tarefas
+  // só para enviar (só aparece quando há mesmo algo por enviar)
+  $("refreshTodo").textContent = pushLabel;
+  $("refreshTodo").title = t("t_push_todo");
+  $("refreshTodo").classList.toggle("hidden", !pending);
 
   if (data.error) {
     tbl.classList.add("hidden");
@@ -290,9 +450,13 @@ function render() {
       (web ? "" : ` <button class="mini" id="cycleNow">${t("btn_cycle")}</button>`) : "") +
     (data.notice ? `<br><span class="notice">ℹ ${esc(data.notice)}</span>` : "");
 
-  const compact = !showAll ? buildCompact(data) : null;
+  // vista resumida do tracker ou, para outras folhas, a que o utilizador
+  // mapeou nas Definições (só leitura)
+  const compact = buildCompact(data) || buildCustomCompact(data);
   $("viewToggle").classList.toggle("hidden", !compact);
   const useCompact = compact && compactView;
+  // vista mapeada à medida: nada aqui se escreve no Excel
+  const readOnlyRows = !!(useCompact && compact.readonly);
   // lista/caixas vale para as duas vistas (resumida e completa)
   $("taskMode").classList.remove("hidden");
   const headers = useCompact ? compact.headers : data.headers;
@@ -309,9 +473,13 @@ function render() {
 
   // resumo: contagens calculadas antes do filtro de estado, para os botões não desaparecerem
   const statusIdx = headers.findIndex(isStatusHeader);
-  const roleIdx = useCompact ? 1 : -1;
+  // a coluna do papel pode mostrar nomes de outras pessoas; quem manda nos
+  // filtros/contadores é a chave de papel (elemento 9), que continua a ser
+  // "Autor"/"Reviewer"/"Mencionado"/"Sem responsável"
+  const roleIdx = useCompact ? 9 : -1;
+  const exactRoles = [t("role_mentioned"), t("role_unassigned")];
   const roleMatches = papel =>
-    [...roleFilters].some(f => f === t("role_mentioned") ? papel === f : papel.includes(f));
+    [...roleFilters].some(f => exactRoles.includes(f) ? papel === f : String(papel).includes(f));
   const sideIdx = useCompact ? 5 : -1;
   const roleActive = roleFilters.size && roleIdx >= 0;
   const sideActive = sideFilters.size && sideIdx >= 0;
@@ -333,9 +501,13 @@ function render() {
 
   if (roleIdx >= 0 && searched.length) {
     const countRoles = arr => {
-      const c = { [t("role_author")]: 0, [t("role_reviewer")]: 0, [t("role_mentioned")]: 0 };
+      const c = {
+        [t("role_author")]: 0, [t("role_reviewer")]: 0,
+        [t("role_mentioned")]: 0, [t("role_unassigned")]: 0,
+      };
       arr.forEach(r => {
-        const p = r[roleIdx];
+        const p = String(r[roleIdx] === undefined ? "" : r[roleIdx]);
+        if (p === t("role_unassigned")) { c[t("role_unassigned")]++; return; }
         if (p.includes(t("role_author"))) c[t("role_author")]++;
         if (p.includes(t("role_reviewer"))) c[t("role_reviewer")]++;
         if (p === t("role_mentioned")) c[t("role_mentioned")]++;
@@ -398,6 +570,9 @@ function render() {
 
   function statusCell(r, ri, i) {
     const meta = currentMeta[ri];
+    // vista mapeada à medida: distintivos sem edição (não há coluna do tracker
+    // para onde escrever o estado)
+    if (readOnlyRows) return statusBadges(r[2] || "");
     if (useCompact) {
       const lines = String(r[2]).split("\n").filter(l => l.trim());
       const cols = r[7] || [];
@@ -410,7 +585,8 @@ function render() {
   // "O que fazer" + OBS da linha (a OBS vem colada ao resumo pelo separador \u001F)
   function todoObsHtml(r, ri) {
     const [todo, obs] = String(r[3] === undefined ? "" : r[3]).split("\u001F");
-    return `${esc(todo)}${obsHtml(obs || "", currentMeta[ri])}`;
+    const rawTodo = r[8] || "";
+    return `${todoTextHtml(todo, rawTodo, currentMeta[ri])}${obsHtml(obs || "", currentMeta[ri])}`;
   }
 
   // o botão "+ TODO" só existe enquanto a linha não estiver na TODO list
@@ -428,15 +604,23 @@ function render() {
         const c = r[i] !== undefined ? r[i] : "";
         if (useCompact ? i === 2 : isStatusHeader(headers[i]))
           return `<td>${statusCell(r, ri, i)}</td>`;
+        // vista mapeada à medida: texto simples, sem nada em que se possa clicar
+        // para editar (esta vista nunca escreve no Excel)
+        if (readOnlyRows) return `<td${i === 0 ? ' class="fn"' : (i === 1 ? ' class="role"' : "")}>${esc(c)}</td>`;
         if (useCompact && i === 0) {
           const m = currentMeta[ri] || {};
           const linked = notesForTask(m.fn || c, m.todo || "");
           const flag = linked.length
             ? `<button type="button" class="taskNoteFlag" data-tasklink-fn="${esc(m.fn || c)}" data-tasklink-todo="${esc(m.todo || "")}" title="${esc(t("t_open_linked_note"))}">📌</button>`
             : "";
-          return `<td class="fn">${esc(c)}${flag}</td>`;
+          return `<td class="fn">${fnHtml(c, m)}${flag}</td>`;
         }
-        if (useCompact && i === 1) return `<td class="role">${esc(c)}</td>`;
+        if (useCompact && i === 1) {
+          // ninguém atribuído: a célula fica marcada, para saltar à vista
+          const semDono = r[9] === t("role_unassigned");
+          return `<td class="role${semDono ? " unassigned" : ""}"` +
+            `${semDono ? ` title="${esc(t("t_unassigned"))}"` : ""}>${esc(c)}</td>`;
+        }
         if (useCompact && i === 4) {
           const m = currentMeta[ri] || {};
           const { inner, title } = execCellHtml(m);
@@ -508,6 +692,10 @@ function tbodyTap(e) {
   if (badge) return openStatusEditor(badge);
   const obs = e.target.closest("[data-obsxlrow]");
   if (obs && !obs.dataset.editing) return openObsEditor(obs);
+  const todoTxt = e.target.closest("[data-todoxlrow]");
+  if (todoTxt && !todoTxt.dataset.editing) return openTodoTextEditor(todoTxt);
+  const fnTxt = e.target.closest("[data-fnxlrow]");
+  if (fnTxt && !fnTxt.dataset.editing) return openFnEditor(fnTxt);
   const cell = e.target.closest(".execCell");
   if (cell && !cell.dataset.editing) openNoteEditor(cell);
 }
@@ -642,6 +830,115 @@ function openObsEditor(span) {
   span.querySelector(".actClear").addEventListener("click", e => {
     e.stopPropagation();
     grava(meta.over && meta.over["OBS"] ? null : "");
+  });
+}
+
+// Editor do "To Do": grava como alteração local (✎), tal como a OBS — só o
+// Push escreve mesmo na coluna "To Do" do Excel.
+function openTodoTextEditor(span) {
+  const meta = metaByRow(span.dataset.todoxlrow);
+  if (!meta) { clientLog(`todo: célula sem metadados (linha ${span.dataset.todoxlrow})`); return; }
+  const atual = span.dataset.todocur || "";
+  span.dataset.editing = "1";
+  editorOpen = true;
+  span.innerHTML =
+    `<textarea class="noteText" rows="3" placeholder="${t("ph_todo")}">${esc(atual)}</textarea>` +
+    editActions();
+  const txt = span.querySelector("textarea");
+  txt.focus();
+
+  async function grava(valor) {
+    editorOpen = false;
+    try {
+      const cols = lastData.xlcols || {};
+      const res = await fetch("/api/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sheet: lastData.sheet, fn: meta.fn, todo: meta.todo,
+          column: "To Do", value: valor,
+          base: (meta.orig || {})["To Do"] || "",
+          file: lastData.file, xlrow: meta.xlrow,
+          xlcol: cols["To Do"], fncol: cols.fn,
+        }),
+      });
+      const out = await res.json();
+      if (!out.ok) alert(`${t("err_save")} ` + (out.error || "?"));
+    } catch (err) {
+      alert(`${t("err_save")} ` + err);
+    }
+    load();
+  }
+
+  span.querySelector(".actSave").addEventListener("click", e => {
+    e.stopPropagation();
+    grava(txt.value);
+  });
+  span.querySelector(".actCancel").addEventListener("click", e => {
+    e.stopPropagation();
+    editorOpen = false;
+    refreshTaskViews();
+  });
+  // limpar = repor o que está na folha (deixa de haver alteração local)
+  span.querySelector(".actClear").addEventListener("click", e => {
+    e.stopPropagation();
+    grava(meta.over && meta.over["To Do"] ? null : "");
+  });
+}
+
+// Editor do "Function/TC": mesma lógica, mas campo de uma linha (é um
+// identificador curto, não texto livre em várias linhas como o "To Do"/OBS).
+function openFnEditor(span) {
+  const meta = metaByRow(span.dataset.fnxlrow);
+  if (!meta) { clientLog(`fn: célula sem metadados (linha ${span.dataset.fnxlrow})`); return; }
+  const atual = span.dataset.fncur || (meta.orig || {})["Function/TC"] || "";
+  span.dataset.editing = "1";
+  editorOpen = true;
+  span.innerHTML =
+    `<input type="text" class="noteText fnEdit" value="${esc(atual)}">` +
+    editActions();
+  const inp = span.querySelector("input");
+  inp.focus();
+  inp.select();
+
+  async function grava(valor) {
+    editorOpen = false;
+    try {
+      const cols = lastData.xlcols || {};
+      const res = await fetch("/api/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sheet: lastData.sheet, fn: meta.fn, todo: meta.todo,
+          column: "Function/TC", value: valor,
+          base: (meta.orig || {})["Function/TC"] || "",
+          file: lastData.file, xlrow: meta.xlrow,
+          xlcol: cols["Function/TC"], fncol: cols.fn,
+        }),
+      });
+      const out = await res.json();
+      if (!out.ok) alert(`${t("err_save")} ` + (out.error || "?"));
+    } catch (err) {
+      alert(`${t("err_save")} ` + err);
+    }
+    load();
+  }
+
+  span.querySelector(".actSave").addEventListener("click", e => {
+    e.stopPropagation();
+    grava(inp.value);
+  });
+  span.querySelector(".actCancel").addEventListener("click", e => {
+    e.stopPropagation();
+    editorOpen = false;
+    refreshTaskViews();
+  });
+  span.querySelector(".actClear").addEventListener("click", e => {
+    e.stopPropagation();
+    // ao contrário da OBS/"To Do", uma célula vazia não faz sentido aqui — é a
+    // identidade da linha. Sem alteração pendente, "Limpar" só fecha o editor.
+    if (meta.over && meta.over["Function/TC"]) grava(null);
+    else { editorOpen = false; refreshTaskViews(); }
   });
 }
 

@@ -144,16 +144,42 @@ td .obs {
 }
 
 /* OBS editável (escreve na coluna OBS do Excel) */
-td .obs[data-obsri] {
+td .obs[data-obsxlrow] {
   cursor: pointer;
 }
 
-td .obs[data-obsri]:hover {
+td .obs[data-obsxlrow]:hover {
   color: var(--text);
 }
 
 td .obs.local {
   color: var(--accent-text);
+}
+
+/* Function/TC e "To Do" editáveis (escrevem nas colunas do Excel, no Push) */
+td .fnText[data-fnxlrow],
+td .todoText[data-todoxlrow] {
+  cursor: pointer;
+}
+
+td .fnText[data-fnxlrow]:hover,
+td .todoText[data-todoxlrow]:hover {
+  color: var(--accent-text);
+}
+
+/* alteração local por enviar (✎), como nos estados e na OBS */
+td .fnText.local,
+td .todoText.local {
+  color: var(--accent-text);
+  font-style: italic;
+}
+
+/* com o editor aberto o campo ocupa a célula toda */
+td .fnText[data-editing],
+td .todoText[data-editing] {
+  display: block;
+  cursor: default;
+  font-style: normal;
 }
 
 .badge {
@@ -189,6 +215,21 @@ td .obs.local {
 .role {
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* a coluna do papel mostra os nomes de quem está na linha: várias linhas */
+td.role {
+  white-space: pre-line;
+}
+
+/* Linha sem ninguém atribuído: tem de saltar à vista. O seletor com #tbody é
+   preciso para ganhar às regras por id da vista estreita (responsive.css). */
+td.role.unassigned,
+.tablebox.cards td.role.unassigned,
+#tbody td.role.unassigned {
+  background: var(--status-blocked-bg);
+  color: var(--status-blocked-fg);
+  font-weight: 700;
 }
 
 /* ---------- vista em caixas (mesma tabela, disposta em cartões) ---------- */
@@ -270,7 +311,8 @@ td .obs.local {
 .tablebox.cards td.role {
   color: var(--muted);
   font-size: 12.5px;
-  white-space: normal;
+  /* pre-line (e não normal): a coluna do papel pode trazer um nome por linha */
+  white-space: pre-line;
 }
 
 .tablebox.cards td.todoActionCell {

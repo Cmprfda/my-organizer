@@ -19,9 +19,10 @@ from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_fo
                     graph_load_rows, graph_modified, graph_state, has_book)
 from .i18n import msg
 from .logs import log_event
-from .store import load_ccrs, load_notes, load_overrides, save_overrides
+from .store import (load_ccrs, load_notes, load_overrides, save_notes,
+                    save_overrides)
 from .text import cell_to_text, normalize
-from .todos import load_todo
+from .todos import load_todo, save_todo
 
 # última leitura bem-sucedida por (ficheiro, aba, pessoa, todas) — serve de
 # fallback quando o Excel tem o ficheiro bloqueado em exclusivo
@@ -212,6 +213,12 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
         # lista de estados
         if "obs" in hidx:
             orig["OBS"] = cells[hidx["obs"]]
+        # o Function/TC e o "To Do" também se editam e se enviam para o Excel
+        # (guarda-se o valor cru da folha, que serve de base ao override)
+        if "function/tc" in hidx:
+            orig["Function/TC"] = fn_key
+        if "to do" in hidx:
+            orig["To Do"] = todo_key
 
         # papel por vertente (usado para sincronizar TODO por regras de autoria/review)
         role_sync = {"author": [], "reviewer": []}
@@ -246,10 +253,18 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
             if not entry:
                 overrides.pop(okey)
 
+        # quem está ligado à linha (autor/reviewer de cada vertente): texto cru
+        # da folha, só para mostrar — não entra nos overrides nem na escrita
+        people = {}
+        for want, key in (("author tc", "author_tc"), ("reviewer tc", "reviewer_tc"),
+                          ("author tp", "author_tp"), ("reviewer tp", "reviewer_tp")):
+            people[key] = cells[hidx[want]].strip() if want in hidx else ""
+
         if show_all or not person_norm or any(mentions_person(c) for c in cells if c):
             data_rows.append(cells[:len(headers)])
             row_meta.append({"fn": fn_key, "todo": todo_key, "orig": orig, "over": over,
                              "note": notes.get(okey), "xlrow": xlrow,
+                             "people": people,
                              "todo_sync_role": role_sync})
 
     if overrides_stale:
@@ -270,7 +285,8 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     # colunas reais na folha (1-based), para a escrita via Excel/COM
     xlcols = {}
     for want, name in (("status tc", "Status TC"), ("status tp", "Status TP"),
-                       ("obs", "OBS"), ("function/tc", "fn")):
+                       ("obs", "OBS"), ("function/tc", "fn"),
+                       ("function/tc", "Function/TC"), ("to do", "To Do")):
         if want in hidx:
             xlcols[name] = hidx[want] + 1
 
@@ -289,6 +305,42 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     }
 
 
+def _relink_row(sheet, fn, todo, new_fn, new_todo):
+    """Depois de o Function/TC ou o "To Do" mudarem mesmo na folha, refaz as
+    ligações que usam a identidade da linha (aba||função||to do): a nota fixada
+    na tarefa e os itens do TODO que apontam para ela. Sem isto, as ligações
+    partiam-se em silêncio no Push."""
+    old_key = f"{sheet}||{fn}||{todo}"
+    new_key = f"{sheet}||{new_fn}||{new_todo}"
+
+    notes = load_notes()
+    if old_key in notes:
+        notes[new_key] = notes.pop(old_key)
+        save_notes(notes)
+
+    todos = load_todo()
+    changed = False
+    sheet_norm = normalize(sheet)
+    for item in todos:
+        if not isinstance(item, dict):
+            continue
+        ref = item.get("ref")
+        if not isinstance(ref, dict):
+            continue
+        # aba em branco = ligação antiga sem aba guardada; conta como
+        # coincidência (mesma convenção do sync com o TODO em todos.py)
+        ref_sheet = str(ref.get("sheet") or "")
+        if ref_sheet and normalize(ref_sheet) != sheet_norm:
+            continue
+        if str(ref.get("fn") or "") != fn or str(ref.get("todo") or "") != todo:
+            continue
+        ref["fn"] = new_fn
+        ref["todo"] = new_todo
+        changed = True
+    if changed:
+        save_todo(todos)
+
+
 def push_overrides(target=None):
     """Escreve no Excel/OneDrive as alterações de estado guardadas localmente.
     Devolve (ficheiro, enviadas, falhadas). Usado pelo /api/push e pela linha
@@ -302,10 +354,14 @@ def push_overrides(target=None):
         raise ValueError("ficheiro desconhecido")
     overrides = load_overrides()
     pushed, failed = 0, []
+    # chaves novas já usadas nesta chamada (linhas renomeadas): impede que duas
+    # linhas diferentes, ambas renomeadas para a mesma identidade neste mesmo
+    # Push, fundam por engano as suas colunas pendentes numa só
+    renamed_this_call = set()
     for key in list(overrides.keys()):
         sheet, _, rest = key.partition("||")
         fn, _, todo = rest.partition("||")
-        entry = overrides[key]
+        entry = overrides.get(key)
         if not isinstance(entry, dict):
             continue
         coords = locate_row(target, sheet, fn, todo)
@@ -313,21 +369,62 @@ def push_overrides(target=None):
             failed.append({"fn": fn, "error": "linha não encontrada na folha"})
             continue
         xlrow, hidx = coords
+        # o Function/TC e o "To Do" fazem parte da identidade da linha: se
+        # forem escritos, a identidade muda e há ligações a refazer
+        new_fn, new_todo = fn, todo
+        # a escrita confirma sempre a célula do Function/TC antes de gravar;
+        # depois de a mudarmos, as restantes colunas desta linha têm de ser
+        # confirmadas com o valor novo
+        guard_fn = fn
         for col_name, o in list(entry.items()):
             want = normalize(col_name)
             if want not in hidx or not isinstance(o, dict):
-                failed.append({"fn": fn, "error": f"coluna {col_name} não encontrada"})
+                failed.append({"fn": guard_fn, "error": f"coluna {col_name} não encontrada"})
                 continue
+            valor = o.get("value", "")
             ok, msg_text = write_status_to_excel(
                 target, sheet, xlrow, hidx[want] + 1,
-                hidx["function/tc"] + 1, fn, o.get("value", ""))
+                hidx["function/tc"] + 1, guard_fn, valor)
             if ok:
                 entry.pop(col_name)
                 pushed += 1
+                if col_name == "Function/TC":
+                    new_fn = guard_fn = str(valor)
+                elif col_name == "To Do":
+                    new_todo = str(valor)
             else:
-                failed.append({"fn": fn, "error": msg_text})
+                failed.append({"fn": guard_fn, "error": msg_text})
+        if (new_fn, new_todo) != (fn, todo):
+            if entry:
+                # ainda sobram colunas por enviar nesta linha: passam para a
+                # chave nova, senão ficavam órfãs (a leitura seguinte calcula a
+                # identidade a partir do conteúdo novo da folha) — a não ser que
+                # outra linha deste mesmo Push já tenha sido renomeada para a
+                # mesma identidade nova, caso em que fundir destruiria as
+                # colunas de uma das duas linhas: fica por enviar e falha, em
+                # vez de contaminar a linha errada
+                new_key = f"{sheet}||{new_fn}||{new_todo}"
+                if new_key in renamed_this_call:
+                    for col_name in list(entry.keys()):
+                        failed.append({"fn": guard_fn, "error":
+                                       f"coluna {col_name} não enviada: outra linha "
+                                       "deste Push ficou com a mesma identidade nova"})
+                    entry = {}
+                    overrides.pop(key, None)
+                else:
+                    overrides.pop(key, None)
+                    destino = overrides.get(new_key)
+                    if not isinstance(destino, dict):
+                        destino = {}
+                        overrides[new_key] = destino
+                    destino.update(entry)
+                    entry = destino
+                    renamed_this_call.add(new_key)
+            else:
+                renamed_this_call.add(f"{sheet}||{new_fn}||{new_todo}")
+            _relink_row(sheet, fn, todo, new_fn, new_todo)
         if not entry:
-            overrides.pop(key)
+            overrides.pop(key, None)
     save_overrides(overrides)
     return target, pushed, failed
 
