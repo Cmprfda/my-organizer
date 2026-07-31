@@ -23,8 +23,10 @@ Extrai-o para uma pasta tua (ex.: no Ambiente de Trabalho) e **duplo clique em
 
 ## Uso diário
 
-1. **Duplo clique no atalho "My Organizer"** (ou em `run.bat`) — o browser
-   abre sozinho em <http://localhost:8765>. Fecha a janela preta para parar.
+1. **Duplo clique no atalho "My Organizer"** — a app abre numa janela própria
+   (sem consola). Fecha essa janela para parar. Se precisares de ver os
+   endereços do servidor ou depurar um problema, corre `run-with-server.bat`
+   em vez do atalho — mesma app, mas com a janela do servidor visível.
 
 2. **Obtém o Excel**: usa o botão **"Obter do SharePoint"** na app (descarrega
    pelo teu browser, com a tua sessão) ou descarrega manualmente:

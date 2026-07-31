@@ -85,7 +85,7 @@ def cmd_update(args):
     if not check_update():
         print(f"Ja estas na versao mais recente (v{APP_VERSION}).")
         return 0
-    print("Atualizacao aplicada. Arranca a app outra vez (run.bat) para a usar.")
+    print("Atualizacao aplicada. Arranca a app outra vez (atalho \"My Organizer\") para a usar.")
     port = _running_port(args)
     if port:
         print(f"Nota: o tracker esta a correr em http://localhost:{port} — "
@@ -174,7 +174,7 @@ def cmd_logs(args):
 def cmd_open(args):
     port = _running_port(args)
     if not port:
-        print("O tracker nao esta a correr. Arranca-o com run.bat.")
+        print("O tracker nao esta a correr. Arranca-o com o atalho \"My Organizer\".")
         return 1
     webbrowser.open(f"http://localhost:{port}")
     return 0

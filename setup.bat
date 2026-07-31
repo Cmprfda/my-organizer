@@ -77,4 +77,4 @@ echo.
 echo Setup concluido! A arrancar a app...
 echo (Da proxima vez basta usar o atalho do Ambiente de Trabalho)
 echo.
-call "%~dp0run.bat"
+call "%~dp0run-with-server.bat"

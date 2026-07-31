@@ -1,5 +1,7 @@
 @echo off
-rem My Organizer - arranque (usa setup.bat na primeira vez)
+rem My Organizer - arranque com a janela do servidor visivel (usa setup.bat na
+rem primeira vez). A entrada principal e o atalho "My Organizer" (My Organizer.vbs,
+rem sem consola) - usa este ficheiro diretamente so para depuracao/dev.
 
 rem aplicar atualizacao pendente deste proprio ficheiro (escrita pela app)
 if exist "%~f0.new" (

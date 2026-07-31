@@ -80,10 +80,11 @@ def _apply_zip(zip_path, new_version):
                 continue
             if not os.path.isfile(full):
                 continue
-            # o run.bat pode estar em execução (foi ele que lançou a app) —
-            # reescrevê-lo em execução corrompe o cmd. Fica como .new e o
-            # próprio run.bat aplica a troca no próximo arranque.
-            if name.lower() == "run.bat":
+            # o run-with-server.bat pode estar em execução (foi ele que lançou
+            # a app) — reescrevê-lo em execução corrompe o cmd. Fica como
+            # .new e o próprio run-with-server.bat aplica a troca no próximo
+            # arranque.
+            if name.lower() == "run-with-server.bat":
                 try:
                     if os.path.isfile(dest) and filecmp.cmp(full, dest, shallow=False):
                         continue  # não mudou — nada a fazer
@@ -91,6 +92,15 @@ def _apply_zip(zip_path, new_version):
                     pass
                 dest += ".new"
             shutil.copy2(full, dest)
+    # v88: run.bat foi renomeado para run-with-server.bat — o zip novo já não
+    # o traz, por isso o ficheiro antigo (de instalações anteriores) fica
+    # órfão; remove-se aqui em vez de o deixar parado na pasta para sempre.
+    stale_run_bat = os.path.join(HERE, "run.bat")
+    if os.path.isfile(stale_run_bat):
+        try:
+            os.remove(stale_run_bat)
+        except OSError:
+            pass
     log_event(f"app atualizada v{APP_VERSION} -> v{new_version} a partir de {zip_path}")
 
 

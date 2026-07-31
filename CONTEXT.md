@@ -35,7 +35,7 @@
 - Rede local LAN (acesso por IP e localhost).
 
 **Automação de release**
-- Scripts: [make_release.py](make_release.py), [make-release.bat](make-release.bat), [run-dev.bat](run-dev.bat), [run.bat](run.bat), [setup.bat](setup.bat).
+- Scripts: [make_release.py](make_release.py), [make-release.bat](make-release.bat), [run-dev.bat](run-dev.bat), [run-with-server.bat](run-with-server.bat), [setup.bat](setup.bat).
 - Cada release termina com **commit + push** para `origin/main` (repositório privado `Cmprfda/my-organizer`); o passo 9 do `make_release.py` publica ainda o zip em GitHub Releases com a tag `vN`.
 
 ---
@@ -98,8 +98,8 @@ Frontend (feedback manual ou erro JS) + backend (exceções) -> `feedback.stage_
 - [run-dev.bat](run-dev.bat)
   - Arranque DEV (porta 8766), sem auto-update.
 
-- [run.bat](run.bat)
-  - Arranque estável (porta 8765), dependências, stop de instância anterior, auto-update flow.
+- [run-with-server.bat](run-with-server.bat)
+  - Arranque estável (porta 8765), dependências, stop de instância anterior, auto-update flow. Entrada principal é o atalho "My Organizer" (My Organizer.vbs); este ficheiro é a alternativa com consola visível.
 
 - [setup.bat](setup.bat)
   - Setup inicial (Python/dependências/atalho).
@@ -171,7 +171,7 @@ Frontend (feedback manual ou erro JS) + backend (exceções) -> `feedback.stage_
 
 - **Estável (instância de utilizador):**
   - Pasta: bsp-tracker-app (fora do workspace atual)
-  - Arranque: [run.bat](run.bat)
+  - Arranque: atalho "My Organizer" (My Organizer.vbs → [run-with-server.bat](run-with-server.bat))
   - Porta: 8765
   - Auto-update por latest.json + zip de releases.
 
