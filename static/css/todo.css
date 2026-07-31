@@ -635,6 +635,21 @@ a.todoJiraKey:hover {
   font-size: 13px;
 }
 
+.jiraCardEffort {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--status-info-fg);
+  background: var(--status-info-bg);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.jiraCardEffort:empty {
+  display: none;
+}
+
 /* remover um cartão acrescentado à mão: mesmo botão discreto usado para
    desligar uma tarefa de uma issue, sem margem à esquerda na linha do topo */
 .jiraCardHead .ccr-x {

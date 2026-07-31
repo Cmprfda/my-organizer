@@ -35,7 +35,8 @@ from .tasks import (build_payload, current_stamp, forget_web_cache, push_overrid
 from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
                     normalize_todo_item, save_todo, stop_todo_timer,
                     sync_todo_timer_with_column, todo_identity)
-from .updates import GITHUB_REPO, check_update, find_releases_dir, github_latest
+from .updates import (GITHUB_REPO, check_update, find_releases_dir, github_latest,
+                      read_changelog)
 from . import cli
 
 STATIC_ROOT = os.path.join(HERE, "static")
@@ -140,6 +141,12 @@ class Handler(BaseHTTPRequestHandler):
                        "application/json")
         elif parsed.path == "/api/notepad":
             self._send(200, json.dumps(load_notepad()), "application/json")
+        elif parsed.path == "/api/changelog":
+            # novidades por versão para a janela "Novidades" — só quando o
+            # utilizador a abre, por isso sem registo no log
+            self._send(200, json.dumps({"currentVersion": APP_VERSION,
+                                        "entries": read_changelog()}),
+                       "application/json")
         elif parsed.path.startswith("/api/notepad/img/"):
             self.send_note_image(parsed.path[len("/api/notepad/img/"):])
         elif parsed.path == "/api/ping":

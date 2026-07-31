@@ -62,6 +62,53 @@ def github_latest():
     return version, asset.get("browser_download_url"), str(data.get("body") or "")
 
 
+def read_changelog():
+    """Novidades por versão, para a janela "Novidades" da app: lista de
+    {"version": N, "notes": [...]} da mais recente para a mais antiga, só até
+    à versão instalada. Lê o changelog.json da pasta partilhada e, se essa
+    pasta não existir (ou a leitura falhar), cai nas Releases do GitHub —
+    a mesma ordem de preferência do check_update(). Nunca levanta erros:
+    devolve [] quando não consegue nada."""
+    rel = find_releases_dir()
+    if rel:
+        try:
+            # utf-8-sig: tolera o BOM que editores/PowerShell acrescentam
+            with open(os.path.join(rel, "changelog.json"), encoding="utf-8-sig") as f:
+                changelog = json.load(f)
+            entries = []
+            for key, notes in (changelog or {}).items():
+                version = int(key)
+                if version <= APP_VERSION:
+                    entries.append({"version": version, "notes": list(notes or [])})
+            return sorted(entries, key=lambda e: e["version"], reverse=True)
+        except (OSError, ValueError):
+            pass  # sem pasta partilhada utilizável — tenta o GitHub
+
+    try:
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=50",
+            headers={"Accept": "application/vnd.github+json", "User-Agent": _USER_AGENT})
+        with urllib.request.urlopen(req, timeout=GITHUB_TIMEOUT) as resp:
+            releases = json.load(resp)
+        entries = []
+        for rlz in releases or []:
+            try:
+                version = int(str(rlz.get("tag_name") or "").lstrip("vV"))
+            except ValueError:
+                continue  # tag que não é uma versão (ex.: "beta") — ignora-se
+            if version > APP_VERSION:
+                continue
+            # o corpo da release já vem com "- " no início de cada linha
+            # (ver make_release.py): tira-se o traço para ficar só o texto
+            notes = [line.strip().lstrip("-").strip()
+                     for line in str(rlz.get("body") or "").splitlines()
+                     if line.strip()]
+            entries.append({"version": version, "notes": notes})
+        return sorted(entries, key=lambda e: e["version"], reverse=True)
+    except (OSError, ValueError):
+        return []
+
+
 def _apply_zip(zip_path, new_version):
     """Extrai o zip de uma release (pasta partilhada ou GitHub) por cima da
     instalação atual."""

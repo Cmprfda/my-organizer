@@ -103,6 +103,7 @@
       </div>
       <div class="setRow setRowUpdate">
         <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
+        <button type="button" class="mini" id="changelogBtn">Novidades</button>
         <button type="button" class="mini" id="shareAppBtn">↗</button>
       </div>
     </div>
@@ -386,7 +387,17 @@
         <strong id="helpTitle">Como usar</strong>
         <button type="button" class="ccr-x" id="helpClose" title="Fechar">✕</button>
       </div>
-      <div id="helpBody"></div>
+      <div id="helpBody" class="helpBody"></div>
+    </div>
+  </div>
+
+  <div id="changelogOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Novidades">
+    <div class="helpCard">
+      <div class="helpHead">
+        <strong id="changelogTitle">Novidades</strong>
+        <button type="button" class="ccr-x" id="changelogClose" title="Fechar">✕</button>
+      </div>
+      <div id="changelogBody" class="helpBody"></div>
     </div>
   </div>
 

@@ -119,6 +119,9 @@ function applyLang() {
   $("appUpdateBtn").textContent = t("btn_app_update");
   $("appUpdateBtn").title = t("t_app_update");
   $("shareAppBtn").title = t("t_share_app");
+  $("changelogBtn").textContent = t("btn_changelog");
+  $("changelogBtn").title = t("t_changelog");
+  $("changelogTitle").textContent = t("changelog_title");
   renderHelp();
   // a página do Jira monta os seus textos no render (painel "Tarefas por ligar")
   jiraRenderPageIfVisible();

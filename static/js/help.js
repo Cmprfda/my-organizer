@@ -162,3 +162,62 @@ document.addEventListener("keydown", e => {
     e.stopPropagation();
     setHelpOpen(false);
 }, true);
+
+// "Novidades": historico de changelog por versao, mais recente primeiro
+let changelogEntries = null;   // null = por carregar; "pending"/"error" | array de {version, notes}
+let changelogCurrentVersion = null;
+
+function renderChangelog() {
+    const body = $("changelogBody");
+    if (changelogEntries === null) {
+        changelogEntries = "pending";
+        body.innerHTML = `<p>${esc(t("changelog_loading"))}</p>`;
+        fetch("/api/changelog")
+            .then(res => res.json())
+            .then(out => {
+                changelogEntries = Array.isArray(out.entries) ? out.entries : [];
+                changelogCurrentVersion = out.currentVersion;
+                renderChangelog();
+            })
+            .catch(() => {
+                changelogEntries = "error";
+                renderChangelog();
+            });
+        return;
+    }
+    if (changelogEntries === "pending") {
+        body.innerHTML = `<p>${esc(t("changelog_loading"))}</p>`;
+        return;
+    }
+    if (changelogEntries === "error") {
+        body.innerHTML = `<p>${esc(t("changelog_error"))}</p>`;
+        return;
+    }
+    if (!changelogEntries.length) {
+        body.innerHTML = `<p>${esc(t("changelog_empty"))}</p>`;
+        return;
+    }
+    body.innerHTML = changelogEntries.map(e => `<h3>v${e.version}${
+        e.version === changelogCurrentVersion ? ` (${esc(t("changelog_current"))})` : ""
+        }</h3><ul>${(e.notes || []).map(n => `<li>${esc(n)}</li>`).join("")}</ul>`).join("");
+}
+
+function setChangelogOpen(open) {
+    $("changelogOverlay").classList.toggle("hidden", !open);
+    if (open) renderChangelog();
+}
+
+$("changelogBtn").addEventListener("click", () => setChangelogOpen(true));
+$("changelogClose").addEventListener("click", () => setChangelogOpen(false));
+
+// clicar fora do cartão fecha
+$("changelogOverlay").addEventListener("click", e => {
+    if (e.target === $("changelogOverlay")) setChangelogOpen(false);
+});
+
+// em captura, como na ajuda: o Esc fecha as novidades sem mexer no ecrã dividido
+document.addEventListener("keydown", e => {
+    if (e.key !== "Escape" || $("changelogOverlay").classList.contains("hidden")) return;
+    e.stopPropagation();
+    setChangelogOpen(false);
+}, true);
