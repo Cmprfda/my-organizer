@@ -52,7 +52,7 @@ rem ---- 2b. dependencia pywebview (opcional: janela propria em vez de browser) 
 )
 
 rem ---- 3. atalho no Ambiente de Trabalho ---------------------------------
-rem corre via run-hidden.vbs (WScript, janela invisivel) em vez de cmd.exe,
+rem corre via "My Organizer.vbs" (WScript, janela invisivel) em vez de cmd.exe,
 rem para nao aparecer nenhuma janela de linha de comandos ao arrancar a app
 (
 echo Set ws = CreateObject("WScript.Shell"^)
@@ -60,10 +60,10 @@ echo Set fso = CreateObject("Scripting.FileSystemObject"^)
 echo desk = ws.SpecialFolders("Desktop"^)
 echo Set lnk = ws.CreateShortcut(desk ^& "\My Organizer.lnk"^)
 echo lnk.TargetPath = "%windir%\System32\wscript.exe"
-echo lnk.Arguments = Chr(34^) ^& "%~dp0run-hidden.vbs" ^& Chr(34^)
+echo lnk.Arguments = Chr(34^) ^& "%~dp0My Organizer.vbs" ^& Chr(34^)
 echo lnk.WorkingDirectory = "%~dp0"
 echo lnk.WindowStyle = 1
-echo lnk.IconLocation = "%SystemRoot%\System32\shell32.dll,265"
+echo lnk.IconLocation = "%~dp0static\img\app-icon.ico"
 echo lnk.Description = "My Organizer"
 echo lnk.Save
 echo rem atalho com o nome antigo, criado por versoes anteriores deste setup

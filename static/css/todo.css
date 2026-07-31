@@ -469,53 +469,45 @@ tr.todoRow td.todoCtl>* {
 .todoJiraItem {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
+  gap: 6px;
+  font-size: 11px;
   padding: 1px 0;
 }
 
 .todoJiraKey {
   flex: 0 0 auto;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   background: var(--accent-soft);
   color: var(--accent-text);
   padding: 2px 7px;
   border-radius: 999px;
   white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
 }
 
-.todoJiraSummary {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-}
-
-.todoJiraEffort {
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--status-info-fg);
-  background: var(--status-info-bg);
-  padding: 2px 7px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.todoJiraEffort:empty {
-  display: none;
+a.todoJiraKey:hover {
+  filter: brightness(1.1);
+  text-decoration: underline;
 }
 
 /* o botão de registar tempo vive dentro de uma linha estreita: sem a margem
-   nem o tamanho dos botões das barras */
-.todoJiraItem .mini {
+   nem o tamanho dos botões das barras (linha do item e cabeçalho do cartão) */
+.todoJiraItem .mini,
+.jiraCardHead .mini {
   flex: 0 0 auto;
   margin-left: 0;
   padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* "ir à página Jira": mesmo botão discreto usado para "ver a origem", só que
+   mais pequeno para caber na linha estreita do item */
+.todoJiraItem .srcBtn {
+  flex: 0 0 auto;
+  padding: 2px 6px;
   font-size: 11px;
 }
 
@@ -563,6 +555,13 @@ tr.todoRow td.todoCtl>* {
   outline-offset: 2px;
 }
 
+/* cartão destacado depois de um salto vindo do badge de uma tarefa (mesma
+   animação "flashRow" do salto para a linha de origem) */
+.jiraCard.flashSrc {
+  animation: flashRow 2.6s ease-out;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .jiraCardHead {
   display: flex;
   align-items: center;
@@ -580,13 +579,11 @@ tr.todoRow td.todoCtl>* {
   font-size: 13px;
 }
 
-/* remover um cartão acrescentado à mão: cabe na linha estreita do topo do
-   cartão, com o tamanho dos botões pequenos dos itens */
-.jiraCardHead .mini {
+/* remover um cartão acrescentado à mão: mesmo botão discreto usado para
+   desligar uma tarefa de uma issue, sem margem à esquerda na linha do topo */
+.jiraCardHead .ccr-x {
   flex: 0 0 auto;
   margin-left: 0;
-  padding: 3px 8px;
-  font-size: 11px;
 }
 
 .jiraCardTasks {

@@ -1,59 +1,22 @@
-// My Organizer — Jira na lista Por fazer: ligar issues a um item, ver o esforço
-// já registado e registar mais tempo (cria um worklog real no Jira)
+// My Organizer — Jira na lista Por fazer: ligar issues a um item e registar
+// mais tempo (cria um worklog real no Jira)
 
-// esforço por issue: key -> {seconds} | "pending" | "error".
-// O badge é montado durante o render (síncrono), por isso o valor real só entra
-// no render seguinte — ver jiraEffortBadgeHtml.
-const jiraEffortCache = new Map();
+// URL base do Jira, só para montar links "abrir no Jira" (o token nunca sai
+// do servidor); fica vazio enquanto as Definições não tiverem sido lidas
+let jiraBaseUrl = "";
 
-function formatJiraEffort(totalSeconds) {
-  const minutes = Math.max(0, Math.round((+totalSeconds || 0) / 60));
-  const h = Math.floor(minutes / 60), m = minutes % 60;
-  if (!h && !m) return "0m";
-  return [h ? `${h}h` : "", m ? `${m}m` : ""].filter(Boolean).join(" ");
+function jiraIssueUrl(key) {
+  return jiraBaseUrl ? `${jiraBaseUrl}/browse/${encodeURIComponent(key)}` : "";
 }
 
-function invalidateJiraEffort(key) {
-  jiraEffortCache.delete(key);
-}
-
-// várias issues respondem quase ao mesmo tempo: um só render para todas, e
-// nunca com um editor aberto (senão apagava o que se está a escrever)
-let jiraRenderTimer = null;
-function jiraScheduleRender() {
-  if (jiraRenderTimer) return;
-  jiraRenderTimer = setTimeout(() => {
-    jiraRenderTimer = null;
-    if (editorOpen) return;
-    renderTodo();
-    if (currentView === "jira" || sideView === "jira") renderJiraPage();
-  }, 80);
-}
-
-function fetchJiraEffort(key) {
-  fetch("/api/jira/issue/" + encodeURIComponent(key) + "/worklog")
-    .then(res => res.json())
-    .then(out => {
-      if (!out || out.error) jiraEffortCache.set(key, "error");
-      else jiraEffortCache.set(key, { seconds: +out.totalSeconds || 0 });
-    })
-    .catch(() => jiraEffortCache.set(key, "error"))
-    .finally(jiraScheduleRender);
-}
-
-// devolve sempre HTML já pronto com o que estiver em cache neste momento; o
-// pedido ao servidor (quando falta) só volta a pedir o render mais tarde, nunca
-// aqui dentro — isto corre a partir dos templates de renderTodo()
-function jiraEffortBadgeHtml(key) {
-  const got = jiraEffortCache.get(key);
-  if (got === undefined) {
-    jiraEffortCache.set(key, "pending");
-    fetchJiraEffort(key);
-    return "…";
-  }
-  if (got === "pending") return "…";
-  if (got === "error") return "";
-  return `⏱ ${esc(formatJiraEffort(got.seconds))}`;
+// badge da chave, partilhado entre a lista/caixa do item (uma issue) e os
+// cartões da página Jira (várias); vira link quando já se sabe o URL base
+function jiraKeyBadgeHtml(key, title) {
+  const url = jiraIssueUrl(key);
+  const titleAttr = esc(title || key);
+  return url
+    ? `<a class="todoJiraKey" href="${esc(url)}" target="_blank" rel="noopener" title="${titleAttr}">${esc(key)}</a>`
+    : `<span class="todoJiraKey" title="${titleAttr}">${esc(key)}</span>`;
 }
 
 // ---------- ligar uma issue ao item (Enter no campo do fim da lista) ----------
@@ -162,9 +125,6 @@ async function submitJiraLog() {
     });
     const out = await res.json();
     if (!out.ok) throw new Error(out.error || "?");
-    // o total passa a estar errado: apagar a cache faz o badge voltar a pedi-lo
-    invalidateJiraEffort(key);
-    renderTodo();
     jiraLogNote("jiraLogSuccess", `${t("jira_log_success")} ${key}: ${timeSpent}`);
     toast(`${t("jira_log_success")} ${key}: ${timeSpent}`, "ok");
     setTimeout(closeJiraLogModal, 1200);
@@ -220,6 +180,21 @@ function jiraIssueMap() {
   return map;
 }
 
+// chaves já conhecidas da app (ligadas a algum item, ou só acrescentadas na
+// página Jira): sugestões do campo "Ligar issue do Jira" de cada item
+function jiraKnownKeys() {
+  const set = new Set();
+  (todos || []).forEach(it => (it && it.jiraIssues || []).forEach(j => j && j.key && set.add(j.key)));
+  jiraManualKeys.forEach(key => set.add(key));
+  return [...set].sort();
+}
+
+function renderJiraSuggestions() {
+  const dl = $("jiraSuggestions");
+  if (!dl) return;
+  dl.innerHTML = jiraKnownKeys().map(key => `<option value="${esc(key)}"></option>`).join("");
+}
+
 // ---------- issues acrescentadas à mão (cartões ainda sem tarefas) ----------
 // O servidor só guarda `jiraIssues` DENTRO de um item do TODO, por isso uma
 // issue sem tarefas nenhumas não tem onde viver lá: fica guardada aqui, neste
@@ -245,6 +220,19 @@ function jiraSaveManualKeys() {
 
 function jiraRenderPageIfVisible() {
   if (currentView === "jira" || sideView === "jira") renderJiraPage();
+}
+
+// depois de desligar uma issue da sua última tarefa, o cartão não desaparece
+// da página Jira — passa a ficar à mão, para não se perder o rasto de uma
+// issue que já tenha esforço registado. Se ainda tiver outra tarefa ligada
+// (ou já estiver à mão), não há nada a fazer.
+function jiraKeepAsManualIfOrphaned(key, issue) {
+  if (!key || jiraIssueMap().has(key) || jiraManualKeys.has(key)) return;
+  jiraManualKeys.add(key);
+  jiraSaveManualKeys();
+  if (issue) jiraManualInfo.set(key, { summary: issue.summary || "", parentSummary: issue.parentSummary });
+  else fetchJiraManualInfo(key);
+  jiraRenderPageIfVisible();
 }
 
 // só corre uma vez por chave nova (ao contrário do badge do esforço, que é
@@ -331,10 +319,10 @@ function renderJiraPage() {
     : all;
   $("jiraPageBody").innerHTML = shown.map(e => `<div class="jiraCard" data-jirakey="${esc(e.key)}">
   <div class="jiraCardHead">
-    <span class="todoJiraKey">${esc(e.key)}</span>
+    ${jiraKeyBadgeHtml(e.key, e.label)}
     <span class="jiraCardSummary" title="${esc(e.label)}">${esc(e.label)}</span>
-    <span class="todoJiraEffort" title="${esc(t("jira_effort_title"))}">${jiraEffortBadgeHtml(e.key)}</span>
-    ${e.manual ? `<button type="button" class="mini jiraCardRemove" data-jiraremove="${esc(e.key)}" title="Remover (ainda não está ligada a nenhuma tarefa)">Remover</button>` : ""}
+    <button type="button" class="mini" data-jiralog="${esc(e.key)}" data-jiralabel="${esc(e.label)}" title="${esc(t("jira_log_action"))}">⏱+</button>
+    ${e.manual ? `<button type="button" class="ccr-x" data-jiraremove="${esc(e.key)}" title="Remover (ainda não está ligada a nenhuma tarefa)">✕</button>` : ""}
   </div>
   <ul class="jiraCardTasks">${e.tasks.map(it => `<li class="jiraCardTask" draggable="true" data-jtid="${esc(it.id)}" data-jtfromkey="${esc(e.key)}" title="${esc(it.title || "")}">
     ${kindChip(it.kind)}<span class="jiraCardTaskTitle">${esc(it.title || "")}</span>
@@ -356,6 +344,32 @@ $("jiraPageSearch").addEventListener("keydown", e => {
   e.preventDefault();
   addJiraManualKey(e.target.value);
 });
+
+// vai para a página Jira e destaca o cartão desta issue (a partir do badge de
+// uma tarefa, para além do link que abre a issue real no Jira). Não filtra
+// pela chave (um filtro por substring, ex. "BSP-1", também mostraria
+// "BSP-10", "BSP-11", ...) - limpa o filtro que lá estivesse e salta direto
+// ao cartão certo, tal como o "ver a origem" de uma tarefa Excel/CCR.
+function jiraGotoIssue(key) {
+  jiraPageFilter = "";
+  $("jiraPageSearch").value = "";
+  showView("jira");
+  const card = [...$("jiraPageBody").querySelectorAll(".jiraCard")].find(c => c.dataset.jirakey === key);
+  if (!card) return;
+  card.scrollIntoView({ block: "center", behavior: "smooth" });
+  void card.offsetWidth;   // reinicia a animação se for o mesmo cartão
+  card.classList.add("flashSrc");
+  setTimeout(() => card.classList.remove("flashSrc"), 2600);
+}
+
+// vai ver uma tarefa (a partir da sua linha num cartão da página Jira)
+function jiraGotoTask(id) {
+  showView("todo");
+  const el = itemBoxEl({ kind: "todo", key: id });
+  if (!el) { toast(t("src_notfound"), "err"); return; }
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  openItemBox(el);
+}
 
 // ---------- arrastar tarefas entre issues ----------
 function jiraClearDropReady() {
@@ -390,12 +404,18 @@ $("jiraPageBody").addEventListener("drop", async e => {
   }
   if (p.kind === "jiraTask" && p.id) {
     if (p.fromKey === key) return;      // largado no próprio cartão
+    const fromItem = (todos || []).find(it => it.id === p.id);
+    const fromIssue = fromItem && (fromItem.jiraIssues || []).find(j => j.key === p.fromKey);
     const unlinked = await postTodo({ action: "jira_unlink", id: p.id, key: p.fromKey });
     if (!unlinked) return;              // falhou a desligar - não tentar ligar à nova
     const linked = await postTodo({ action: "jira_link", id: p.id, key });
     // a ligação nova falhou (ex.: Jira em baixo) - repor a ligação antiga em vez
     // de deixar a tarefa órfã das duas issues
     if (!linked) await postTodo({ action: "jira_link", id: p.id, key: p.fromKey });
+    // se a origem ficou mesmo sem tarefas (relance com sucesso, ou os dois
+    // pedidos falharam e nem a antiga voltou a ligar-se), o cartão mantém-se à
+    // vista; se a antiga voltou a ligar-se, isto não faz nada (já não é órfã)
+    jiraKeepAsManualIfOrphaned(p.fromKey, fromIssue);
   }
 });
 
@@ -419,10 +439,24 @@ $("jiraPageBody").addEventListener("click", e => {
     renderJiraPage();
     return;
   }
-  const btn = e.target.closest("[data-jiraunlink]");
-  if (!btn) return;
-  const [key, id] = btn.dataset.jiraunlink.split("|");
-  postTodo({ action: "jira_unlink", id, key });
+  const logBtn = e.target.closest("[data-jiralog]");
+  if (logBtn) {
+    openJiraLogModal(null, logBtn.dataset.jiralog, logBtn.dataset.jiralabel);
+    return;
+  }
+  const unlinkBtn = e.target.closest("[data-jiraunlink]");
+  if (unlinkBtn) {
+    const [key, id] = unlinkBtn.dataset.jiraunlink.split("|");
+    const item = (todos || []).find(it => it.id === id);
+    const issue = item && (item.jiraIssues || []).find(j => j.key === key);
+    postTodo({ action: "jira_unlink", id, key }).then(ok => {
+      if (ok) jiraKeepAsManualIfOrphaned(key, issue);
+    });
+    return;
+  }
+  // clicar na própria tarefa (fora dos botões acima): ir ver essa tarefa no TODO
+  const taskLi = e.target.closest("[data-jtid]");
+  if (taskLi) jiraGotoTask(taskLi.dataset.jtid);
 });
 
 // ---------- definições: URL + token ----------
@@ -449,12 +483,17 @@ async function refreshJiraSettings() {
     const res = await fetch("/api/jira/config");
     const out = await res.json();
     jiraConfigured = !!out.configured;
+    jiraBaseUrl = out.baseUrl || "";
     // não mexer no campo enquanto está a ser escrito
     if (document.activeElement !== $("jiraUrl")) $("jiraUrl").value = out.baseUrl || "";
   } catch (e) {
     jiraConfigured = false;
+    jiraBaseUrl = "";
   }
   renderJiraState();
+  // os links das issues já ligadas passam a ter (ou deixam de ter) URL
+  if (currentView === "todo" || sideView === "todo") renderTodo();
+  jiraRenderPageIfVisible();
 }
 
 async function saveJiraSettings() {
@@ -470,7 +509,6 @@ async function saveJiraSettings() {
     if (!out.ok) throw new Error(out.error || "?");
     // o token fica só no servidor; o campo volta a vazio de propósito
     $("jiraToken").value = "";
-    jiraEffortCache.clear();
     await refreshJiraSettings();
     toast(t("jira_saved"), "ok");
     if (currentView === "todo" || sideView === "todo") renderTodo();

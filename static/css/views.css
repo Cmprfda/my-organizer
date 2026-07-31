@@ -162,6 +162,24 @@ body.split #paneSide {
   overscroll-behavior: contain;
 }
 
+/* ---- ecrã dividido: disposição vertical (empilhada) ---- */
+body.split.split-vertical #panes {
+  flex-direction: column;
+  height: calc(100vh - 150px);
+}
+
+body.split.split-vertical.side-left #panes {
+  flex-direction: column-reverse;
+}
+
+body.split.split-vertical #paneMain,
+body.split.split-vertical #paneSide {
+  min-width: auto;
+  min-height: 0;
+  max-height: none;
+  width: auto;
+}
+
 #paneSide>.sideHead {
   position: sticky;
   top: 0;
@@ -206,8 +224,51 @@ body.split #paneSide {
   background: var(--accent);
 }
 
+body.split-vertical #splitBar {
+  cursor: row-resize;
+}
+
+body.split-vertical #splitBar::before {
+  inset: 6px 0;
+}
+
 body.dragging-src {
   cursor: grabbing;
+}
+
+/* Notas dentro do ecrã dividido: o quadro enche o painel disponível em vez
+   de calcular a sua altura a partir do ecrã inteiro (vh), que ignorava o
+   espaço real que o painel tinha e cortava/ultrapassava o quadro */
+body.split #paneMain:has(.noteCanvas),
+body.split #paneSide:has(.noteCanvas) {
+  display: flex;
+  flex-direction: column;
+}
+
+body.split:not(.split-vertical) #paneMain:has(.noteCanvas),
+body.split:not(.split-vertical) #paneSide:has(.noteCanvas) {
+  height: calc(100vh - 150px);
+}
+
+body.split #paneMain:has(.noteCanvas) #notesView,
+body.split #paneSide:has(.noteCanvas) #notesView {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body.split #paneMain:has(.noteCanvas) .notesLayout,
+body.split #paneSide:has(.noteCanvas) .notesLayout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body.split #paneMain:has(.noteCanvas) .noteCanvas,
+body.split #paneSide:has(.noteCanvas) .noteCanvas {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* zonas onde se larga o botão para dividir o ecrã */

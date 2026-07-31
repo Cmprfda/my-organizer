@@ -66,9 +66,9 @@ def normalize_todo_item(item):
     # subtarefas (checklist leve): lista de {id, title, done}
     raw_subs = out.get("subtasks")
     out["subtasks"] = [s for s in (normalize_subtask(s) for s in raw_subs) if s] if isinstance(raw_subs, list) else []
-    # issues do Jira ligadas ao item: lista de {key, summary, parentSummary?}
+    # issue do Jira ligada ao item: no máximo uma, {key, summary, parentSummary?}
     raw_jira = out.get("jiraIssues")
-    out["jiraIssues"] = [j for j in (normalize_jira_issue(j) for j in raw_jira[:20]) if j] \
+    out["jiraIssues"] = [j for j in (normalize_jira_issue(j) for j in raw_jira[:1]) if j] \
         if isinstance(raw_jira, list) else []
     return out
 

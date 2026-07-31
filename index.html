@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>My Organizer</title>
+  <link rel="icon" href="/static/img/app-icon.ico" type="image/x-icon">
   <script>
     // aplicado antes do primeiro paint para nao haver flash com o tema errado
     (function () {
@@ -348,6 +349,7 @@
         <div class="sideHead">
           <span id="sideTitle" class="grow"></span>
           <button type="button" class="ccr-x" id="sideSwap" title="Trocar de lado">⇄</button>
+          <button type="button" class="ccr-x" id="sideOrient" title="Empilhado">⇕</button>
           <button type="button" class="ccr-x" id="sideClose" title="Fechar o painel">✕</button>
         </div>
         <div id="sideBody"></div>
@@ -410,6 +412,8 @@
       <div id="pickerBody"></div>
     </div>
   </div>
+
+  <datalist id="jiraSuggestions"></datalist>
 
   <div id="jiraLogOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
     aria-label="Registar trabalho no Jira">

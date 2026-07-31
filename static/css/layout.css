@@ -1,7 +1,9 @@
 /* My Organizer — estrutura da página: barra superior, separadores, definições */
 
 .wrap {
-  max-width: 1260px;
+  /* cresce com o ecrã em vez de ficar preso a 1260px — em monitores largos
+     isso deixava faixas enormes de espaço vazio dos dois lados */
+  max-width: min(1800px, 94vw);
   margin: 0 auto;
   /* espaço em baixo para a barra de separadores flutuante */
   padding: 16px 14px 92px;

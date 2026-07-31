@@ -211,22 +211,23 @@ function todoSubtasksHtml(it) {
     `<input type="text" class="todoSubInput" data-tsubnew="${esc(it.id)}" placeholder="${t("ph_subtask")}"></li></ul>`;
 }
 
-// issues do Jira ligadas ao item: resumo do esforço já registado + ação de
-// registar mais tempo; a lista fica vazia até se ligar a primeira issue
+// issue do Jira ligada ao item (no máximo uma): só o código, clicável para
+// abrir no Jira, + ação de registar mais tempo (sem mostrar o esforço já
+// registado aqui — isso vê-se na página Jira). Sem issue ligada mostra o campo
+// para ligar uma, com sugestões das chaves já conhecidas da app.
 function todoJiraHtml(it) {
-  const issues = Array.isArray(it.jiraIssues) ? it.jiraIssues : [];
-  const rows = issues.map(j => {
-    const label = j.parentSummary && j.summary ? `${j.parentSummary} — ${j.summary}` : (j.summary || j.key);
-    return `<li class="todoJiraItem" title="${esc(j.key)} — ${esc(label)}">
-      <span class="todoJiraKey">${esc(j.key)}</span>
-      <span class="todoJiraSummary">${esc(label)}</span>
-      <span class="todoJiraEffort" title="${esc(t("jira_effort_title"))}">${jiraEffortBadgeHtml(j.key)}</span>
-      <button type="button" class="mini" data-tjiralog="${esc(it.id)}|${esc(j.key)}" title="${esc(t("jira_log_action"))}">⏱+</button>
-      <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(j.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>
-    </li>`;
-  }).join("");
-  return `<ul class="todoJiraList">${rows}<li class="todoJiraAddRow">` +
-    `<input type="text" class="todoJiraLinkInput" data-tjiranew="${esc(it.id)}" placeholder="${t("jira_link_ph")}"></li></ul>`;
+  const issue = (Array.isArray(it.jiraIssues) ? it.jiraIssues : [])[0];
+  if (!issue) {
+    return `<ul class="todoJiraList"><li class="todoJiraAddRow">` +
+      `<input type="text" class="todoJiraLinkInput" list="jiraSuggestions" data-tjiranew="${esc(it.id)}" placeholder="${t("jira_link_ph")}"></li></ul>`;
+  }
+  const label = issue.parentSummary && issue.summary ? `${issue.parentSummary} — ${issue.summary}` : (issue.summary || issue.key);
+  return `<ul class="todoJiraList"><li class="todoJiraItem">
+    ${jiraKeyBadgeHtml(issue.key, label)}
+    <button type="button" class="mini" data-tjiralog="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("jira_log_action"))}">⏱+</button>
+    <button type="button" class="srcBtn" data-tjiragoto="${esc(issue.key)}" title="${esc(t("jira_goto_action"))}">↗</button>
+    <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>
+  </li></ul>`;
 }
 
 // título editável só para tarefas criadas na app (as de Excel/CCR mantêm o
@@ -359,6 +360,7 @@ function openTodoNote(el) {
 }
 
 function renderTodo() {
+  renderJiraSuggestions();
   $("todoModeList").classList.toggle("active", todoLayout === "list");
   $("todoModeKanban").classList.toggle("active", todoLayout === "kanban");
   $("todoBox").classList.toggle("hidden", todoLayout !== "list" || !todos.length);
@@ -525,7 +527,11 @@ function todoItemTap(e) {
   const jiraUnlink = e.target.closest("[data-tjiraunlink]");
   if (jiraUnlink) {
     const [id, key] = jiraUnlink.dataset.tjiraunlink.split("|");
-    postTodo({ action: "jira_unlink", id, key });
+    const item = todos.find(it => it.id === id);
+    const issue = item && (item.jiraIssues || []).find(j => j.key === key);
+    postTodo({ action: "jira_unlink", id, key }).then(ok => {
+      if (ok) jiraKeepAsManualIfOrphaned(key, issue);
+    });
     return;
   }
   const jiraLog = e.target.closest("[data-tjiralog]");
@@ -536,6 +542,8 @@ function todoItemTap(e) {
     openJiraLogModal(id, key, issue && issue.summary);
     return;
   }
+  const jiraGoto = e.target.closest("[data-tjiragoto]");
+  if (jiraGoto) { jiraGotoIssue(jiraGoto.dataset.tjiragoto); return; }
   const del = e.target.closest("[data-tdel]");
   if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
   const src = e.target.closest("[data-src]");

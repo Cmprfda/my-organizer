@@ -236,6 +236,34 @@ def cmd_logout(args):
     return 0
 
 
+def cmd_fix_icon(args):
+    # o Windows guarda em cache o icone associado a cada programa: se a app
+    # correu antes de ter icone proprio, a barra de tarefas continua a mostrar
+    # o icone generico do Python ate a cache ser limpa
+    print("Vou limpar a cache de icones do Windows e reiniciar o Explorer.")
+    print("Os icones e a barra de tarefas vao piscar durante um instante — e normal.")
+    try:
+        subprocess.run(["ie4uinit.exe", "-ClearIconCache"], timeout=15)
+        subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"AVISO ao limpar a cache/parar o Explorer: {exc}")
+    finally:
+        # reinicia o Explorer mesmo que os passos acima tenham falhado a meio —
+        # se nao, o utilizador fica sem barra de tarefas nem ambiente de trabalho
+        time.sleep(1)
+        try:
+            subprocess.Popen(["explorer.exe"])
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"ERRO a reiniciar o Explorer — corre 'explorer.exe' manualmente: {exc}")
+            return 1
+    print("Cache de icones limpa e Explorer reiniciado.")
+    print("Se o icone da app continuar errado na barra de tarefas: tira-a da barra")
+    print("(clique direito > 'Remover da barra de tarefas'), fecha a app por")
+    print("completo, abre-a outra vez e volta a fixa-la — um atalho fixado guarda")
+    print("a sua propria referencia ao icone, independente desta cache.")
+    return 0
+
+
 def cmd_help(args):
     # `bsp` chama-se de uma janela NOVA: a janela do servidor esta ocupada a
     # servir a app e nao aceita comandos
@@ -275,6 +303,7 @@ COMMANDS = {
     "stop": (cmd_stop, "para o tracker que esta a correr"),
     "login": (cmd_login, "autentica no OneDrive/SharePoint"),
     "logout": (cmd_logout, "termina a sessao do OneDrive"),
+    "fix-icon": (cmd_fix_icon, "limpa a cache de icones do Windows (se o icone da app aparecer errado)"),
 }
 
 

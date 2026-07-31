@@ -78,6 +78,17 @@ const tabLabel = view =>
 let splitPct = Math.min(78, Math.max(22, +localStorage.getItem("bsp-tracker-split") || 50));
 document.documentElement.style.setProperty("--split", splitPct + "%");
 
+if (localStorage.getItem("bsp-tracker-split-orient") === "v") document.body.classList.add("split-vertical");
+
+function updateOrientBtn() {
+  const vertical = document.body.classList.contains("split-vertical");
+  const btn = $("sideOrient");
+  if (!btn) return;
+  btn.textContent = vertical ? "⇔" : "⇕";
+  btn.title = vertical ? "Lado a lado" : "Empilhado";
+}
+updateOrientBtn();
+
 function enterSplit(side, src) {
   if (!src) return;
   if (sideView && sideView !== src.view) exitSplit();
@@ -125,6 +136,11 @@ function exitSplit() {
 
 $("sideClose").addEventListener("click", exitSplit);
 $("sideSwap").addEventListener("click", () => document.body.classList.toggle("side-left"));
+$("sideOrient").addEventListener("click", () => {
+  const vertical = document.body.classList.toggle("split-vertical");
+  localStorage.setItem("bsp-tracker-split-orient", vertical ? "v" : "h");
+  updateOrientBtn();
+});
 
 // largar o botão ↗ numa das faixas laterais divide o ecrã
 document.querySelectorAll("#dropZones .dropZone").forEach(zone => {
@@ -288,8 +304,12 @@ $("splitBar").addEventListener("pointerdown", e => {
   bar.classList.add("dragging");
   const move = ev => {
     const r = $("panes").getBoundingClientRect();
-    if (!r.width) return;
-    let p = ((ev.clientX - r.left) / r.width) * 100;
+    const vertical = document.body.classList.contains("split-vertical");
+    const size = vertical ? r.height : r.width;
+    if (!size) return;
+    let p = vertical
+      ? ((ev.clientY - r.top) / size) * 100
+      : ((ev.clientX - r.left) / size) * 100;
     if (document.body.classList.contains("side-left")) p = 100 - p;
     splitPct = Math.min(78, Math.max(22, p));
     document.documentElement.style.setProperty("--split", splitPct + "%");

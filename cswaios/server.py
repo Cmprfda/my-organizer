@@ -738,7 +738,8 @@ def open_ui(url):
     # entre arranques da app, tal como um browser normal faria.
     webview.create_window("My Organizer", url, width=1300, height=850,
                           min_size=(1000, 650))
-    webview.start(private_mode=False)
+    webview.start(private_mode=False,
+                  icon=os.path.join(HERE, "static", "img", "app-icon.ico"))
 
 
 def main():
