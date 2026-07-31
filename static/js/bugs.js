@@ -5,7 +5,7 @@ function clientLog(msg) {
     fetch("/api/clientlog", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ msg })
-    });
+    }).catch(() => { /* sem rede — ignorar */ });
   } catch (e) { /* sem rede — ignorar */ }
 }
 

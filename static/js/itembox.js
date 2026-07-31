@@ -163,7 +163,7 @@ $("itemBody").addEventListener("change", ccrBodyChange);
 $("itemBody").addEventListener("change", todoItemChange);
 $("itemBody").addEventListener("contextmenu", todoItemContext);
 $("itemBody").addEventListener("keydown", handleSubtaskKeydown);
-$("itemBody").addEventListener("keydown", handleJiraLinkKeydown);
+$("itemBody").addEventListener("keydown", e => handleJiraLinkKeydown(e));
 $("itemBody").addEventListener("focusin", todoSubFocusIn);
 $("itemBody").addEventListener("focusout", todoSubFocusOut);
 

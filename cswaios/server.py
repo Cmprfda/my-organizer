@@ -81,6 +81,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             self.handle_get()
+        except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+            pass  # cliente fechou a ligacao a meio da resposta - nao e um erro da app
         except Exception:
             self.report_crash("GET " + self.path)
 
@@ -175,6 +177,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             self.handle_post()
+        except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+            pass  # cliente fechou a ligacao a meio da resposta - nao e um erro da app
         except Exception:
             self.report_crash("POST " + self.path)
 
