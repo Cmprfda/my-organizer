@@ -580,6 +580,15 @@ tr.todoRow td.todoCtl>* {
   font-size: 13px;
 }
 
+/* remover um cartão acrescentado à mão: cabe na linha estreita do topo do
+   cartão, com o tamanho dos botões pequenos dos itens */
+.jiraCardHead .mini {
+  flex: 0 0 auto;
+  margin-left: 0;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 .jiraCardTasks {
   list-style: none;
   margin: 0;

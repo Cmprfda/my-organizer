@@ -60,6 +60,9 @@ def _request(path, method="GET", body=None):
         "Authorization": f"Bearer {cfg['token']}",
         "Accept": "application/json",
         "Content-Type": "application/json",
+        # sem isto alguns proxies/WAF corporativos bloqueiam o "Python-urllib/x.y"
+        # por omissão (devolvem 403 antes mesmo de chegar ao Jira)
+        "User-Agent": "Mozilla/5.0 (compatible; MyOrganizer-CSWAIOS/1.0)",
     })
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -73,7 +76,13 @@ def _request(path, method="GET", body=None):
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        msg = (payload.get("errorMessages") or [None])[0] or f"o Jira devolveu {exc.code}"
+        msg = (payload.get("errorMessages") or [None])[0]
+        if not msg:
+            # sem JSON de erro do Jira - normalmente um proxy/WAF ou uma página
+            # de login a bloquear o pedido antes de chegar ao Jira; o início do
+            # corpo ajuda a perceber o que respondeu de facto
+            snippet = re.sub(r"\s+", " ", raw).strip()[:160]
+            msg = f"o Jira devolveu {exc.code}" + (f" ({snippet})" if snippet else "")
         raise ValueError(msg) from exc
     except urllib.error.URLError as exc:
         raise ValueError(f"não foi possível contactar o Jira: {exc.reason}") from exc

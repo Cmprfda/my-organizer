@@ -220,8 +220,111 @@ function jiraIssueMap() {
   return map;
 }
 
+// ---------- issues acrescentadas à mão (cartões ainda sem tarefas) ----------
+// O servidor só guarda `jiraIssues` DENTRO de um item do TODO, por isso uma
+// issue sem tarefas nenhumas não tem onde viver lá: fica guardada aqui, neste
+// browser, até alguém lhe arrastar uma tarefa (é aí que a ligação passa a ser
+// real e a ser gravada no servidor).
+const JIRA_MANUAL_KEY = "bsp-tracker-jira-manual";
+// mesmo formato que o KEY_RE do servidor (cswaios/jira.py)
+const JIRA_KEY_RE = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
+let jiraManualKeys = new Set((() => {
+  try {
+    const got = JSON.parse(localStorage.getItem(JIRA_MANUAL_KEY) || "[]");
+    return Array.isArray(got) ? got : [];
+  } catch (e) {
+    return [];
+  }
+})());
+// key -> {summary, parentSummary} | "pending" | "error"
+const jiraManualInfo = new Map();
+
+function jiraSaveManualKeys() {
+  localStorage.setItem(JIRA_MANUAL_KEY, JSON.stringify([...jiraManualKeys]));
+}
+
+function jiraRenderPageIfVisible() {
+  if (currentView === "jira" || sideView === "jira") renderJiraPage();
+}
+
+// só corre uma vez por chave nova (ao contrário do badge do esforço, que é
+// pedido a cada render), por isso não precisa de espera nem de agrupamento
+function fetchJiraManualInfo(key) {
+  jiraManualInfo.set(key, "pending");
+  fetch("/api/jira/issue/" + encodeURIComponent(key))
+    .then(res => res.json())
+    .then(out => {
+      if (!out || out.error) throw new Error((out && out.error) || "?");
+      jiraManualInfo.set(key, { summary: out.summary || "", parentSummary: out.parentSummary });
+      jiraRenderPageIfVisible();
+    })
+    .catch(err => {
+      // chave que não existe (ou sem permissão para a ver): em vez de deixar um
+      // cartão vazio preso na página, desaparece e diz porquê
+      jiraManualKeys.delete(key);
+      jiraManualInfo.delete(key);
+      jiraSaveManualKeys();
+      toast(`${key}: ${err.message || "não foi possível ler a issue"}`, "err");
+      jiraRenderPageIfVisible();
+    });
+}
+
+// os placeholders vindos do localStorage (de uma sessão anterior) só trazem a
+// chave — sem isto o resumo ficava "…" para sempre até a chave ser removida e
+// acrescentada outra vez
+jiraManualKeys.forEach(key => fetchJiraManualInfo(key));
+
+function addJiraManualKey(rawKey) {
+  const key = String(rawKey || "").trim().toUpperCase();
+  if (!key) return;
+  if (!JIRA_KEY_RE.test(key)) {
+    toast("Chave de issue inválida (ex.: PROJ-123)", "err");
+    return;
+  }
+  // já ligada a alguma tarefa (ou já acrescentada antes): nada a criar, só
+  // garantir que o cartão que já existe fica à vista
+  const already = jiraIssueMap().has(key) || jiraManualKeys.has(key);
+  if (!already) {
+    jiraManualKeys.add(key);
+    jiraSaveManualKeys();
+  }
+  jiraPageFilter = "";
+  $("jiraPageSearch").value = "";
+  renderJiraPage();                 // mostra logo o cartão (com "…" no resumo)
+  if (!already) fetchJiraManualInfo(key);
+}
+
+// cartões só das chaves acrescentadas à mão que ainda não têm ligação real: uma
+// ligação verdadeira ganha sempre à marcação local, nunca há dois cartões para
+// a mesma chave
+function jiraManualEntries(map) {
+  const out = [];
+  let pruned = false;
+  jiraManualKeys.forEach(key => {
+    if (map.has(key)) {
+      // a ligação passou a ser real (ex.: arrastada para uma tarefa) - o
+      // marcador local já não faz falta; sem isto reaparecia como fantasma
+      // se a tarefa fosse mais tarde desligada
+      jiraManualKeys.delete(key);
+      jiraManualInfo.delete(key);
+      pruned = true;
+      return;
+    }
+    const info = jiraManualInfo.get(key);
+    if (info === "error") return;   // não devia sobrar nenhum; por segurança
+    let label = "";
+    if (info === "pending") label = "…";
+    else if (info && typeof info === "object") label = jiraIssueLabel(info);
+    out.push({ key, label, tasks: [], manual: true });
+  });
+  if (pruned) jiraSaveManualKeys();
+  return out;
+}
+
 function renderJiraPage() {
-  const all = [...jiraIssueMap().values()].sort((a, b) => a.key.localeCompare(b.key));
+  const map = jiraIssueMap();
+  const all = [...map.values(), ...jiraManualEntries(map)]
+    .sort((a, b) => a.key.localeCompare(b.key));
   const needle = jiraPageFilter.trim().toLowerCase();
   const shown = needle
     ? all.filter(e => e.key.toLowerCase().includes(needle) || e.label.toLowerCase().includes(needle))
@@ -231,6 +334,7 @@ function renderJiraPage() {
     <span class="todoJiraKey">${esc(e.key)}</span>
     <span class="jiraCardSummary" title="${esc(e.label)}">${esc(e.label)}</span>
     <span class="todoJiraEffort" title="${esc(t("jira_effort_title"))}">${jiraEffortBadgeHtml(e.key)}</span>
+    ${e.manual ? `<button type="button" class="mini jiraCardRemove" data-jiraremove="${esc(e.key)}" title="Remover (ainda não está ligada a nenhuma tarefa)">Remover</button>` : ""}
   </div>
   <ul class="jiraCardTasks">${e.tasks.map(it => `<li class="jiraCardTask" draggable="true" data-jtid="${esc(it.id)}" data-jtfromkey="${esc(e.key)}" title="${esc(it.title || "")}">
     ${kindChip(it.kind)}<span class="jiraCardTaskTitle">${esc(it.title || "")}</span>
@@ -243,6 +347,14 @@ function renderJiraPage() {
 $("jiraPageSearch").addEventListener("input", e => {
   jiraPageFilter = e.target.value || "";
   renderJiraPage();
+});
+
+// o mesmo campo serve para acrescentar: escrever/colar uma chave e Enter cria
+// logo o cartão, mesmo que a issue ainda não esteja ligada a tarefa nenhuma
+$("jiraPageSearch").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  addJiraManualKey(e.target.value);
 });
 
 // ---------- arrastar tarefas entre issues ----------
@@ -297,6 +409,16 @@ $("jiraPageBody").addEventListener("dragstart", e => {
 });
 
 $("jiraPageBody").addEventListener("click", e => {
+  // cartão acrescentado à mão: só existe neste browser, não há nada a desligar
+  const removeBtn = e.target.closest("[data-jiraremove]");
+  if (removeBtn) {
+    const key = removeBtn.dataset.jiraremove;
+    jiraManualKeys.delete(key);
+    jiraManualInfo.delete(key);
+    jiraSaveManualKeys();
+    renderJiraPage();
+    return;
+  }
   const btn = e.target.closest("[data-jiraunlink]");
   if (!btn) return;
   const [key, id] = btn.dataset.jiraunlink.split("|");

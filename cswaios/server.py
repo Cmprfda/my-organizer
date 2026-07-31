@@ -163,6 +163,15 @@ class Handler(BaseHTTPRequestHandler):
                            "application/json")
             except Exception as exc:
                 self._send(400, json.dumps({"error": str(exc)}), "application/json")
+        elif re.match(r"^/api/jira/issue/[^/]+$", parsed.path):
+            # confirma que a issue existe e devolve {key, summary, parentSummary?} -
+            # usado para criar um cartão "placeholder" na página do Jira antes de
+            # a issue estar ligada a qualquer tarefa
+            key = parsed.path.split("/")[4]
+            try:
+                self._send(200, json.dumps(fetch_issue(key)), "application/json")
+            except Exception as exc:
+                self._send(400, json.dumps({"error": str(exc)}), "application/json")
         elif parsed.path == "/logs":
             try:
                 with open(LOG_FILE, encoding="utf-8") as f:
