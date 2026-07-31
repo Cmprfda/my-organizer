@@ -300,6 +300,33 @@ body.topShrunk .ios-top #helpBtn {
   display: none;
 }
 
+/* Jira: URL + token + Gravar não cabem numa linha só como os outros .setNote,
+   e os tipos url/password não são apanhados pelas regras de forms.css */
+.settingsPanel #jiraBox {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.settingsPanel #jiraBox input {
+  flex: 1 1 100%;
+  min-width: 0;
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.settingsPanel #jiraBox button {
+  margin-left: 0;
+}
+
+.settingsPanel #jiraBox #jiraState {
+  flex: 1 1 100%;
+}
+
 .settingsPanel .setRowUpdate {
   border-top: 1px solid var(--border);
   padding-top: 10px;

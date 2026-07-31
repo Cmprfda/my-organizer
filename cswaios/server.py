@@ -23,6 +23,8 @@ from .feedback import (attach_server_log, deliver, flush_pending,
                        report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
                     graph_logout, graph_pick, graph_state)
+from .jira import (fetch_issue, get_logged_seconds, load_jira_config, log_work,
+                   save_jira_config)
 from .logs import LOG_FILE, log_event, trim_log
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
@@ -146,6 +148,19 @@ class Handler(BaseHTTPRequestHandler):
                 "pending": sum(len(v) for v in load_overrides().values()
                                if isinstance(v, dict)),
             }), "application/json")
+        elif parsed.path == "/api/jira/config":
+            cfg = load_jira_config()
+            self._send(200, json.dumps({"configured": bool(cfg),
+                                        "baseUrl": (cfg or {}).get("baseUrl", "")}),
+                       "application/json")
+        elif re.match(r"^/api/jira/issue/[^/]+/worklog$", parsed.path):
+            # esforço já registado nesta issue (soma dos worklogs)
+            key = parsed.path.split("/")[4]
+            try:
+                self._send(200, json.dumps({"totalSeconds": get_logged_seconds(key)}),
+                           "application/json")
+            except Exception as exc:
+                self._send(400, json.dumps({"error": str(exc)}), "application/json")
         elif parsed.path == "/logs":
             try:
                 with open(LOG_FILE, encoding="utf-8") as f:
@@ -395,6 +410,28 @@ class Handler(BaseHTTPRequestHandler):
                     if sub is None:
                         raise ValueError("subtarefa não encontrada")
                     sub["done"] = not sub.get("done")
+                elif action == "jira_link":
+                    # liga uma issue do Jira ao item (confirma-se que existe)
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    key = str(payload.get("key") or "").strip().upper()
+                    if not key:
+                        raise ValueError("chave da issue vazia")
+                    existing = target.get("jiraIssues") if isinstance(target.get("jiraIssues"), list) else []
+                    if any(isinstance(j, dict) and j.get("key") == key for j in existing):
+                        raise ValueError(f"{key} já está ligada")
+                    issue = fetch_issue(key)
+                    target["jiraIssues"] = existing + [issue]
+                    log_event(f'{ip} ligou o Jira {key} a {str(target.get("title", "?"))[:60]!r}')
+                elif action == "jira_unlink":
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    key = str(payload.get("key") or "").strip().upper()
+                    existing = target.get("jiraIssues") if isinstance(target.get("jiraIssues"), list) else []
+                    target["jiraIssues"] = [j for j in existing
+                                            if not (isinstance(j, dict) and j.get("key") == key)]
                 elif action == "rename":
                     # só as tarefas criadas na app podem ser renomeadas — as de
                     # Excel/CCR têm de manter o título igual à origem
@@ -434,6 +471,38 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"ok": True, "todo": todos}), "application/json")
             except Exception as exc:
                 log_event(f"{ip} operação TODO FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/jira/config":
+            # grava o token do Jira: só a partir deste PC, tal como o /api/graph
+            if ip not in ("127.0.0.1", "::1", "localhost"):
+                log_event(f"{ip} tentou configurar o Jira - recusado")
+                self._send(403, json.dumps({"error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                save_jira_config(payload.get("baseUrl"), payload.get("token"))
+                log_event(f"{ip} configurou o Jira")
+                self._send(200, json.dumps({"ok": True}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} configuração do Jira FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        m = re.match(r"^/api/jira/issue/([^/]+)/worklog$", path)
+        if m:
+            # registo de esforço: vai direto ao Jira, não mexe no todo.json
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                result = log_work(m.group(1), payload.get("timeSpent"),
+                                  payload.get("started"), payload.get("comment"))
+                log_event(f"{ip} registou trabalho no Jira {m.group(1)}: "
+                          f"{payload.get('timeSpent')}")
+                self._send(200, json.dumps({"ok": True, **result}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} registo de trabalho no Jira FALHOU: {exc}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
         if path == "/api/notepad":

@@ -102,6 +102,16 @@ function applyLang() {
   $("pickerOverlay").setAttribute("aria-label", t("pick_title"));
   $("itemClose").title = t("t_close");
   $("itemOverlay").setAttribute("aria-label", t("item_box"));
+  // botão/campos do Jira (o estado em si vive em jira.js)
+  renderJiraState();
+  $("jiraLogClose").title = t("t_close");
+  $("jiraLogOverlay").setAttribute("aria-label", t("jira_log_action"));
+  $("jiraLogSubmit").textContent = t("jira_log_submit");
+  document.querySelector('label[for="jiraLogTime"]').textContent = t("jira_lbl_time");
+  document.querySelector('label[for="jiraLogStarted"]').textContent = t("jira_lbl_started");
+  document.querySelector('label[for="jiraLogComment"]').textContent = t("jira_lbl_comment");
+  $("jiraLogTime").placeholder = t("jira_ph_time");
+  $("jiraLogComment").placeholder = t("jira_ph_comment");
   $("appUpdateBtn").textContent = t("btn_app_update");
   $("appUpdateBtn").title = t("t_app_update");
   $("shareAppBtn").title = t("t_share_app");

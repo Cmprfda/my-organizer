@@ -455,6 +455,151 @@ tr.todoRow td.todoCtl>* {
   margin-right: 6px;
 }
 
+/* issues do Jira ligadas a um item do TODO (mesma linguagem visual das
+   subtarefas: lista leve, sem caixa própria) */
+.todoJiraList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.todoJiraItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  padding: 1px 0;
+}
+
+.todoJiraKey {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.todoJiraSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.todoJiraEffort {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--status-info-fg);
+  background: var(--status-info-bg);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.todoJiraEffort:empty {
+  display: none;
+}
+
+/* o botão de registar tempo vive dentro de uma linha estreita: sem a margem
+   nem o tamanho dos botões das barras */
+.todoJiraItem .mini {
+  flex: 0 0 auto;
+  margin-left: 0;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.todoJiraAddRow {
+  margin-top: 4px;
+}
+
+/* seletor composto (em vez de só ".todoJiraLinkInput"): sobrepõe-se a
+   "input[type=text]" de forms.css, que tem mais especificidade e vem depois
+   (ver a mesma nota acima do .todoSubAddRow) */
+.todoJiraAddRow .todoJiraLinkInput {
+  width: 100%;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.todoJiraAddRow .todoJiraLinkInput:focus {
+  border-style: solid;
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* ---------- janela "Registar trabalho no Jira" ---------- */
+.jiraLogCard {
+  width: min(460px, 96vw);
+  max-height: min(88vh, 640px);
+}
+
+#jiraLogBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* "input[type=text]" de forms.css não cobre os tipos usados aqui
+   (datetime-local), por isso os campos são vestidos à mão */
+#jiraLogBody input,
+#jiraLogBody textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  background: var(--surface);
+  color: var(--text);
+}
+
+#jiraLogBody #jiraLogSubmit {
+  align-self: flex-start;
+}
+
+/* mensagem do resultado do registo: verde quando corre bem, vermelho quando
+   o Jira recusa (ver a regra da app para feedback positivo/negativo) */
+.jiraLogMsg {
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--ios-radius-btn);
+  padding: 8px 10px;
+}
+
+.jiraLogMsg.err {
+  color: var(--status-blocked-fg);
+  background: var(--status-blocked-bg);
+}
+
+.jiraLogMsg.ok {
+  color: var(--status-done-fg);
+  background: var(--status-done-bg);
+}
+
+.jiraLogMsg.hidden {
+  display: none;
+}
+
 @media (max-width: 980px) {
   .todoBoard {
     grid-template-columns: 1fr;

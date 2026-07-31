@@ -211,6 +211,24 @@ function todoSubtasksHtml(it) {
     `<input type="text" class="todoSubInput" data-tsubnew="${esc(it.id)}" placeholder="${t("ph_subtask")}"></li></ul>`;
 }
 
+// issues do Jira ligadas ao item: resumo do esforço já registado + ação de
+// registar mais tempo; a lista fica vazia até se ligar a primeira issue
+function todoJiraHtml(it) {
+  const issues = Array.isArray(it.jiraIssues) ? it.jiraIssues : [];
+  const rows = issues.map(j => {
+    const label = j.parentSummary && j.summary ? `${j.parentSummary} — ${j.summary}` : (j.summary || j.key);
+    return `<li class="todoJiraItem" title="${esc(j.key)} — ${esc(label)}">
+      <span class="todoJiraKey">${esc(j.key)}</span>
+      <span class="todoJiraSummary">${esc(label)}</span>
+      <span class="todoJiraEffort" title="${esc(t("jira_effort_title"))}">${jiraEffortBadgeHtml(j.key)}</span>
+      <button type="button" class="mini" data-tjiralog="${esc(it.id)}|${esc(j.key)}" title="${esc(t("jira_log_action"))}">⏱+</button>
+      <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(j.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>
+    </li>`;
+  }).join("");
+  return `<ul class="todoJiraList">${rows}<li class="todoJiraAddRow">` +
+    `<input type="text" class="todoJiraLinkInput" data-tjiranew="${esc(it.id)}" placeholder="${t("jira_link_ph")}"></li></ul>`;
+}
+
 // título editável só para tarefas criadas na app (as de Excel/CCR mantêm o
 // título igual à origem, por isso não são clicáveis aqui)
 function todoTitleHtml(it) {
@@ -360,7 +378,7 @@ function renderTodo() {
         : "";
       return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     <td class="todoCtl" style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
-    <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}</td>
+    <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}${todoJiraHtml(it)}</td>
     <td class="todoCtl" style="width:1%">${todoStatusHtml(it)}</td>
     <td class="todoCtl" style="width:1%"><span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span></td>
     <td class="todoCtl" style="width:1%">${srcCell}</td>
@@ -384,6 +402,7 @@ function renderTodo() {
     ${todoNoteHtml(it, true)}
     ${todoTaskInfoHtml(it)}
     ${todoSubtasksHtml(it)}
+    ${todoJiraHtml(it)}
     <div class="todoCardMeta">
       ${todoStatusHtml(it)}
       <span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span>
@@ -500,6 +519,20 @@ function todoItemTap(e) {
     postTodo({ action: "delete_subtask", id, sub_id: subId });
     return;
   }
+  const jiraUnlink = e.target.closest("[data-tjiraunlink]");
+  if (jiraUnlink) {
+    const [id, key] = jiraUnlink.dataset.tjiraunlink.split("|");
+    postTodo({ action: "jira_unlink", id, key });
+    return;
+  }
+  const jiraLog = e.target.closest("[data-tjiralog]");
+  if (jiraLog) {
+    const [id, key] = jiraLog.dataset.tjiralog.split("|");
+    const item = todos.find(it => it.id === id);
+    const issue = item && (item.jiraIssues || []).find(j => j.key === key);
+    openJiraLogModal(id, key, issue && issue.summary);
+    return;
+  }
   const del = e.target.closest("[data-tdel]");
   if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
   const src = e.target.closest("[data-src]");
@@ -547,14 +580,14 @@ $("todoBoard").addEventListener("keydown", handleSubtaskKeydown);
 // enquanto se escreve: o arrasto da linha/cartão rouba a seleção de texto e o
 // re-render dos 15 s apagaria o que já estava escrito
 function todoSubFocusIn(e) {
-  const input = e.target.closest(".todoSubInput");
+  const input = e.target.closest(".todoSubInput, .todoJiraLinkInput");
   if (!input) return;
   editorOpen = true;
   const host = input.closest("[data-tid]");
   if (host) host.draggable = false;
 }
 function todoSubFocusOut(e) {
-  const input = e.target.closest(".todoSubInput");
+  const input = e.target.closest(".todoSubInput, .todoJiraLinkInput");
   if (!input) return;
   editorOpen = false;
   const host = input.closest("[data-tid]");

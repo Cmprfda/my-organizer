@@ -87,6 +87,12 @@
         <span id="bookState"></span>
         <button type="button" class="mini" id="bookBtn">Escolher</button>
       </div>
+      <div class="setNote" id="jiraBox">
+        <input type="url" id="jiraUrl" placeholder="https://jira.empresa.pt">
+        <input type="password" id="jiraToken" placeholder="Personal Access Token">
+        <button type="button" class="mini" id="jiraSaveBtn">Gravar</button>
+        <span id="jiraState"></span>
+      </div>
       <div class="setRow setRowUpdate">
         <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
         <button type="button" class="mini" id="shareAppBtn">↗</button>
@@ -387,6 +393,33 @@
     </div>
   </div>
 
+  <div id="jiraLogOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Registar trabalho no Jira">
+    <div class="helpCard jiraLogCard">
+      <div class="helpHead">
+        <strong id="jiraLogTitle">Registar trabalho</strong>
+        <button type="button" class="ccr-x" id="jiraLogClose" title="Fechar">✕</button>
+      </div>
+      <div id="jiraLogBody">
+        <div class="field">
+          <label for="jiraLogTime">Tempo gasto</label>
+          <input type="text" id="jiraLogTime" placeholder="ex.: 3h 30m">
+        </div>
+        <div class="field">
+          <label for="jiraLogStarted">Data de início</label>
+          <input type="datetime-local" id="jiraLogStarted">
+        </div>
+        <div class="field">
+          <label for="jiraLogComment">Comentário</label>
+          <textarea id="jiraLogComment" rows="3" placeholder="Opcional"></textarea>
+        </div>
+        <div class="jiraLogMsg err hidden" id="jiraLogError"></div>
+        <div class="jiraLogMsg ok hidden" id="jiraLogSuccess"></div>
+        <button type="button" id="jiraLogSubmit">Registar</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/js/i18n.js"></script>
   <script src="/static/js/state.js"></script>
   <script src="/static/js/bugs.js"></script>
@@ -401,6 +434,7 @@
   <script src="/static/js/feedback.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/picker.js"></script>
+  <script src="/static/js/jira.js"></script>
   <script src="/static/js/help.js"></script>
   <script src="/static/js/main.js"></script>
 </body>
