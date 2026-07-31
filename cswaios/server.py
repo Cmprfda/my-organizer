@@ -23,8 +23,7 @@ from .feedback import (attach_server_log, deliver, flush_pending,
                        report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
                     graph_logout, graph_pick, graph_state)
-from .jira import (fetch_issue, get_logged_seconds, load_jira_config, log_work,
-                   save_jira_config)
+from .jira import fetch_issue, load_jira_config, log_work, save_jira_config
 from .logs import LOG_FILE, log_event, trim_log
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
@@ -163,14 +162,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"configured": bool(cfg),
                                         "baseUrl": (cfg or {}).get("baseUrl", "")}),
                        "application/json")
-        elif re.match(r"^/api/jira/issue/[^/]+/worklog$", parsed.path):
-            # esforço já registado nesta issue (soma dos worklogs)
-            key = parsed.path.split("/")[4]
-            try:
-                self._send(200, json.dumps({"totalSeconds": get_logged_seconds(key)}),
-                           "application/json")
-            except Exception as exc:
-                self._send(400, json.dumps({"error": str(exc)}), "application/json")
         elif re.match(r"^/api/jira/issue/[^/]+$", parsed.path):
             # confirma que a issue existe e devolve {key, summary, parentSummary?} -
             # usado para criar um cartão "placeholder" na página do Jira antes de
@@ -528,15 +519,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         m = re.match(r"^/api/jira/issue/([^/]+)/worklog$", path)
         if m:
-            # registo de esforço: vai direto ao Jira, não mexe no todo.json
+            # registo de esforço: vai sempre ao Jira; só mexe no todo.json quando
+            # o pedido vem de um item concreto (item_id), para lhe somar o esforço
+            # registado a partir dele (jiraLoggedSeconds, ver todos.py)
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 result = log_work(m.group(1), payload.get("timeSpent"),
                                   payload.get("started"), payload.get("comment"))
+                out = {"ok": True, **result}
+                item_id = payload.get("item_id")
+                if item_id:
+                    todos = load_todo()
+                    target = next((t for t in todos if isinstance(t, dict) and t.get("id") == item_id), None)
+                    if target is not None:
+                        target["jiraLoggedSeconds"] = int(target.get("jiraLoggedSeconds") or 0) \
+                            + int(result.get("timeSpentSeconds") or 0)
+                        todos = [normalize_todo_item(t) for t in todos if normalize_todo_item(t)]
+                        save_todo(todos)
+                        out["todo"] = todos
                 log_event(f"{ip} registou trabalho no Jira {m.group(1)}: "
                           f"{payload.get('timeSpent')}")
-                self._send(200, json.dumps({"ok": True, **result}), "application/json")
+                self._send(200, json.dumps(out), "application/json")
             except Exception as exc:
                 log_event(f"{ip} registo de trabalho no Jira FALHOU: {exc}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")

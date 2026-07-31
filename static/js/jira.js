@@ -5,46 +5,13 @@
 // do servidor); fica vazio enquanto as Definições não tiverem sido lidas
 let jiraBaseUrl = "";
 
-// esforço por issue: key -> {seconds} | "pending" | "error". O badge é montado
-// durante o render (síncrono), por isso o valor real só entra no render
-// seguinte — ver jiraEffortBadgeHtml.
-const jiraEffortCache = new Map();
-
+// esforço já registado por uma tarefa concreta (jiraLoggedSeconds do item),
+// mostrado em cada linha do cartão da página Jira — ver renderJiraPage()
 function formatJiraEffort(totalSeconds) {
   const minutes = Math.max(0, Math.round((+totalSeconds || 0) / 60));
   const h = Math.floor(minutes / 60), m = minutes % 60;
   if (!h && !m) return "0m";
   return [h ? `${h}h` : "", m ? `${m}m` : ""].filter(Boolean).join(" ");
-}
-
-function invalidateJiraEffort(key) {
-  jiraEffortCache.delete(key);
-}
-
-function fetchJiraEffort(key) {
-  fetch("/api/jira/issue/" + encodeURIComponent(key) + "/worklog")
-    .then(res => res.json())
-    .then(out => {
-      if (!out || out.error) jiraEffortCache.set(key, "error");
-      else jiraEffortCache.set(key, { seconds: +out.totalSeconds || 0 });
-    })
-    .catch(() => jiraEffortCache.set(key, "error"))
-    .finally(jiraRenderPageIfVisible);
-}
-
-// devolve sempre HTML já pronto com o que estiver em cache neste momento; o
-// pedido ao servidor (quando falta) só volta a pedir o render mais tarde, nunca
-// aqui dentro — isto corre a partir do template de renderJiraPage()
-function jiraEffortBadgeHtml(key) {
-  const got = jiraEffortCache.get(key);
-  if (got === undefined) {
-    jiraEffortCache.set(key, "pending");
-    fetchJiraEffort(key);
-    return "…";
-  }
-  if (got === "pending") return "…";
-  if (got === "error") return "";
-  return `⏱ ${esc(formatJiraEffort(got.seconds))}`;
 }
 
 function jiraIssueUrl(key) {
@@ -163,12 +130,18 @@ async function submitJiraLog() {
       body: JSON.stringify({
         timeSpent, started: toJiraStarted(started),
         comment: $("jiraLogComment").value.trim(),
+        item_id: jiraLogTarget.itemId || undefined,
       }),
     });
     const out = await res.json();
     if (!out.ok) throw new Error(out.error || "?");
-    // o total passa a estar errado: apagar a cache faz o badge voltar a pedi-lo
-    invalidateJiraEffort(key);
+    // logado a partir de uma tarefa concreta: o servidor já devolve o todo.json
+    // com o esforço somado a essa tarefa (jiraLoggedSeconds)
+    if (out.todo) {
+      todos = out.todo;
+      renderTodo();
+      render();
+    }
     jiraRenderPageIfVisible();
     jiraLogNote("jiraLogSuccess", `${t("jira_log_success")} ${key}: ${timeSpent}`);
     toast(`${t("jira_log_success")} ${key}: ${timeSpent}`, "ok");
@@ -434,12 +407,12 @@ function renderJiraPage() {
   <div class="jiraCardHead">
     ${jiraKeyBadgeHtml(e.key, e.label)}
     <span class="jiraCardSummary" title="${esc(e.label)}">${esc(e.label)}</span>
-    <span class="jiraCardEffort" title="${esc(t("jira_effort_title"))}">${jiraEffortBadgeHtml(e.key)}</span>
     <button type="button" class="mini" data-jiralog="${esc(e.key)}" data-jiralabel="${esc(e.label)}" title="${esc(t("jira_log_action"))}">⏱+</button>
     ${e.manual ? `<button type="button" class="ccr-x" data-jiraremove="${esc(e.key)}" title="Remover (ainda não está ligada a nenhuma tarefa)">✕</button>` : ""}
   </div>
   <ul class="jiraCardTasks">${e.tasks.map(it => `<li class="jiraCardTask" draggable="true" data-jtid="${esc(it.id)}" data-jtfromkey="${esc(e.key)}" title="${esc(it.title || "")}">
     ${kindChip(it.kind)}<span class="jiraCardTaskTitle">${esc(it.title || "")}</span>
+    ${it.jiraLoggedSeconds ? `<span class="jiraCardTaskEffort" title="${esc(t("jira_task_effort_title"))}">⏱ ${esc(formatJiraEffort(it.jiraLoggedSeconds))}</span>` : ""}
     <button type="button" class="ccr-x" data-jiraunlink="${esc(e.key)}|${esc(it.id)}" title="${esc(t("t_jira_unlink"))}">✕</button>
   </li>`).join("")}</ul>
 </div>`).join("");

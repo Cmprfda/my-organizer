@@ -78,6 +78,13 @@ def normalize_todo_item(item):
     raw_jira = out.get("jiraIssues")
     out["jiraIssues"] = [j for j in (normalize_jira_issue(j) for j in raw_jira[:1]) if j] \
         if isinstance(raw_jira, list) else []
+    # esforço registado no Jira a partir deste item (acumulado, em segundos): só
+    # conta o que passou pelo botão de registo do próprio item
+    try:
+        logged = int(out.get("jiraLoggedSeconds", 0))
+    except (TypeError, ValueError):
+        logged = 0
+    out["jiraLoggedSeconds"] = max(0, logged)
     return out
 
 

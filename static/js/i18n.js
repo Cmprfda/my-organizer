@@ -170,7 +170,7 @@ const TR = {
   jira_link_ph: ["Ligar issue do Jira… (ex.: PROJ-123)", "Link a Jira issue… (e.g. PROJ-123)"],
   jira_log_action: ["Registar trabalho no Jira", "Log work on Jira issue"],
   jira_goto_action: ["Ver na página Jira", "View on Jira page"],
-  jira_effort_title: ["Esforço já registado nesta issue", "Effort already logged on this issue"],
+  jira_task_effort_title: ["Esforço registado a partir desta tarefa", "Effort logged from this task"],
   t_jira_unlink: ["Desligar issue", "Unlink issue"],
   // painel da página Jira com as tarefas ainda sem issue (arrastar para ligar)
   jira_todo_title: ["Tarefas por ligar", "Tasks to link"],

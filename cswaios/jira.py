@@ -112,35 +112,5 @@ def log_work(key, time_spent, started, comment=None):
     if comment:
         body["comment"] = str(comment).strip()
     result = _request(f"/rest/api/2/issue/{key}/worklog", method="POST", body=body)
-    return {"id": (result or {}).get("id")}
-
-
-GET_LOGGED_SECONDS_MAX_PAGES = 20  # 20x maxResults=1000 já é bem mais do que qualquer issue real tem
-
-
-def get_logged_seconds(key):
-    """Soma timeSpentSeconds de todos os worklogs da issue (com paginação)."""
-    key = issue_key(key)
-    total_seconds = 0
-    start_at = 0
-    for _ in range(GET_LOGGED_SECONDS_MAX_PAGES):
-        body = _request(f"/rest/api/2/issue/{key}/worklog?startAt={start_at}&maxResults=1000") or {}
-        worklogs = body.get("worklogs") or []
-        for w in worklogs:
-            try:
-                total_seconds += int((w or {}).get("timeSpentSeconds") or 0)
-            except (TypeError, ValueError):
-                pass
-        if not worklogs:
-            break
-        start_at += len(worklogs)
-        try:
-            total = int(body.get("total", start_at))
-        except (TypeError, ValueError):
-            total = start_at
-        # se o Jira ignorar startAt e devolver sempre a mesma página, `total`
-        # nunca desce para o que já foi somado — sem isto ficaria a andar às
-        # voltas para sempre em vez de aceitar o que já tem
-        if start_at >= total:
-            break
-    return total_seconds
+    result = result or {}
+    return {"id": result.get("id"), "timeSpentSeconds": int(result.get("timeSpentSeconds") or 0)}
