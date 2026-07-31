@@ -24,7 +24,9 @@ function jiraScheduleRender() {
   if (jiraRenderTimer) return;
   jiraRenderTimer = setTimeout(() => {
     jiraRenderTimer = null;
-    if (!editorOpen) renderTodo();
+    if (editorOpen) return;
+    renderTodo();
+    if (currentView === "jira" || sideView === "jira") renderJiraPage();
   }, 80);
 }
 
@@ -187,6 +189,120 @@ document.addEventListener("keydown", e => {
   }
 }, { capture: true });
 
+// ---------- página do Jira: uma caixa por issue usada na app ----------
+// A lista sai toda dos `todos` já carregados (cada item traz as suas
+// `jiraIssues`), por isso não há nada novo a pedir ao servidor.
+let jiraPageFilter = "";
+
+function jiraIssueLabel(j) {
+  if (!j) return "";
+  return j.parentSummary && j.summary ? `${j.parentSummary} — ${j.summary}` : (j.summary || "");
+}
+
+// key -> {key, label, tasks:[item, ...]}, por ordem de chave
+function jiraIssueMap() {
+  const map = new Map();
+  (todos || []).forEach(it => {
+    if (!it) return;
+    (it.jiraIssues || []).forEach(j => {
+      if (!j || !j.key) return;
+      let entry = map.get(j.key);
+      if (!entry) {
+        entry = { key: j.key, label: "", tasks: [] };
+        map.set(j.key, entry);
+      }
+      // o resumo vem repetido em cada item; fica o último que traga texto
+      const label = jiraIssueLabel(j);
+      if (label) entry.label = label;
+      entry.tasks.push(it);
+    });
+  });
+  return map;
+}
+
+function renderJiraPage() {
+  const all = [...jiraIssueMap().values()].sort((a, b) => a.key.localeCompare(b.key));
+  const needle = jiraPageFilter.trim().toLowerCase();
+  const shown = needle
+    ? all.filter(e => e.key.toLowerCase().includes(needle) || e.label.toLowerCase().includes(needle))
+    : all;
+  $("jiraPageBody").innerHTML = shown.map(e => `<div class="jiraCard" data-jirakey="${esc(e.key)}">
+  <div class="jiraCardHead">
+    <span class="todoJiraKey">${esc(e.key)}</span>
+    <span class="jiraCardSummary" title="${esc(e.label)}">${esc(e.label)}</span>
+    <span class="todoJiraEffort" title="${esc(t("jira_effort_title"))}">${jiraEffortBadgeHtml(e.key)}</span>
+  </div>
+  <ul class="jiraCardTasks">${e.tasks.map(it => `<li class="jiraCardTask" draggable="true" data-jtid="${esc(it.id)}" data-jtfromkey="${esc(e.key)}" title="${esc(it.title || "")}">
+    ${kindChip(it.kind)}<span class="jiraCardTaskTitle">${esc(it.title || "")}</span>
+    <button type="button" class="ccr-x" data-jiraunlink="${esc(e.key)}|${esc(it.id)}" title="${esc(t("t_jira_unlink"))}">✕</button>
+  </li>`).join("")}</ul>
+</div>`).join("");
+  $("jiraPageEmpty").classList.toggle("hidden", shown.length > 0);
+}
+
+$("jiraPageSearch").addEventListener("input", e => {
+  jiraPageFilter = e.target.value || "";
+  renderJiraPage();
+});
+
+// ---------- arrastar tarefas entre issues ----------
+function jiraClearDropReady() {
+  document.querySelectorAll(".jiraCard.dropready").forEach(c => c.classList.remove("dropready"));
+}
+
+$("jiraPageBody").addEventListener("dragover", e => {
+  e.preventDefault();
+  // limpar sempre antes de marcar evita o realce preso ao sair de um cartão
+  jiraClearDropReady();
+  const card = e.target.closest ? e.target.closest(".jiraCard") : null;
+  if (card) card.classList.add("dropready");
+});
+
+$("jiraPageBody").addEventListener("dragend", jiraClearDropReady);
+// sair da grelha inteira (ou desistir do arrasto lá fora) apaga o realce
+$("jiraPageBody").addEventListener("dragleave", e => {
+  if (!e.relatedTarget || !$("jiraPageBody").contains(e.relatedTarget)) jiraClearDropReady();
+});
+
+$("jiraPageBody").addEventListener("drop", async e => {
+  e.preventDefault();
+  jiraClearDropReady();
+  const card = e.target.closest ? e.target.closest(".jiraCard") : null;
+  if (!card) return;
+  const key = card.dataset.jirakey;
+  const p = dragPayload(e);
+  if (!p || !key) return;
+  if (p.kind === "todo" && p.id) {
+    await postTodo({ action: "jira_link", id: p.id, key });
+    return;
+  }
+  if (p.kind === "jiraTask" && p.id) {
+    if (p.fromKey === key) return;      // largado no próprio cartão
+    const unlinked = await postTodo({ action: "jira_unlink", id: p.id, key: p.fromKey });
+    if (!unlinked) return;              // falhou a desligar - não tentar ligar à nova
+    const linked = await postTodo({ action: "jira_link", id: p.id, key });
+    // a ligação nova falhou (ex.: Jira em baixo) - repor a ligação antiga em vez
+    // de deixar a tarefa órfã das duas issues
+    if (!linked) await postTodo({ action: "jira_link", id: p.id, key: p.fromKey });
+  }
+});
+
+$("jiraPageBody").addEventListener("dragstart", e => {
+  const li = e.target.closest ? e.target.closest(".jiraCardTask") : null;
+  if (!li) return;
+  e.dataTransfer.setData("application/json", JSON.stringify({
+    kind: "jiraTask", id: li.dataset.jtid, fromKey: li.dataset.jtfromkey,
+  }));
+  e.dataTransfer.effectAllowed = "move";
+});
+
+$("jiraPageBody").addEventListener("click", e => {
+  const btn = e.target.closest("[data-jiraunlink]");
+  if (!btn) return;
+  const [key, id] = btn.dataset.jiraunlink.split("|");
+  postTodo({ action: "jira_unlink", id, key });
+});
+
 // ---------- definições: URL + token ----------
 let jiraConfigured = false;
 
@@ -196,6 +312,14 @@ function renderJiraState() {
   $("jiraUrl").placeholder = t("jira_url_ph");
   $("jiraState").innerHTML = `<span class="stateDot ${jiraConfigured ? "ok" : ""}"></span>` +
     esc(t(jiraConfigured ? "jira_state_ok" : "jira_state_off"));
+  // o separador do Jira só existe com o Jira configurado; se deixar de estar
+  // configurado enquanto se está lá, volta-se ao TODO
+  const tab = document.querySelector('.tabs button[data-view="jira"]');
+  if (tab) tab.classList.toggle("hidden", !jiraConfigured);
+  if (!jiraConfigured) {
+    if (sideView === "jira") exitSplit();
+    if (currentView === "jira") showView("todo");
+  }
 }
 
 async function refreshJiraSettings() {

@@ -1,6 +1,6 @@
 // My Organizer — navegação entre vistas e painel de definições
 
-const VIEWS = { excel: "excelView", ccrs: "ccrView", todo: "todoView", notes: "notesView", feedback: "fbView" };
+const VIEWS = { excel: "excelView", ccrs: "ccrView", todo: "todoView", notes: "notesView", feedback: "fbView", jira: "jiraView" };
 // vista que está no painel lateral do ecrã dividido (null = sem divisão)
 let sideView = null;
 
@@ -17,6 +17,19 @@ function showView(name) {
   if (name === "ccrs" || sideView === "ccrs") renderCCRs();
   if (name === "todo" || sideView === "todo") renderTodo();
   if (name === "notes" || sideView === "notes") renderNotes();
+  if (name === "jira" || sideView === "jira") renderJiraPage();
+}
+
+// O separador das Tarefas (Excel) só faz sentido quando há livro para abrir:
+// nada escolhido no OneDrive e nenhum ficheiro local encontrado = esconder.
+// Só se decide depois da primeira resposta do /api/tasks (ver hasWorkbookConfigured).
+function updateExcelTabVisibility() {
+  const has = hasWorkbookConfigured();
+  const tab = document.querySelector('.tabs button[data-view="excel"]');
+  if (tab) tab.classList.toggle("hidden", !has);
+  if (has) return;
+  if (sideView === "excel") exitSplit();
+  if (currentView === "excel") showView("todo");
 }
 
 document.querySelectorAll(".tabs button[data-view]").forEach(b => b.addEventListener("click", () => {

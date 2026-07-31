@@ -51,6 +51,7 @@
       <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
       <button data-view="notes" data-icon="&#9998;" draggable="true">Notas</button>
       <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
+      <button data-view="jira" data-icon="&#9875;" draggable="true" class="hidden">Jira</button>
       <button id="settingsBtn" type="button" title="Definições" aria-label="Definições"
         aria-expanded="false">&#9881;</button>
     </nav>
@@ -320,6 +321,23 @@
             </div>
             <div class="fileinfo" id="fbList" style="border-top:none;padding-top:0"></div>
             <div class="fileinfo hidden" id="fbStatus"></div>
+          </div>
+        </div>
+
+        <div id="jiraView" class="hidden">
+          <div class="bar">
+            <div class="controls">
+              <div class="field grow">
+                <label for="jiraPageSearch">Procurar</label>
+                <input type="text" id="jiraPageSearch" placeholder="Filtrar por chave ou resumo…">
+              </div>
+            </div>
+          </div>
+          <div class="jiraPageBody" id="jiraPageBody"></div>
+          <div class="state hidden" id="jiraPageEmpty">
+            <h2>Sem issues do Jira ligadas.</h2>
+            <p>Liga uma issue a uma tarefa do TODO (Enter no campo do Jira dentro de um item) para ela aparecer aqui.
+            </p>
           </div>
         </div>
       </div><!-- /paneMain -->

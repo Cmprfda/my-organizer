@@ -434,6 +434,9 @@ async function postTodo(body) {
     // as origens mostram "+ TODO" só enquanto não estiverem na lista
     render();
     renderCCRs();
+    // a página do Jira é montada a partir dos `todos`: ligar/desligar uma issue
+    // tem de se ver logo (o jira.js é carregado depois deste ficheiro)
+    if (typeof renderJiraPage === "function" && (currentView === "jira" || sideView === "jira")) renderJiraPage();
     return true;
   } catch (err) {
     alert("Não foi possível contactar o servidor: " + err);

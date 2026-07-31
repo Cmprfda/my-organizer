@@ -454,6 +454,14 @@ function render() {
   refreshItemBox();
 }
 
+// Há algum livro do Excel para mostrar? Livro escolhido no OneDrive ou pelo
+// menos um ficheiro encontrado no disco. Todas as respostas do /api/tasks
+// trazem `graph` e `files`, mesmo as de erro.
+function hasWorkbookConfigured() {
+  return !!(lastData && ((lastData.graph && lastData.graph.has_book) ||
+    (lastData.files && lastData.files.length > 0)));
+}
+
 async function load(cycle = false, fresh = false) {
   // com a fonte web não há Excel local para fechar: nem pedimos o ciclo nem
   // avisamos que o ficheiro pode fechar
@@ -477,6 +485,7 @@ async function load(cycle = false, fresh = false) {
   // pedido de 20/20s (ver checkForChanges) fica desatualizado
   liveOffline = false;
   renderConnBadge();
+  updateExcelTabVisibility();
   // os todos são atualizados primeiro: as CCRs precisam deles para saber
   // se ainda mostram o "+ TODO"
   if (lastData && lastData.todo) {

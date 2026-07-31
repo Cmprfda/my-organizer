@@ -14,6 +14,7 @@ feedback_pending/
 # Credentials / local Graph configuration (NEVER commit)
 graph_config.json
 graph_token.json
+jira_config.json
 
 # Workbooks (company data)
 *.xlsx
