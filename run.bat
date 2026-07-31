@@ -34,13 +34,20 @@ if not defined PY (
     )
 )
 
+rem pywebview e opcional: sem ele a app abre no browser em vez de janela propria
+%PY% -c "import webview" >nul 2>nul || (
+    echo A instalar a dependencia pywebview ^(so acontece na primeira vez^)...
+    %PY% -m pip install --user pywebview
+    if errorlevel 1 echo Aviso: nao foi possivel instalar o pywebview - a app vai abrir no browser.
+)
+
 rem se ja houver um tracker a correr, para-o para arrancar de fresco nesta janela
 powershell -NoProfile -Command "$c = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue; if ($c) { $p = Get-Process -Id $c[0].OwningProcess -ErrorAction SilentlyContinue; if ($p -and $p.ProcessName -like 'python*') { Write-Host 'A parar a instancia anterior do tracker...'; Stop-Process -Id $p.Id -Force } }"
 
 echo A arrancar o My Organizer...
-echo  - o browser abre sozinho; os enderecos ^(PC e telemovel^) aparecem abaixo
+echo  - abre a app numa janela propria; os enderecos ^(PC e telemovel^) aparecem abaixo
 echo  - as operacoes ficam registadas aqui, em tracker.log e em /logs
-echo  - fecha esta janela ^(ou Ctrl+C^) para parar o servidor
+echo  - fecha a janela da app para parar o servidor
 echo.
 %PY% "%~dp0app.py"
 pause

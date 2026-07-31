@@ -36,8 +36,8 @@ RELEASES_MD_PATH = os.path.join(RELEASES_SHARE_DIR, "RELEASES.md")
 RELEASES_ZIP_DIR = os.path.join(RELEASES_SHARE_DIR, "releases")
 MIRROR_ZIP_PATH = os.path.abspath(os.path.join(DEV_DIR, "..", "bsp-tracker.zip"))
 
-CORE_FILES = ["app.py", "index.html", "run.bat", "bsp.bat", "setup.bat", "README.md",
-              "requirements.txt", "graph_config.example.json"]
+CORE_FILES = ["app.py", "index.html", "run.bat", "run-hidden.vbs", "bsp.bat", "setup.bat",
+              "README.md", "requirements.txt", "graph_config.example.json"]
 # pastas de código enviadas na íntegra (o pacote Python e os ficheiros da interface)
 CORE_DIRS = ["cswaios", "static"]
 # as versões antigas da app só copiavam ficheiros soltos ao auto-atualizar; este

@@ -424,7 +424,9 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("subtarefa não encontrada")
                     sub["done"] = not sub.get("done")
                 elif action == "jira_link":
-                    # liga uma issue do Jira ao item (confirma-se que existe)
+                    # liga uma issue do Jira ao item (confirma-se que existe); cada
+                    # item só pode ter uma issue ligada, por isso substitui a que
+                    # já lá estivesse em vez de a acrescentar
                     target = next((t for t in todos if t.get("id") == payload.get("id")), None)
                     if target is None:
                         raise ValueError("item TODO não encontrado")
@@ -435,7 +437,7 @@ class Handler(BaseHTTPRequestHandler):
                     if any(isinstance(j, dict) and j.get("key") == key for j in existing):
                         raise ValueError(f"{key} já está ligada")
                     issue = fetch_issue(key)
-                    target["jiraIssues"] = existing + [issue]
+                    target["jiraIssues"] = [issue]
                     log_event(f'{ip} ligou o Jira {key} a {str(target.get("title", "?"))[:60]!r}')
                 elif action == "jira_unlink":
                     target = next((t for t in todos if t.get("id") == payload.get("id")), None)
@@ -716,6 +718,29 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
 
 
+def open_ui(url):
+    """Abre a interface: janela nativa (pywebview) se disponível, senão o browser.
+
+    Bloqueia até a janela ser fechada (ou, sem pywebview, para sempre — Ctrl+C
+    para parar); o servidor HTTP corre à parte, numa thread daemon."""
+    try:
+        import webview
+    except ImportError:
+        log_event("pywebview não instalado — a abrir no browser")
+        webbrowser.open(url)
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            pass
+        return
+    # private_mode=False: preserva localStorage (preferência de tema, etc.)
+    # entre arranques da app, tal como um browser normal faria.
+    webview.create_window("My Organizer", url, width=1300, height=850,
+                          min_size=(1000, 650))
+    webview.start(private_mode=False)
+
+
 def main():
     parser = argparse.ArgumentParser(
         epilog="comandos disponiveis (" + ", ".join(cli.COMMANDS) +
@@ -771,8 +796,9 @@ def main():
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=0.5):
             pass
-        print(f"O tracker já está a correr em {url} — a abrir o browser.")
-        webbrowser.open(url)
+        print(f"O tracker já está a correr em {url} — a abrir.")
+        if not args.no_browser:
+            open_ui(url)
         return
     except OSError:
         pass  # porto livre — arrancar
@@ -794,10 +820,15 @@ def main():
         print(f"                        http://{ip}:{port}")
         print("  " + "=" * 58)
         print()
-    print("Registos: tracker.log (ou /logs no browser). Ctrl+C para parar.")
-    if not args.no_browser:
-        threading.Timer(0.5, webbrowser.open, [url]).start()
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
+    print("Registos: tracker.log (ou /logs no browser).")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    if args.no_browser:
+        # instância interna (ex.: reinicio a pedido do /api/update): a janela/
+        # browser antigos já estão abertos e vão recarregar-se sozinhos
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            pass
+    else:
+        open_ui(url)  # bloqueia até a janela nativa ser fechada
