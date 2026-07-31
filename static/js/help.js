@@ -41,6 +41,8 @@ const HELP = [
                 "<strong>+ note</strong> stores tags, checklists and free text per task (app only, never in Excel). <strong>Clear notes</strong> deletes them all."],
             ["A app verifica de poucos em poucos segundos se o livro foi gravado e recarrega sozinha quando isso acontece. <strong>Atualizar</strong> lê tudo de raiz, como se estivesses a abrir o ficheiro pela primeira vez. Se o livro do OneDrive também estiver sincronizado no teu computador, a app lê essa cópia: o que gravas no Excel aparece logo, sem esperar pelo OneDrive. Enquanto a cópia na nuvem estiver diferente da tua, aparece um aviso ℹ por baixo do nome do ficheiro — os teus colegas ainda não veem essas alterações.",
                 "The app checks every few seconds whether the workbook was saved and reloads by itself when it was. <strong>Refresh</strong> reads everything from scratch, as if you had just opened the file. If the OneDrive workbook is also synced to your computer, the app reads that copy: whatever you save in Excel shows up immediately, without waiting for OneDrive. While the cloud copy still differs from yours, an ℹ notice appears under the file name — your colleagues cannot see those changes yet."],
+            ["Quando alguém mexe no livro numa tarefa <strong>tua</strong> (és autor, reviewer ou estás mencionado na linha), aparece um <strong>aviso do lado direito</strong> a dizer qual é a tarefa e o que mudou (ex.: <code>Status TC: In progress → Done</code>). Os avisos desaparecem sozinhos em poucos segundos, ou fecha-os com o ✕. As tuas alterações locais (✎) nunca geram avisos, e mudanças em tarefas de outras pessoas também não — mesmo com o <strong>Ver tudo</strong> ligado.",
+                "When someone changes one of <strong>your</strong> tasks in the workbook (you are its author, reviewer or are mentioned in the row), a <strong>notification appears on the right</strong> naming the task and what changed (e.g. <code>Status TC: In progress → Done</code>). Notifications fade away after a few seconds, or dismiss them with ✕. Your own local changes (✎) never raise notifications, and neither do changes to other people's tasks — even with <strong>Show all</strong> on."],
             ["<strong>Obter do SharePoint</strong> abre o download do ficheiro no teu browser, quando estás a usar o ficheiro local.",
                 "<strong>Fetch from SharePoint</strong> opens the file download in your browser when you are using the local file."],
         ],
@@ -55,6 +57,8 @@ const HELP = [
         title: ["Por fazer", "TODO list"],
         items: [
             [() => t("todo_hint"), () => t("todo_hint")],
+            ["Cada tarefa tem uma <strong>prioridade</strong> (Baixa, Normal, Alta, Urgente) no badge ao lado do estado: clica para subir e usa o botão direito para descer. As tarefas que já tinhas ficam em <strong>Normal</strong>, que é de propósito sem cor — só o que foge ao normal salta à vista.",
+                "Every task has a <strong>priority</strong> (Low, Normal, High, Urgent) on the badge next to its status: click to raise it and right-click to lower it. Tasks you already had stay on <strong>Normal</strong>, which is deliberately colourless — only what differs from normal stands out."],
             ["No modo <strong>Kanban</strong>, arrasta os cartões entre colunas — podes largar em qualquer ponto da coluna, incluindo o título e o espaço vazio. O cronómetro conta o tempo em <strong>Em curso</strong>.",
                 "In <strong>Kanban</strong> mode, drag the cards between columns — you can drop anywhere in the column, including its title and empty space. The timer counts the time spent <strong>In progress</strong>."],
         ],
@@ -99,6 +103,19 @@ const HELP = [
                 "<strong>Connect</strong> signs you in to OneDrive through the browser; from then on the app reads and writes the workbook without needing Excel open."],
             ["Quando abres uma aba que não tem as colunas do tracker (Function/TC, Author TC, Status TC…), aparece em <strong>⚙ Definições</strong> a secção <strong>Vista resumida desta aba</strong>: escolhes que coluna dessa folha entra em cada campo do resumo (nome, autor, reviewer, estado, o que fazer) e a aba passa a mostrar-se em caixas/linhas como o tracker. É só para ver — nada nessa vista se edita nem se escreve no Excel. A escolha fica guardada por livro e aba, e o botão <strong>Vista completa</strong> volta à tabela com todas as colunas.",
                 "When you open a sheet without the tracker columns (Function/TC, Author TC, Status TC…), a <strong>Compact view for this sheet</strong> section shows up in <strong>⚙ Settings</strong>: you pick which column of that sheet feeds each field of the summary (name, author, reviewer, status, to do) and the sheet starts rendering as boxes/lines like the tracker. It is read-only — nothing there can be edited or written back to Excel. The choice is remembered per workbook and sheet, and the <strong>Full view</strong> button brings back the table with every column."],
+        ],
+    },
+    {
+        title: ["Jira", "Jira"],
+        items: [
+            ["O separador <strong>Jira</strong> (só aparece com o Jira configurado nas Definições) tem um cartão por issue usada na app, com as tarefas do <strong>Por fazer</strong> ligadas a cada uma. O <strong>⏱+</strong> do cartão regista trabalho na issue e o ✕ de uma tarefa desliga-a.",
+                "The <strong>Jira</strong> tab (it only shows up once Jira is configured in Settings) has one card per issue used in the app, with the <strong>TODO</strong> tasks linked to each one. The card's <strong>⏱+</strong> logs work on the issue and a task's ✕ unlinks it."],
+            ["No topo da página, <strong>Tarefas por ligar</strong> lista as tarefas da tua lista que ainda não têm issue: <strong>arrasta uma para o cartão de uma issue</strong> para as ligar (assim que ligas, a tarefa sai da lista e passa a aparecer no cartão). Clica no título do painel para o fechar quando quiseres mais espaço para os cartões — a app lembra-se da escolha.",
+                "At the top of the page, <strong>Tasks to link</strong> lists the tasks in your list with no issue yet: <strong>drag one onto an issue card</strong> to link them (once linked, the task leaves the list and shows up on the card). Click the panel's title to collapse it when you want more room for the cards — the app remembers your choice."],
+            ["Arrastar uma tarefa de um cartão para outro muda a issue a que ela está ligada. Cada tarefa só pode estar ligada a uma issue de cada vez.",
+                "Dragging a task from one card to another moves it to that issue. Each task can only be linked to one issue at a time."],
+            ["Escrever (ou colar) uma chave no campo <strong>Procurar</strong> e carregar em <strong>Enter</strong> cria logo o cartão dessa issue, mesmo antes de ter tarefas ligadas.",
+                "Typing (or pasting) a key in the <strong>Search</strong> field and pressing <strong>Enter</strong> creates that issue's card right away, even before it has any task linked."],
         ],
     },
     {

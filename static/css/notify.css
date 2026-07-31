@@ -1,0 +1,133 @@
+/* My Organizer — pilha de avisos por tarefa (lado direito do ecrã).
+   Fica acima da barra de separadores (bottom 18px) e da versão (bottom 8px), e
+   fora do caminho do #toast, que é centrado. */
+
+#notifyStack {
+  position: fixed;
+  right: 12px;
+  bottom: 84px;
+  z-index: 55;
+  /* mais recente em cima: o append põe o cartão novo no topo da pilha */
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  width: min(340px, calc(100vw - 24px));
+  /* a pilha vazia (ou entre avisos) não pode roubar cliques à página */
+  pointer-events: none;
+}
+
+.notifyCard {
+  pointer-events: auto;
+  position: relative;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--ios-radius-btn);
+  box-shadow: var(--ios-shadow-lg);
+  padding: 10px 30px 10px 12px;
+  font-size: 13px;
+  animation: notifyIn var(--dur-base) var(--ease-standard);
+}
+
+@keyframes notifyIn {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.notifyHead {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.notifyTitle {
+  margin-top: 2px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.notifySub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.notifyLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.notifyCol {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.notifyFrom {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.notifyArrow {
+  color: var(--muted);
+}
+
+.notifyTo {
+  font-weight: 600;
+}
+
+.notifyMore {
+  color: var(--muted);
+}
+
+.notifyX {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: var(--ios-radius-btn);
+}
+
+.notifyX:hover,
+.notifyX:focus-visible {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* no ecrã estreito o #toast passa a ocupar a largura toda em baixo: os avisos
+   sobem para não ficarem por cima dele */
+@media (max-width: 720px) {
+  #notifyStack {
+    left: 10px;
+    right: 10px;
+    width: auto;
+    bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+  }
+}

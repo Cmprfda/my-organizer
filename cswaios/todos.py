@@ -11,6 +11,10 @@ from .text import normalize
 # TODO list pessoal (itens próprios + tarefas/CCRs arrastadas para lá)
 TODO_FILE = os.path.join(HERE, "todo.json")
 TODO_COLUMNS = {"todo", "inprogress", "review", "done"}
+# prioridade do item, da mais baixa para a mais alta. Os itens antigos (e os
+# criados sem a indicar) ficam em "normal" — é o valor neutro.
+TODO_PRIORITIES = ("low", "normal", "high", "urgent")
+TODO_PRIORITY_DEFAULT = "normal"
 
 
 def normalize_subtask(sub):
@@ -47,6 +51,10 @@ def normalize_todo_item(item):
         col = "done" if out.get("done") else "todo"
     out["col"] = col
     out["done"] = bool(out.get("done")) or col == "done"
+    # prioridade: os itens gravados antes desta versão não a têm, ficam no
+    # valor neutro (o load_todo regrava-os já com o campo preenchido)
+    priority = str(out.get("priority") or "").strip().lower()
+    out["priority"] = priority if priority in TODO_PRIORITIES else TODO_PRIORITY_DEFAULT
     out.pop("note", None)
     out.pop("note_title", None)
     out.pop("note_images", None)

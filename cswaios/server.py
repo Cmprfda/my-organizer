@@ -32,8 +32,9 @@ from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes
                     save_overrides)
 from .tasks import (build_payload, current_stamp, forget_web_cache, push_overrides,
                     warm_cache)
-from .todos import (TODO_COLUMNS, load_todo, normalize_todo_item, save_todo,
-                    stop_todo_timer, sync_todo_timer_with_column, todo_identity)
+from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
+                    normalize_todo_item, save_todo, stop_todo_timer,
+                    sync_todo_timer_with_column, todo_identity)
 from .updates import GITHUB_REPO, check_update, find_releases_dir, github_latest
 from . import cli
 
@@ -307,10 +308,15 @@ class Handler(BaseHTTPRequestHandler):
                     col = str(payload.get("col") or "").strip().lower()
                     if col not in TODO_COLUMNS:
                         col = "todo"
+                    # prioridade é opcional na criação: sem ela fica no valor neutro
+                    priority = str(payload.get("priority") or "").strip().lower()
+                    if priority not in TODO_PRIORITIES:
+                        priority = TODO_PRIORITY_DEFAULT
                     if existing is None and legacy is None:
                         item = {"id": f"t{int(time.time() * 1000)}", "title": title,
                                 "kind": kind, "done": False,
                                 "col": col,
+                                "priority": priority,
                                 "detail": str(payload.get("detail") or "").strip()[:300],
                                 "elapsed_ms": 0,
                                 "timer_started": int(time.time() * 1000) if col == "inprogress" else None,
@@ -343,6 +349,14 @@ class Handler(BaseHTTPRequestHandler):
                     target["col"] = col
                     target["done"] = (col == "done")
                     sync_todo_timer_with_column(target, old_col, col)
+                elif action == "set_priority":
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    priority = str(payload.get("priority") or "").strip().lower()
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    if priority not in TODO_PRIORITIES:
+                        raise ValueError("prioridade TODO inválida")
+                    target["priority"] = priority
                 elif action == "move_kanban":
                     ids = [t.get("id") for t in todos]
                     task_id = payload.get("id")

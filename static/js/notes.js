@@ -238,7 +238,8 @@ async function commitNotePath(raw) {
 // ---------- quadro ----------
 function noteBoxHtml(b) {
   const img = b.image
-    ? `<img class="noteBoxImg" src="/api/notepad/img/${encodeURIComponent(b.image)}" alt="">`
+    ? `<img class="noteBoxImg" src="/api/notepad/img/${encodeURIComponent(b.image)}" alt=""
+        draggable="false" title="${esc(t("t_box_img"))}">`
     : "";
   return `<div class="noteBox c-${esc(b.color)}${noteSelBoxes.includes(b.id) ? " sel" : ""}" data-bid="${esc(b.id)}"
     style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px">
@@ -1339,6 +1340,51 @@ $("noteCanvas").addEventListener("click", e => {
   }
 });
 
+// ---------- printscreen ampliado ----------
+// clicar na imagem de uma caixa abre-a em grande, à altura da janela; clicar
+// ao lado (ou no ✕, ou Esc) fecha. Nada disto mexe no zoom do quadro.
+function noteImgOpen() {
+  return !$("noteImgOverlay").classList.contains("hidden");
+}
+
+function openNoteImg(src) {
+  if (!src) return;
+  const full = $("noteImgFull");
+  if (full.src !== src) full.src = src;   // mesmo ficheiro: reusa o que já está em cache
+  $("noteImgOverlay").classList.remove("hidden");
+  $("noteImgClose").focus();
+}
+
+function closeNoteImg() {
+  if (!noteImgOpen()) return;
+  $("noteImgClose").blur();
+  $("noteImgOverlay").classList.add("hidden");
+}
+
+// tratador próprio (e depois do de cima): o clique na imagem não tem nada a ver
+// com as caixas/desenhos e não deve interferir com a seleção nem com o arrasto
+$("noteCanvas").addEventListener("click", e => {
+  if (noteTool !== "select") return;                   // com uma ferramenta ativa o clique é para desenhar
+  if (e.ctrlKey || e.metaKey || e.shiftKey) return;    // esses cliques são da seleção múltipla
+  const img = e.target.closest(".noteBoxImg");
+  if (img) openNoteImg(img.src);
+});
+
+// clicar na própria imagem não fecha (o resto — fundo e ✕ — fecha)
+$("noteImgOverlay").addEventListener("click", e => {
+  if (e.target === $("noteImgFull")) return;
+  closeNoteImg();
+});
+
+// em captura: com a imagem aberta o Esc só a fecha (o ecrã dividido e as
+// ferramentas de desenho têm os seus tratadores de Esc, registados antes)
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !noteImgOpen()) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  closeNoteImg();
+}, true);
+
 // ---------- escolher a cor: pequeno painel junto ao botão ----------
 let noteColorPop = null;        // { el, anchor } do painel de cores aberto
 let noteColorPopHold = false;   // clicar outra vez no mesmo botão fecha (não reabre)
@@ -1490,6 +1536,7 @@ async function deleteNoteSel(note, boxIds, drawn) {
 document.addEventListener("keydown", e => {
   if (e.key !== "Delete" && e.key !== "Backspace") return;
   if (!notesVisible() || noteTextFocused()) return;   // não interferir com edição de texto
+  if (noteImgOpen()) return;                          // a ver uma imagem em grande: não apagar nada
   const note = currentNote();
   if (!note || !noteSelCount()) return;
   e.preventDefault();
@@ -1503,6 +1550,7 @@ document.addEventListener("keydown", e => {
   if (!e.ctrlKey && !e.metaKey) return;
   if (e.shiftKey || e.altKey) return;
   if (!notesVisible() || noteTextFocused() || !currentNote()) return;
+  if (noteImgOpen()) return;   // a ver uma imagem em grande: não reverter o quadro
   e.preventDefault();
   revertNote();
 });

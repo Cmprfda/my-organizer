@@ -10,6 +10,16 @@ const TODO_COL_LABEL = {
   review: "todo_col_review",
   done: "todo_col_done",
 };
+// prioridade do item, da mais baixa para a mais alta (a mesma escala do
+// servidor). "normal" é o valor neutro dos itens que nunca foram marcados.
+const TODO_PRIORITIES = ["low", "normal", "high", "urgent"];
+const TODO_PRIORITY_LABEL = {
+  low: "todo_prio_low",
+  normal: "todo_prio_normal",
+  high: "todo_prio_high",
+  urgent: "todo_prio_urgent",
+};
+const TODO_PRIORITY_GLYPH = { low: "↓", normal: "•", high: "↑", urgent: "↑↑" };
 let todoLayout = localStorage.getItem(TODO_LAYOUT_KEY) === "kanban" ? "kanban" : "list";
 
 function todoColOf(it) {
@@ -87,6 +97,32 @@ function todoStatusHtml(it) {
   const prev = todoPrevCol(it);
   const tip = `${t("todo_status_click")}: ${t(TODO_COL_LABEL[next])}\n${t("todo_status_back")}: ${t(TODO_COL_LABEL[prev])}`;
   return `<button type="button" class="todoStatusBtn" data-tocol="${esc(it.id)}" title="${esc(tip)}">${esc(t(TODO_COL_LABEL[col]))}</button>`;
+}
+
+// ---------- prioridade ----------
+// Itens gravados antes desta versão não trazem `priority`; aqui (como no
+// servidor) vale o valor neutro em vez de rebentar.
+function todoPriorityOf(it) {
+  const prio = String((it && it.priority) || "").toLowerCase();
+  return TODO_PRIORITIES.includes(prio) ? prio : "normal";
+}
+
+// dir = 1 sobe na escala, dir = -1 desce (dá a volta nas pontas)
+function todoStepPriority(it, dir) {
+  const idx = TODO_PRIORITIES.indexOf(todoPriorityOf(it));
+  const n = TODO_PRIORITIES.length;
+  return TODO_PRIORITIES[(idx + dir + n) % n];
+}
+
+// badge clicável: clique sobe a prioridade, botão direito desce (mesma
+// linguagem do botão de estado ao lado)
+function todoPriorityHtml(it) {
+  const prio = todoPriorityOf(it);
+  const next = todoStepPriority(it, 1);
+  const prev = todoStepPriority(it, -1);
+  const tip = `${t("todo_prio_click")}: ${t(TODO_PRIORITY_LABEL[next])}\n${t("todo_prio_back")}: ${t(TODO_PRIORITY_LABEL[prev])}`;
+  return `<button type="button" class="todoPrioBtn prio-${prio}" data-tprio="${esc(it.id)}" title="${esc(tip)}">` +
+    `<span class="todoPrioGlyph">${TODO_PRIORITY_GLYPH[prio]}</span>${esc(t(TODO_PRIORITY_LABEL[prio]))}</button>`;
 }
 
 // De onde veio um item do TODO: {view, ...chaves}. Itens escritos à mão não têm origem.
@@ -381,6 +417,7 @@ function renderTodo() {
       return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     <td class="todoCtl" style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
     <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}${todoJiraHtml(it)}</td>
+    <td class="todoCtl" style="width:1%">${todoPriorityHtml(it)}</td>
     <td class="todoCtl" style="width:1%">${todoStatusHtml(it)}</td>
     <td class="todoCtl" style="width:1%"><span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span></td>
     <td class="todoCtl" style="width:1%">${srcCell}</td>
@@ -406,6 +443,7 @@ function renderTodo() {
     ${todoSubtasksHtml(it)}
     ${todoJiraHtml(it)}
     <div class="todoCardMeta">
+      ${todoPriorityHtml(it)}
       ${todoStatusHtml(it)}
       <span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span>
       ${srcCell}
@@ -489,6 +527,13 @@ function setTodoStatusById(id, dir = 1) {
   postTodo({ action: "set_col", id, col: dir < 0 ? todoPrevCol(item) : todoNextCol(item) });
 }
 
+// dir = 1 sobe a prioridade, dir = -1 desce
+function setTodoPriorityById(id, dir = 1) {
+  const item = todos.find(it => it.id === id);
+  if (!item) return;
+  postTodo({ action: "set_priority", id, priority: todoStepPriority(item, dir < 0 ? -1 : 1) });
+}
+
 function addManualTodo() {
   const title = $("todoNew").value.trim();
   if (!title) return;
@@ -518,6 +563,8 @@ function todoItemTap(e) {
   if (reset) { postTodo({ action: "restart_timer", id: reset.dataset.treset }); return; }
   const status = e.target.closest("[data-tocol]");
   if (status) { setTodoStatusById(status.dataset.tocol); return; }
+  const prio = e.target.closest("[data-tprio]");
+  if (prio) { setTodoPriorityById(prio.dataset.tprio); return; }
   const subDel = e.target.closest("[data-tsubdel]");
   if (subDel) {
     const [id, subId] = subDel.dataset.tsubdel.split("|");
@@ -559,6 +606,12 @@ function todoItemTap(e) {
 }
 
 function todoItemContext(e) {
+  const prio = e.target.closest("[data-tprio]");
+  if (prio) {
+    e.preventDefault();
+    setTodoPriorityById(prio.dataset.tprio, -1);
+    return;
+  }
   const status = e.target.closest("[data-tocol]");
   if (!status) return;
   e.preventDefault();

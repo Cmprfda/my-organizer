@@ -310,7 +310,75 @@ function jiraManualEntries(map) {
   return out;
 }
 
+// ---------- painel "Tarefas por ligar" (origem do arrasto, nesta página) ----------
+// Sem isto era preciso ir ao separador Por fazer para ligar uma issue a uma
+// tarefa: o painel põe as tarefas ainda sem issue ao lado dos cartões, e
+// arrastar uma para um cartão faz a ligação (o cartão já sabe receber este
+// arrasto — é o mesmo payload {kind:"todo", id} do arrasto no Por fazer).
+const JIRA_TODO_OPEN_KEY = "bsp-tracker-jira-todo-open";
+let jiraTodoOpen = localStorage.getItem(JIRA_TODO_OPEN_KEY) !== "0";
+
+// tarefas ainda sem issue ligada (cada item só pode ter uma, por isso ligadas
+// não fazem falta aqui). As concluídas vão para o fim: raramente é nelas que se
+// liga trabalho novo, mas continuam à mão para registar esforço já feito.
+function jiraUnlinkedTodos() {
+  const livres = (todos || []).filter(it => it && !(it.jiraIssues || []).length);
+  return [
+    ...livres.filter(it => todoColOf(it) !== "done"),
+    ...livres.filter(it => todoColOf(it) === "done"),
+  ];
+}
+
+// prioridade sem botão: aqui não se muda nada (o badge clicável vive no Por
+// fazer), só se mostra o que fuja ao normal, para se saber o que arrastar
+function jiraTodoPrioHtml(it) {
+  const prio = todoPriorityOf(it);
+  if (prio === "normal") return "";
+  return `<span class="jiraTodoPrio prio-${prio}" title="${esc(t(TODO_PRIORITY_LABEL[prio]))}">` +
+    `${TODO_PRIORITY_GLYPH[prio]}</span>`;
+}
+
+function renderJiraTodoPanel() {
+  const items = jiraUnlinkedTodos();
+  $("jiraTodoTitle").textContent = t("jira_todo_title");
+  $("jiraTodoCount").textContent = String(items.length);
+  $("jiraTodoCaret").textContent = jiraTodoOpen ? "▾" : "▸";
+  $("jiraTodoToggle").title = t(jiraTodoOpen ? "jira_todo_hide" : "jira_todo_show");
+  $("jiraTodoToggle").setAttribute("aria-expanded", jiraTodoOpen ? "true" : "false");
+  $("jiraTodoList").classList.toggle("hidden", !jiraTodoOpen);
+  if (!jiraTodoOpen) return;              // fechado: nada para montar
+  if (!items.length) {
+    $("jiraTodoList").innerHTML =
+      `<div class="jiraTodoEmpty">${esc(t((todos || []).length ? "jira_todo_empty" : "jira_todo_none"))}</div>`;
+    return;
+  }
+  const dica = t("jira_todo_drag");
+  $("jiraTodoList").innerHTML = items.map(it => {
+    const titulo = it.title || "";
+    return `<div class="jiraTodoItem${todoColOf(it) === "done" ? " isDone" : ""}" draggable="true"
+    data-jtodoid="${esc(it.id)}" title="${esc(titulo ? `${titulo}\n${dica}` : dica)}">
+    ${kindChip(it.kind)}${jiraTodoPrioHtml(it)}<span class="jiraTodoItemTitle">${esc(titulo)}</span>
+  </div>`;
+  }).join("");
+}
+
+$("jiraTodoToggle").addEventListener("click", () => {
+  jiraTodoOpen = !jiraTodoOpen;
+  localStorage.setItem(JIRA_TODO_OPEN_KEY, jiraTodoOpen ? "1" : "0");
+  renderJiraTodoPanel();
+});
+
+// exatamente o payload que o arrasto do Por fazer escreve (todo.js) e que o
+// drop dos cartões desta página já espera: {kind:"todo", id}
+$("jiraTodoList").addEventListener("dragstart", e => {
+  const row = e.target.closest ? e.target.closest("[data-jtodoid]") : null;
+  if (!row) return;
+  e.dataTransfer.setData("application/json", JSON.stringify({ kind: "todo", id: row.dataset.jtodoid }));
+  e.dataTransfer.effectAllowed = "move";
+});
+
 function renderJiraPage() {
+  renderJiraTodoPanel();
   const map = jiraIssueMap();
   const all = [...map.values(), ...jiraManualEntries(map)]
     .sort((a, b) => a.key.localeCompare(b.key));

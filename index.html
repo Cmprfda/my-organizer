@@ -28,6 +28,7 @@
   <link rel="stylesheet" href="/static/css/help.css">
   <link rel="stylesheet" href="/static/css/notes.css">
   <link rel="stylesheet" href="/static/css/picker.css">
+  <link rel="stylesheet" href="/static/css/notify.css">
   <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 
@@ -341,6 +342,14 @@
               </div>
             </div>
           </div>
+          <div class="jiraTodoPanel" id="jiraTodoPanel">
+            <button type="button" class="jiraTodoToggle" id="jiraTodoToggle" aria-expanded="true" aria-controls="jiraTodoList">
+              <span class="jiraTodoCaret" id="jiraTodoCaret">▾</span>
+              <span id="jiraTodoTitle">Tarefas por ligar</span>
+              <span class="jiraTodoCount" id="jiraTodoCount"></span>
+            </button>
+            <div class="jiraTodoList" id="jiraTodoList"></div>
+          </div>
           <div class="jiraPageBody" id="jiraPageBody"></div>
           <div class="state hidden" id="jiraPageEmpty">
             <h2>Sem issues do Jira ligadas.</h2>
@@ -405,6 +414,11 @@
     </div>
   </div>
 
+  <div id="noteImgOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Imagem">
+    <img id="noteImgFull" src="" alt="">
+    <button type="button" class="ccr-x" id="noteImgClose" title="Fechar">✕</button>
+  </div>
+
   <div id="pickerOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
     aria-label="Escolher livro no OneDrive">
     <div class="helpCard pickerCard">
@@ -465,6 +479,7 @@
   <script src="/static/js/picker.js"></script>
   <script src="/static/js/jira.js"></script>
   <script src="/static/js/help.js"></script>
+  <script src="/static/js/notify.js"></script>
   <script src="/static/js/main.js"></script>
 </body>
 

@@ -176,7 +176,9 @@ $("toggleAll").addEventListener("click", () => {
 });
 
 applyLang();
-load();
+// o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
+// (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
+load().then(notifyTaskChanges);
 
 // barra do topo: encolhe (mais estreita e sem subtítulos) assim que se desce
 // zona morta entre os 32 e os 64px para não oscilar (encolhe/expande em
@@ -218,6 +220,11 @@ async function checkForChanges() {
       // só avisamos quando os dados à vista mudam mesmo
       if (!editorOpen && JSON.stringify((lastData && lastData.rows) || []) !== antes.rows)
         toast(t("auto_refresh"), "ok");
+      // e, por cima disso, um cartão por cada tarefa minha que mudou mesmo
+      // (quem mexeu no estado/OBS/texto de uma linha ligada a mim) — corre
+      // sempre, mesmo com um editor aberto: os cartões são passivos e ficam num
+      // canto, ao contrário do render, que não pode mexer na célula em edição
+      await notifyTaskChanges();
     }
   } catch (e) { /* sem rede: o ciclo de 2 minutos volta a tentar */ }
 }

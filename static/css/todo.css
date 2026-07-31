@@ -232,6 +232,62 @@ tr.todoRow.ccr-done.flagged td {
   cursor: pointer;
 }
 
+/* prioridade do item: badge sempre à vista ao lado do estado (clique sobe,
+   botão direito desce). "Normal" fica de propósito sem cor — só o que fugir ao
+   normal deve saltar à vista; "Urgente" usa tinta sólida como o aviso 🚩. */
+.todoPrioBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 9px;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+}
+
+.todoPrioBtn.prio-normal {
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.todoPrioBtn.prio-low {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+
+.todoPrioBtn.prio-high {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+}
+
+.todoPrioBtn.prio-urgent {
+  background: var(--status-blocked-fg);
+  color: var(--white);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.todoPrioGlyph {
+  font-weight: 700;
+}
+
+.todoPrioBtn:hover {
+  border-color: var(--accent);
+}
+
+.todoPrioBtn:active {
+  transform: scale(0.96);
+  opacity: 0.84;
+}
+
 .todoTimer {
   display: inline-flex;
   align-items: center;
@@ -613,6 +669,129 @@ a.todoJiraKey:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
+}
+
+/* ---------- painel "Tarefas por ligar" (topo da página Jira) ----------
+   Origem do arrasto: cada chip é uma tarefa do Por fazer ainda sem issue, para
+   se largar num cartão. Fecha-se pelo cabeçalho para não roubar espaço à
+   grelha (a escolha fica guardada neste browser). */
+.jiraTodoPanel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow);
+  padding: 10px 14px;
+}
+
+.jiraTodoToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 2px 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.jiraTodoToggle:hover {
+  color: var(--accent);
+}
+
+.jiraTodoCaret {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.jiraTodoCount {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-radius: var(--ios-radius-pill);
+  padding: 2px 8px;
+}
+
+.jiraTodoList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.jiraTodoItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: grab;
+}
+
+.jiraTodoItem:hover {
+  border-color: var(--accent);
+}
+
+.jiraTodoItem:active {
+  cursor: grabbing;
+}
+
+/* já concluída: continua a poder ligar-se (registar esforço já feito), mas
+   apagada e no fim da lista */
+.jiraTodoItem.isDone {
+  opacity: .58;
+}
+
+.jiraTodoItem.isDone .jiraTodoItemTitle {
+  text-decoration: line-through;
+}
+
+.jiraTodoItemTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* prioridade só a ler (o badge que se clica vive no Por fazer); "Normal" não
+   aparece, como na lista */
+.jiraTodoPrio {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  padding: 1px 6px;
+  border-radius: var(--ios-radius-pill);
+}
+
+.jiraTodoPrio.prio-low {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+
+.jiraTodoPrio.prio-high {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+}
+
+.jiraTodoPrio.prio-urgent {
+  background: var(--status-blocked-fg);
+  color: var(--white);
+}
+
+.jiraTodoEmpty {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* ---------- janela "Registar trabalho no Jira" ---------- */

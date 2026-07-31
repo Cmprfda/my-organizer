@@ -82,6 +82,8 @@ function applyLang() {
   $("noteLinkClose").title = t("t_close");
   $("noteLinkSearch").placeholder = t("ph_note_link");
   $("noteLinkOverlay").setAttribute("aria-label", t("note_link_title"));
+  $("noteImgClose").title = t("t_close");
+  $("noteImgOverlay").setAttribute("aria-label", t("note_img_title"));
   document.querySelector('#dropZones [data-side="left"] span').innerHTML = t("drop_left");
   document.querySelector('#dropZones [data-side="right"] span').innerHTML = t("drop_right");
   $("splitBar").title = t("t_resize");
@@ -118,6 +120,8 @@ function applyLang() {
   $("appUpdateBtn").title = t("t_app_update");
   $("shareAppBtn").title = t("t_share_app");
   renderHelp();
+  // a página do Jira monta os seus textos no render (painel "Tarefas por ligar")
+  jiraRenderPageIfVisible();
   if (currentView === "todo" || sideView === "todo") renderTodo();
   if (currentView === "notes" || sideView === "notes") renderNotes();
 }
