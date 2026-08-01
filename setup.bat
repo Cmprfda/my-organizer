@@ -63,7 +63,7 @@ echo lnk.TargetPath = "%windir%\System32\wscript.exe"
 echo lnk.Arguments = Chr(34^) ^& "%~dp0My Organizer.vbs" ^& Chr(34^)
 echo lnk.WorkingDirectory = "%~dp0"
 echo lnk.WindowStyle = 1
-echo lnk.IconLocation = "%~dp0static\img\app-icon.ico"
+echo lnk.IconLocation = "%~dp0app-icon.ico"
 echo lnk.Description = "My Organizer"
 echo lnk.Save
 echo rem atalho com o nome antigo, criado por versoes anteriores deste setup
