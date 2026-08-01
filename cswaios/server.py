@@ -24,7 +24,7 @@ from .feedback import (attach_server_log, deliver, flush_pending,
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
                     graph_logout, graph_pick, graph_state)
 from .jira import fetch_issue, load_jira_config, log_work, save_jira_config
-from .logs import LOG_FILE, log_event, trim_log
+from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
 from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
@@ -802,6 +802,7 @@ def main():
     port = args.port or (8766 if args.dev else 8765)
     config.SERVER_PORT = port
     config.DEV_MODE = args.dev
+    install_crash_logging()
 
     # auto-atualização a partir da pasta partilhada (uma tentativa por arranque).
     # Em modo dev fica desligada: o código local é o que está a ser trabalhado.
