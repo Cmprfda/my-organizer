@@ -693,6 +693,35 @@ a.todoJiraKey:hover {
   font-size: 13px;
 }
 
+/* epic da issue ("Epic Link" do Jira): a mesma pastilha na procura, no cartão
+   e na linha da issue de uma tarefa */
+.jiraEpic {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-warm-soft);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.jiraCard > .jiraEpic {
+  margin: -3px 0 8px;
+}
+
+/* na lista de resultados o resumo manda: o epic encolhe primeiro */
+.jiraSearchItem .jiraEpic {
+  flex: 0 1 auto;
+  max-width: 45%;
+}
+
 /* remover um cartão acrescentado à mão: mesmo botão discreto usado para
    desligar uma tarefa de uma issue, sem margem à esquerda na linha do topo */
 .jiraCardHead .ccr-x {

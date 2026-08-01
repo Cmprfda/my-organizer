@@ -260,6 +260,7 @@ function todoJiraHtml(it) {
   const label = issue.parentSummary && issue.summary ? `${issue.parentSummary} — ${issue.summary}` : (issue.summary || issue.key);
   return `<ul class="todoJiraList"><li class="todoJiraItem">
     ${jiraKeyBadgeHtml(issue.key, label)}
+    ${jiraEpicHtml(jiraEpicOf(issue.key, issue))}
     <button type="button" class="mini" data-tjiralog="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("jira_log_action"))}">⏱+</button>
     <button type="button" class="srcBtn" data-tjiragoto="${esc(issue.key)}" title="${esc(t("jira_goto_action"))}">↗</button>
     <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>

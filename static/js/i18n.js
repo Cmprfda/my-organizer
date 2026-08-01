@@ -171,6 +171,7 @@ const TR = {
   jira_log_action: ["Registar trabalho no Jira", "Log work on Jira issue"],
   jira_goto_action: ["Ver na página Jira", "View on Jira page"],
   jira_task_effort_title: ["Esforço registado a partir desta tarefa", "Effort logged from this task"],
+  jira_epic_title: ["Epic", "Epic"],
   t_jira_unlink: ["Desligar issue", "Unlink issue"],
   // procurar issues no Jira a partir da página Jira
   jira_search_lbl: ["Procurar", "Search"],

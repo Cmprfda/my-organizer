@@ -39,6 +39,12 @@ def normalize_jira_issue(issue):
     parent_summary = str(issue.get("parentSummary") or "").strip()[:300]
     if parent_summary:
         out["parentSummary"] = parent_summary
+    epic_key = str(issue.get("epicKey") or "").strip()[:30]
+    if epic_key:
+        out["epicKey"] = epic_key
+        epic_name = str(issue.get("epicName") or "").strip()[:300]
+        if epic_name:
+            out["epicName"] = epic_name
     return out
 
 
@@ -74,7 +80,7 @@ def normalize_todo_item(item):
     # subtarefas (checklist leve): lista de {id, title, done}
     raw_subs = out.get("subtasks")
     out["subtasks"] = [s for s in (normalize_subtask(s) for s in raw_subs) if s] if isinstance(raw_subs, list) else []
-    # issue do Jira ligada ao item: no máximo uma, {key, summary, parentSummary?}
+    # issue do Jira ligada ao item: no máximo uma, {key, summary, parentSummary?, epic*?}
     raw_jira = out.get("jiraIssues")
     out["jiraIssues"] = [j for j in (normalize_jira_issue(j) for j in raw_jira[:1]) if j] \
         if isinstance(raw_jira, list) else []

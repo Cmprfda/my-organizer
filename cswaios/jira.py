@@ -15,6 +15,11 @@ JIRA_CONFIG_FILE = os.path.join(HERE, "jira_config.json")
 # escrito pelo utilizador acabe a mudar o caminho/query do pedido ao Jira
 KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*-\d+$")
 
+# ids dos campos "Epic Link"/"Epic Name" (customfield_NNNNN, diferentes em cada
+# instância do Jira) e nomes de epics já resolvidos - descobertos uma só vez
+_EPIC_FIELDS = None
+_EPIC_NAMES = {}
+
 
 def load_jira_config():
     try:
@@ -88,16 +93,93 @@ def _request(path, method="GET", body=None):
         raise ValueError(f"não foi possível contactar o Jira: {exc.reason}") from exc
 
 
+def _epic_fields():
+    """(id do Epic Link, id do Epic Name) nesta instância; (None, None) se não houver.
+
+    Uma falha (Jira sem Jira Software, sem permissão, offline) não fica em
+    cache: o pedido seguinte volta a tentar.
+    """
+    global _EPIC_FIELDS
+    if _EPIC_FIELDS is not None:
+        return _EPIC_FIELDS
+    try:
+        fields = _request("/rest/api/2/field") or []
+    except ValueError:
+        return None, None
+    link = name = None
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        custom = str((field.get("schema") or {}).get("custom") or "")
+        if custom.endswith("gh-epic-link"):
+            link = field.get("id")
+        elif custom.endswith("gh-epic-label"):
+            name = field.get("id")
+    _EPIC_FIELDS = (link, name)
+    return _EPIC_FIELDS
+
+
+def _epic_names(keys):
+    """{chave do epic: nome}. Uma consulta só para todas as chaves ainda por saber."""
+    wanted = [k for k in dict.fromkeys(keys) if k and KEY_RE.match(k)]
+    missing = [k for k in wanted if k not in _EPIC_NAMES]
+    if missing:
+        _, name_id = _epic_fields()
+        want_fields = ["summary"] + ([name_id] if name_id else [])
+        body = _request("/rest/api/2/search", method="POST", body={
+            "jql": "key in (" + ",".join(missing) + ")",
+            "maxResults": len(missing), "fields": want_fields,
+        }) or {}
+        for issue in (body.get("issues") or []):
+            got = issue.get("fields") or {}
+            key = issue.get("key")
+            if key:
+                _EPIC_NAMES[key] = str((name_id and got.get(name_id))
+                                       or got.get("summary") or "").strip()
+        for key in missing:                 # epic apagado/sem permissão: não repetir
+            _EPIC_NAMES.setdefault(key, "")
+    return {k: _EPIC_NAMES.get(k, "") for k in wanted}
+
+
+def _add_epics(items, raw_fields):
+    """Acrescenta epicKey/epicName aos issues (nada acontece se o Jira não os der)."""
+    link_id, _ = _epic_fields()
+    if not link_id:
+        return
+    for item, fields in zip(items, raw_fields):
+        epic = fields.get(link_id)
+        if isinstance(epic, str) and epic.strip():
+            item["epicKey"] = epic.strip()
+    keys = [i["epicKey"] for i in items if i.get("epicKey")]
+    if not keys:
+        return
+    try:
+        names = _epic_names(keys)
+    except ValueError:
+        return                              # sem o nome, fica só a chave do epic
+    for item in items:
+        name = names.get(item.get("epicKey") or "")
+        if name:
+            item["epicName"] = name
+
+
+def _issue_fields(link_id):
+    return ["summary", "parent"] + ([link_id] if link_id else [])
+
+
 def fetch_issue(key):
-    """Confirma que a issue existe e devolve {key, summary, parentSummary}."""
+    """Confirma que a issue existe e devolve {key, summary, parentSummary, epic*}."""
     key = issue_key(key)
-    body = _request(f"/rest/api/2/issue/{key}?fields=summary,parent") or {}
+    link_id, _ = _epic_fields()
+    want = ",".join(_issue_fields(link_id))
+    body = _request(f"/rest/api/2/issue/{key}?fields={want}") or {}
     fields = body.get("fields") or {}
     parent = fields.get("parent") or {}
     out = {"key": body.get("key") or key, "summary": fields.get("summary") or ""}
     parent_summary = (parent.get("fields") or {}).get("summary")
     if parent_summary:
         out["parentSummary"] = parent_summary
+    _add_epics([out], [fields])
     return out
 
 
@@ -118,10 +200,11 @@ def search_issues(text, limit=10):
     if KEY_RE.match(text):
         clauses.insert(0, f'key = "{text.upper()}"')
     jql = "(" + " OR ".join(clauses) + ") ORDER BY updated DESC"
+    link_id, _ = _epic_fields()
     body = _request("/rest/api/2/search", method="POST", body={
-        "jql": jql, "maxResults": limit + 1, "fields": ["summary", "parent"],
+        "jql": jql, "maxResults": limit + 1, "fields": _issue_fields(link_id),
     }) or {}
-    out = []
+    out, raw = [], []
     for issue in (body.get("issues") or []):
         fields = issue.get("fields") or {}
         item = {"key": issue.get("key") or "", "summary": fields.get("summary") or ""}
@@ -131,7 +214,11 @@ def search_issues(text, limit=10):
         if parent_summary:
             item["parentSummary"] = parent_summary
         out.append(item)
-    return out[:limit], len(out) > limit
+        raw.append(fields)
+    more = len(out) > limit
+    out, raw = out[:limit], raw[:limit]
+    _add_epics(out, raw)
+    return out, more
 
 
 def log_work(key, time_spent, started, comment=None):

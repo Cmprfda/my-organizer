@@ -28,6 +28,44 @@ function jiraKeyBadgeHtml(key, title) {
     : `<span class="todoJiraKey" title="${titleAttr}">${esc(key)}</span>`;
 }
 
+// epic da issue ("Epic Link" do Jira): num rework quase todas as issues têm o
+// mesmo resumo ("Close CTAD") e só o epic diz a qual delas se está a olhar.
+// É sempre um <span> (nunca um link): a linha de resultados da procura é um
+// <button> e não pode levar âncoras lá dentro.
+function jiraEpicHtml(issue) {
+  const key = issue && issue.epicKey;
+  if (!key) return "";
+  const name = (issue.epicName || "").trim() || key;
+  const label = name === key ? key : `${name} (${key})`;
+  return `<span class="jiraEpic" title="${esc(t("jira_epic_title"))}: ${esc(label)}">${esc(name)}</span>`;
+}
+
+// as ligações gravadas antes desta versão não têm o epic: vai-se buscar uma vez
+// por chave (nesta sessão) e volta a desenhar-se já com ele. Falhar é silencioso
+// — a issue continua a valer sem o epic.
+const jiraEpicAsked = new Set();
+
+function jiraEpicOf(key, issue) {
+  if (issue && issue.epicKey) return issue;
+  const info = jiraManualInfo.get(key);
+  if (info && typeof info === "object") return info.epicKey ? info : null;
+  if (info === "pending" || jiraEpicAsked.has(key) || !jiraConfigured || !key) return null;
+  jiraEpicAsked.add(key);
+  fetch("/api/jira/issue/" + encodeURIComponent(key))
+    .then(res => res.json())
+    .then(out => {
+      if (!out || out.error || !out.epicKey) return;
+      jiraManualInfo.set(key, {
+        summary: out.summary || "", parentSummary: out.parentSummary,
+        epicKey: out.epicKey, epicName: out.epicName,
+      });
+      jiraRenderPageIfVisible();
+      if (!editorOpen) renderTodo();
+    })
+    .catch(() => {});
+  return null;
+}
+
 // ---------- ligar uma issue ao item (Enter no campo do fim da lista) ----------
 // os pedidos em curso, para o Enter repetido não ligar a mesma issue duas vezes
 const jiraLinking = new Set();
@@ -177,7 +215,7 @@ function jiraIssueLabel(j) {
   return j.parentSummary && j.summary ? `${j.parentSummary} — ${j.summary}` : (j.summary || "");
 }
 
-// key -> {key, label, tasks:[item, ...]}, por ordem de chave
+// key -> {key, label, epic, tasks:[item, ...]}, por ordem de chave
 function jiraIssueMap() {
   const map = new Map();
   (todos || []).forEach(it => {
@@ -186,12 +224,13 @@ function jiraIssueMap() {
       if (!j || !j.key) return;
       let entry = map.get(j.key);
       if (!entry) {
-        entry = { key: j.key, label: "", tasks: [] };
+        entry = { key: j.key, label: "", epic: null, tasks: [] };
         map.set(j.key, entry);
       }
       // o resumo vem repetido em cada item; fica o último que traga texto
       const label = jiraIssueLabel(j);
       if (label) entry.label = label;
+      if (j.epicKey) entry.epic = j;
       entry.tasks.push(it);
     });
   });
@@ -229,7 +268,7 @@ let jiraManualKeys = new Set((() => {
     return [];
   }
 })());
-// key -> {summary, parentSummary} | "pending" | "error"
+// key -> {summary, parentSummary, epicKey, epicName} | "pending" | "error"
 const jiraManualInfo = new Map();
 
 function jiraSaveManualKeys() {
@@ -248,7 +287,7 @@ function jiraKeepAsManualIfOrphaned(key, issue) {
   if (!key || jiraIssueMap().has(key) || jiraManualKeys.has(key)) return;
   jiraManualKeys.add(key);
   jiraSaveManualKeys();
-  if (issue) jiraManualInfo.set(key, { summary: issue.summary || "", parentSummary: issue.parentSummary });
+  if (issue) jiraManualInfo.set(key, { summary: issue.summary || "", parentSummary: issue.parentSummary, epicKey: issue.epicKey, epicName: issue.epicName });
   else fetchJiraManualInfo(key);
   jiraRenderPageIfVisible();
 }
@@ -261,7 +300,7 @@ function fetchJiraManualInfo(key) {
     .then(res => res.json())
     .then(out => {
       if (!out || out.error) throw new Error((out && out.error) || "?");
-      jiraManualInfo.set(key, { summary: out.summary || "", parentSummary: out.parentSummary });
+      jiraManualInfo.set(key, { summary: out.summary || "", parentSummary: out.parentSummary, epicKey: out.epicKey, epicName: out.epicName });
       jiraRenderPageIfVisible();
     })
     .catch(err => {
@@ -322,7 +361,7 @@ function jiraManualEntries(map) {
     let label = "";
     if (info === "pending") label = "…";
     else if (info && typeof info === "object") label = jiraIssueLabel(info);
-    out.push({ key, label, tasks: [], manual: true });
+    out.push({ key, label, epic: (info && typeof info === "object" && info.epicKey) ? info : null, tasks: [], manual: true });
   });
   if (pruned) jiraSaveManualKeys();
   return out;
@@ -411,6 +450,7 @@ function renderJiraPage() {
     <button type="button" class="mini" data-jiralog="${esc(e.key)}" data-jiralabel="${esc(e.label)}" title="${esc(t("jira_log_action"))}">⏱+</button>
     ${e.manual ? `<button type="button" class="ccr-x" data-jiraremove="${esc(e.key)}" title="Remover (ainda não está ligada a nenhuma tarefa)">✕</button>` : ""}
   </div>
+  ${jiraEpicHtml(jiraEpicOf(e.key, e.epic))}
   <ul class="jiraCardTasks">${e.tasks.map(it => `<li class="jiraCardTask" draggable="true" data-jtid="${esc(it.id)}" data-jtfromkey="${esc(e.key)}" title="${esc(it.title || "")}">
     ${kindChip(it.kind)}<span class="jiraCardTaskTitle">${esc(it.title || "")}</span>
     ${it.jiraLoggedSeconds ? `<span class="jiraCardTaskEffort" title="${esc(t("jira_task_effort_title"))}">⏱ ${esc(formatJiraEffort(it.jiraLoggedSeconds))}</span>` : ""}
@@ -457,7 +497,7 @@ function renderJiraSearchResults(issues, more) {
   const rows = issues.map(j => {
     const label = jiraIssueLabel(j);
     return `<button type="button" class="jiraSearchItem" data-jirapick="${esc(j.key)}" title="${esc(label)}">
-    <span class="todoJiraKey">${esc(j.key)}</span><span class="jiraSearchSummary">${esc(label)}</span>
+    <span class="todoJiraKey">${esc(j.key)}</span><span class="jiraSearchSummary">${esc(label)}</span>${jiraEpicHtml(j)}
   </button>`;
   }).join("");
   const note = more ? `<div class="jiraSearchNote">${esc(t("jira_search_more"))}</div>` : "";
