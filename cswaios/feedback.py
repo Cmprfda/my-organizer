@@ -65,6 +65,58 @@ def _post_github_issue(nome, folder):
         raise OSError(f"gh issue create falhou: {out[:300]}")
 
 
+def _relay_server():
+    """URL do servidor de relay lido de latest.json; vazio se nao configurado
+    ou se aponta para a propria maquina."""
+    import urllib.parse
+    from . import updates
+    releases = updates.find_releases_dir()
+    if not releases:
+        return ""
+    try:
+        with open(os.path.join(releases, "latest.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        url = str(data.get("relay_server") or "").rstrip("/")
+    except (OSError, ValueError):
+        return ""
+    if not url:
+        return ""
+    host = urllib.parse.urlparse(url).hostname or ""
+    from .config import lan_ip
+    own = lan_ip() or ""
+    if host in ("127.0.0.1", "localhost", own):
+        return ""   # nao fazer relay para si proprio
+    return url
+
+
+def _relay_to_server(nome, folder):
+    """Reenvia o feedback para o servidor de relay via POST /api/feedback."""
+    import base64
+    import urllib.request
+    relay = _relay_server()
+    if not relay:
+        raise OSError("sem servidor de relay configurado")
+    with open(os.path.join(folder, "feedback.txt"), encoding="utf-8", errors="replace") as f:
+        body = f.read()
+    images = []
+    for name in sorted(os.listdir(folder)):
+        if not name.lower().endswith((".png", ".jpg", ".jpeg")):
+            continue
+        with open(os.path.join(folder, name), "rb") as f:
+            images.append({"name": name, "data": base64.b64encode(f.read()).decode()})
+    payload = json.dumps({"name": nome, "text": body, "images": images,
+                          "relay": 1}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{relay}/api/feedback",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        result = json.load(resp)
+    if not result.get("ok"):
+        raise OSError(f"relay recusou: {result}")
+
+
 def share_url():
     """Link da pasta partilhada onde o feedback aterra (BSP_FEEDBACK_SHARE
     permite apontar para outra pasta em testes; vazio desliga esta via)."""
@@ -116,9 +168,9 @@ def _move_into(origem, destino):
     shutil.rmtree(origem, ignore_errors=True)
 
 
-def deliver(folder):
-    """Entrega uma pasta montada. Devolve "share"/"local" conforme a via usada,
-    ou "" se ficou pendente (segue na próxima tentativa)."""
+def deliver(folder, allow_relay=True):
+    """Entrega uma pasta montada. Devolve a via usada ou "" se ficou pendente.
+    allow_relay=False evita que um pedido ja reencaminhado gere outro relay."""
     nome = os.path.basename(folder)
     if not os.path.isdir(folder):
         return ""
@@ -136,14 +188,22 @@ def deliver(folder):
         return "local"
     except OSError as exc:
         log_event(f"feedback: pasta sincronizada indisponivel ({exc}) - "
-                  f"a tentar GitHub Issues")
+                  f"a tentar relay LAN")
+    if allow_relay:
+        try:
+            _relay_to_server(nome, folder)
+            shutil.rmtree(folder, ignore_errors=True)
+            log_event(f"feedback: {nome} reencaminhado para servidor de relay")
+            return "relay"
+        except Exception as exc:
+            log_event(f"feedback: relay LAN falhou ({exc}) - a tentar GitHub Issues")
     try:
         _post_github_issue(nome, folder)
         shutil.rmtree(folder, ignore_errors=True)
         log_event(f"feedback: {nome} submetido como GitHub Issue")
         return "github"
     except Exception as exc:
-        log_event(f"feedback: GitHub Issue falhou ({exc}) - "
+        log_event(f"feedback: GitHub Issues falhou ({exc}) - "
                   f"fica em feedback_pending\\{nome}")
     return ""
 

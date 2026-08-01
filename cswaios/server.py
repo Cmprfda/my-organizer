@@ -648,7 +648,7 @@ class Handler(BaseHTTPRequestHandler):
                 # junta os logs do servidor — costumam ter contexto útil
                 attach_server_log(folder)
                 nome = os.path.basename(folder)
-                pendente = not deliver(folder)
+                pendente = not deliver(folder, allow_relay=not payload.get("relay"))
                 flush_pending()      # aproveita para entregar o que ficou para trás
                 log_event(f"{ip} feedback de {payload.get('name', '?')}: "
                           f"{text[:80]!r} + {count} imagem(ns) -> {nome}"

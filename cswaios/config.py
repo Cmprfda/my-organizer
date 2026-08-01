@@ -20,7 +20,7 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
-APP_VERSION = 103  # incrementado a cada release publicada na pasta partilhada
+APP_VERSION = 104  # incrementado a cada release publicada na pasta partilhada
 
 DEFAULT_SHEET = "PRJ_CFG1_reworks_julho"
 DEFAULT_PERSON = "Carlos Andrade"

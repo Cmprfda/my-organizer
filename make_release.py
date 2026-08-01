@@ -266,11 +266,19 @@ def main():
 
     # 7. Atualizar latest.json
     print("\n[7/9] A atualizar latest.json...")
+    # preservar campos extras (ex.: relay_server) ja existentes no ficheiro
+    try:
+        with open(LATEST_PATH, encoding="utf-8") as f:
+            existing_latest = json.load(f)
+    except (OSError, ValueError):
+        existing_latest = {}
     latest_data = {
+        **{k: v for k, v in existing_latest.items()
+           if k not in ("version", "id", "file", "released")},
         "version": version,
         "id": f"v{version}",
         "file": f"releases/{zip_filename}",
-        "released": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "released": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     with open(LATEST_PATH, "w", encoding="utf-8", newline="\n") as f:
         json.dump(latest_data, f, indent=2, ensure_ascii=False)
