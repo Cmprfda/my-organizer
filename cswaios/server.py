@@ -40,6 +40,7 @@ from .updates import (GITHUB_REPO, check_update, find_releases_dir, github_lates
 from . import cli
 
 STATIC_ROOT = os.path.join(HERE, "static")
+_SERVER = None          # ThreadingHTTPServer em uso (preciso para o reinicio)
 STATIC_TYPES = {
     ".css": "text/css", ".js": "application/javascript", ".json": "application/json",
     ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
@@ -706,7 +707,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"ok": True, "updated": True}), "application/json")
                 def _restart():
                     time.sleep(0.8)
-                    env = dict(os.environ, BSP_SKIP_UPDATE="1")
+                    env = dict(os.environ, BSP_SKIP_UPDATE="1", BSP_RESTART="1")
                     argv = [a for a in sys.argv[1:] if a != "--no-browser"]
                     try:
                         import webview  # noqa: F401
@@ -720,6 +721,14 @@ class Handler(BaseHTTPRequestHandler):
                     # sozinha (location.reload() em settings.js); nesse caso mantém-se
                     # --no-browser para não abrir uma segunda aba.
                     new_argv = argv if has_webview else (["--no-browser"] + argv)
+                    # largar o porto ANTES de arrancar o processo novo: senao ele
+                    # ligava-se a este servidor, concluia "ja esta a correr", abria
+                    # so a janela e ficava sem servidor quando este processo morre
+                    if _SERVER is not None:
+                        try:
+                            _SERVER.server_close()
+                        except Exception:
+                            pass
                     subprocess.Popen([sys.executable, os.path.join(HERE, "app.py")] + new_argv,
                                      cwd=HERE, env=env)
                     os._exit(0)
@@ -765,6 +774,22 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
 
 
+def port_free(port, wait=0.0):
+    """True se ninguém responde no porto. Com `wait`, espera até esse limite
+    (segundos) — usado no reinício da auto-atualização, em que o processo
+    antigo pode ainda estar a largar o porto."""
+    deadline = time.time() + wait
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                pass
+        except OSError:
+            return True
+        if time.time() >= deadline:
+            return False
+        time.sleep(0.3)
+
+
 def open_ui(url):
     """Abre a interface: janela nativa (pywebview) se disponível, senão o browser.
 
@@ -797,6 +822,7 @@ def open_ui(url):
 
 
 def main():
+    global _SERVER
     parser = argparse.ArgumentParser(
         epilog="comandos disponiveis (" + ", ".join(cli.COMMANDS) +
                "): ver 'python app.py help'")
@@ -849,16 +875,13 @@ def main():
     ensure_graph_config()
     # no Windows, o bind com SO_REUSEADDR não falha mesmo com o porto em uso,
     # por isso verificamos ligando-nos ao porto
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
-            pass
+    if not port_free(port, wait=10.0 if os.environ.get("BSP_RESTART") == "1" else 0.0):
         print(f"O tracker já está a correr em {url} — a abrir.")
         if not args.no_browser:
             open_ui(url)
         return
-    except OSError:
-        pass  # porto livre — arrancar
     server = ThreadingHTTPServer((args.host, port), Handler)
+    _SERVER = server
     trim_log()
     # feedback que ficou por entregar (partilha sem escrita) tenta seguir agora
     flush_pending()

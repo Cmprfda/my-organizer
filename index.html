@@ -274,7 +274,8 @@
                 <button type="button" class="noteToolBtn" data-tool="ellipse" title="Elipse">
                   <span class="noteToolIcon">◯</span><span class="noteToolLabel">Elipse</span>
                 </button>
-                <button type="button" class="noteToolBtn" data-tool="eraser" title="Borracha (apaga traços, formas e ligações)">
+                <button type="button" class="noteToolBtn" data-tool="eraser"
+                  title="Borracha (apaga traços, formas e ligações)">
                   <span class="noteToolIcon">🧽</span><span class="noteToolLabel">Borracha</span>
                 </button>
                 <button type="button" class="noteToolBtn" data-tool="connector" title="Ligar caixas">
@@ -283,20 +284,24 @@
                 <button type="button" class="noteToolBtn" data-tool="frame" title="Criar grupo">
                   <span class="noteToolIcon">▢</span><span class="noteToolLabel">Grupo</span>
                 </button>
-                <button type="button" class="noteToolColor c-yellow" id="noteToolColor" title="Cor do traço (clica para escolher)"></button>
+                <button type="button" class="noteToolColor c-yellow" id="noteToolColor"
+                  title="Cor do traço (clica para escolher)"></button>
                 <span class="noteToolSep"></span>
-                <button type="button" class="noteToolBtn" id="noteUndoBtn" title="Reverter a última alteração (Ctrl+Z)" disabled>
+                <button type="button" class="noteToolBtn" id="noteUndoBtn" title="Reverter a última alteração (Ctrl+Z)"
+                  disabled>
                   <span class="noteToolIcon">↺</span><span class="noteToolLabel">Reverter</span>
                 </button>
                 <button type="button" class="noteToolBtn" id="noteClearBtn" title="Limpar o quadro">
                   <span class="noteToolIcon">🗑</span><span class="noteToolLabel">Limpar</span>
                 </button>
                 <span class="noteToolSep"></span>
-                <button type="button" class="noteToolBtn" id="noteZoomOutBtn" title="Diminuir zoom (ou Ctrl+scroll no quadro)">
+                <button type="button" class="noteToolBtn" id="noteZoomOutBtn"
+                  title="Diminuir zoom (ou Ctrl+scroll no quadro)">
                   <span class="noteToolIcon">−</span><span class="noteToolLabel">Zoom −</span>
                 </button>
                 <button type="button" class="noteZoomLabel" id="noteZoomLabel" title="Repor zoom (100%)">100%</button>
-                <button type="button" class="noteToolBtn" id="noteZoomInBtn" title="Aumentar zoom (ou Ctrl+scroll no quadro)">
+                <button type="button" class="noteToolBtn" id="noteZoomInBtn"
+                  title="Aumentar zoom (ou Ctrl+scroll no quadro)">
                   <span class="noteToolIcon">+</span><span class="noteToolLabel">Zoom +</span>
                 </button>
               </div>
@@ -339,13 +344,15 @@
             <div class="controls">
               <div class="field grow jiraSearchField">
                 <label for="jiraPageSearch">Procurar</label>
-                <input type="text" id="jiraPageSearch" autocomplete="off" placeholder="Procurar no Jira por palavras ou chave (Enter adiciona a chave)…">
+                <input type="text" id="jiraPageSearch" autocomplete="off"
+                  placeholder="Procurar no Jira por palavras ou chave (Enter adiciona a chave)…">
                 <div class="jiraSearchResults hidden" id="jiraSearchResults"></div>
               </div>
             </div>
           </div>
           <div class="jiraTodoPanel" id="jiraTodoPanel">
-            <button type="button" class="jiraTodoToggle" id="jiraTodoToggle" aria-expanded="true" aria-controls="jiraTodoList">
+            <button type="button" class="jiraTodoToggle" id="jiraTodoToggle" aria-expanded="true"
+              aria-controls="jiraTodoList">
               <span class="jiraTodoCaret" id="jiraTodoCaret">▾</span>
               <span id="jiraTodoTitle">Tarefas por ligar</span>
               <span class="jiraTodoCount" id="jiraTodoCount"></span>
@@ -412,8 +419,7 @@
     </div>
   </div>
 
-  <div id="noteLinkOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
-    aria-label="Ligar a uma tarefa">
+  <div id="noteLinkOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Ligar a uma tarefa">
     <div class="helpCard pickerCard">
       <div class="helpHead">
         <strong id="noteLinkTitle">Ligar a uma tarefa</strong>

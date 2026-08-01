@@ -197,8 +197,7 @@ function renderChangelog() {
         body.innerHTML = `<p>${esc(t("changelog_empty"))}</p>`;
         return;
     }
-    body.innerHTML = changelogEntries.map(e => `<h3>v${e.version}${
-        e.version === changelogCurrentVersion ? ` (${esc(t("changelog_current"))})` : ""
+    body.innerHTML = changelogEntries.map(e => `<h3>v${e.version}${e.version === changelogCurrentVersion ? ` (${esc(t("changelog_current"))})` : ""
         }</h3><ul>${(e.notes || []).map(n => `<li>${esc(n)}</li>`).join("")}</ul>`).join("");
 }
 

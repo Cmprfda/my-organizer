@@ -216,7 +216,7 @@ function buildCustomCompact(data) {
     // side/linesCols/rawTodo/roleKey ficam vazios: sem os papéis e os estados do
     // tracker não há "lado" nem coluna do Excel para onde escrever
     return [cel(row, idx.fn), quem.map(([r, nome]) => `${r}: ${nome}`).join("\n"),
-      cel(row, idx.status), cel(row, idx.todo), "", null, meta, [], "", ""];
+    cel(row, idx.status), cel(row, idx.todo), "", null, meta, [], "", ""];
   });
 
   return { headers: compactHeaders(), rows, readonly: true };
