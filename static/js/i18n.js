@@ -172,6 +172,14 @@ const TR = {
   jira_goto_action: ["Ver na página Jira", "View on Jira page"],
   jira_task_effort_title: ["Esforço registado a partir desta tarefa", "Effort logged from this task"],
   t_jira_unlink: ["Desligar issue", "Unlink issue"],
+  // procurar issues no Jira a partir da página Jira
+  jira_search_lbl: ["Procurar", "Search"],
+  jira_search_ph: ["Procurar no Jira por palavras ou chave (Enter adiciona a chave)…",
+    "Search Jira by keywords or key (Enter adds the key)…"],
+  jira_search_wait: ["A procurar no Jira…", "Searching Jira…"],
+  jira_search_none: ["Sem issues para esse texto.", "No issues match that text."],
+  jira_search_more: ["Há mais resultados — escreve mais para afinar a procura.",
+    "There are more results — type more to narrow the search."],
   // painel da página Jira com as tarefas ainda sem issue (arrastar para ligar)
   jira_todo_title: ["Tarefas por ligar", "Tasks to link"],
   jira_todo_show: ["Mostrar as tarefas ainda sem issue — arrasta uma para um cartão para a ligar",
@@ -246,6 +254,7 @@ const TR = {
   fb_big: ["Imagens demasiado grandes (máximo 15 MB no total).", "Images too large (max. 15 MB total)."],
   conn_web: ["OneDrive ligado", "OneDrive connected"],
   conn_web_off: ["OneDrive pronto a ligar", "OneDrive ready to connect"],
+  conn_web_err: ["OneDrive sem resposta", "OneDrive not responding"],
   conn_local: ["Ficheiro local", "Local file"],
   t_synced_copy: ["Lido da cópia sincronizada no computador (mostra as alterações do Excel sem esperar pelo OneDrive)",
     "Read from the synced copy on this computer (shows Excel changes without waiting for OneDrive)"],

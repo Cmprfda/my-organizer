@@ -57,8 +57,8 @@ const HELP = [
         title: ["Por fazer", "TODO list"],
         items: [
             [() => t("todo_hint"), () => t("todo_hint")],
-            ["Cada tarefa tem uma <strong>prioridade</strong> (Baixa, Normal, Alta, Urgente) no badge ao lado do estado: clica para subir e usa o botão direito para descer. As tarefas que já tinhas ficam em <strong>Normal</strong>, que é de propósito sem cor — só o que foge ao normal salta à vista.",
-                "Every task has a <strong>priority</strong> (Low, Normal, High, Urgent) on the badge next to its status: click to raise it and right-click to lower it. Tasks you already had stay on <strong>Normal</strong>, which is deliberately colourless — only what differs from normal stands out."],
+            ["Cada tarefa tem uma <strong>prioridade</strong> (Baixa, Normal, Alta, Urgente) no badge ao lado do estado: clica para subir e usa o botão direito para descer. Mudar a prioridade <strong>arruma logo a lista</strong>, da mais importante para a menos importante (dentro da mesma prioridade fica a ordem em que as puseste). As tarefas que já tinhas ficam em <strong>Normal</strong>, que é de propósito sem cor — só o que foge ao normal salta à vista.",
+                "Every task has a <strong>priority</strong> (Low, Normal, High, Urgent) on the badge next to its status: click to raise it and right-click to lower it. Changing the priority <strong>reorders the list right away</strong>, from the most important to the least (within the same priority the order you set is kept). Tasks you already had stay on <strong>Normal</strong>, which is deliberately colourless — only what differs from normal stands out."],
             ["No modo <strong>Kanban</strong>, arrasta os cartões entre colunas — podes largar em qualquer ponto da coluna, incluindo o título e o espaço vazio. O cronómetro conta o tempo em <strong>Em curso</strong>.",
                 "In <strong>Kanban</strong> mode, drag the cards between columns — you can drop anywhere in the column, including its title and empty space. The timer counts the time spent <strong>In progress</strong>."],
         ],
@@ -114,8 +114,8 @@ const HELP = [
                 "At the top of the page, <strong>Tasks to link</strong> lists the tasks in your list with no issue yet: <strong>drag one onto an issue card</strong> to link them (once linked, the task leaves the list and shows up on the card). Click the panel's title to collapse it when you want more room for the cards — the app remembers your choice."],
             ["Arrastar uma tarefa de um cartão para outro muda a issue a que ela está ligada. Cada tarefa só pode estar ligada a uma issue de cada vez.",
                 "Dragging a task from one card to another moves it to that issue. Each task can only be linked to one issue at a time."],
-            ["Escrever (ou colar) uma chave no campo <strong>Procurar</strong> e carregar em <strong>Enter</strong> cria logo o cartão dessa issue, mesmo antes de ter tarefas ligadas.",
-                "Typing (or pasting) a key in the <strong>Search</strong> field and pressing <strong>Enter</strong> creates that issue's card right away, even before it has any task linked."],
+            ["Escrever palavras no campo <strong>Procurar</strong> procura-as <strong>no próprio Jira</strong> (chave ou resumo) e mostra a lista de issues por baixo: clica numa para criar logo o cartão dela. Se houver resultados a mais, a app avisa para escreveres mais. Escrever (ou colar) uma chave e carregar em <strong>Enter</strong> continua a criar o cartão dessa issue diretamente.",
+                "Typing words in the <strong>Search</strong> field searches <strong>Jira itself</strong> (key or summary) and lists the matching issues below: click one to create its card right away. If there are too many results, the app tells you to type more. Typing (or pasting) a key and pressing <strong>Enter</strong> still creates that issue's card directly."],
         ],
     },
     {

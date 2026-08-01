@@ -101,6 +101,39 @@ def fetch_issue(key):
     return out
 
 
+def search_issues(text, limit=10):
+    """Procura issues por palavras do resumo (ou pela chave).
+
+    Devolve (resultados, ha_mais): `ha_mais` diz se o Jira tem mais do que
+    `limit` correspondências — a app pede uma a mais só para o saber.
+    """
+    # só letras/números/espaços/-/_/. : o resto é sintaxe do JQL (aspas, ~, (),
+    # etc.) e uma pesquisa escrita à mão não pode alterar a consulta
+    text = re.sub(r"[^\w\s\-_.]", " ", str(text or ""), flags=re.UNICODE).strip()
+    text = re.sub(r"\s+", " ", text)
+    if len(text) < 2:
+        return [], False
+    limit = max(1, min(int(limit or 10), 50))
+    clauses = [f'summary ~ "{text}"', f'text ~ "{text}"']
+    if KEY_RE.match(text):
+        clauses.insert(0, f'key = "{text.upper()}"')
+    jql = "(" + " OR ".join(clauses) + ") ORDER BY updated DESC"
+    body = _request("/rest/api/2/search", method="POST", body={
+        "jql": jql, "maxResults": limit + 1, "fields": ["summary", "parent"],
+    }) or {}
+    out = []
+    for issue in (body.get("issues") or []):
+        fields = issue.get("fields") or {}
+        item = {"key": issue.get("key") or "", "summary": fields.get("summary") or ""}
+        if not item["key"]:
+            continue
+        parent_summary = ((fields.get("parent") or {}).get("fields") or {}).get("summary")
+        if parent_summary:
+            item["parentSummary"] = parent_summary
+        out.append(item)
+    return out[:limit], len(out) > limit
+
+
 def log_work(key, time_spent, started, comment=None):
     """Cria um worklog na issue (esforço registado mesmo no Jira)."""
     key = issue_key(key)

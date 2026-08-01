@@ -116,6 +116,17 @@ def sync_todo_timer_with_column(item, old_col, new_col):
             item["timer_started"] = now_ms
 
 
+def sort_todos_by_priority(items):
+    """Da prioridade mais alta para a mais baixa, sem mexer na ordem manual
+    dentro da mesma prioridade (sorted é estável)."""
+    def rank(item):
+        priority = str((item or {}).get("priority") or "").strip().lower()
+        if priority not in TODO_PRIORITIES:
+            priority = TODO_PRIORITY_DEFAULT
+        return -TODO_PRIORITIES.index(priority)
+    return sorted(items, key=rank)
+
+
 def sync_todo_review_from_tasks(todos, row_meta, sheet_name):
     """Move linked TODO items to Review when the source task enters
     "Ready for review" or "In review".

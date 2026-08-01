@@ -108,6 +108,8 @@ function applyLang() {
   $("itemOverlay").setAttribute("aria-label", t("item_box"));
   // botão/campos do Jira (o estado em si vive em jira.js)
   renderJiraState();
+  document.querySelector('label[for="jiraPageSearch"]').textContent = t("jira_search_lbl");
+  $("jiraPageSearch").placeholder = t("jira_search_ph");
   $("jiraLogClose").title = t("t_close");
   $("jiraLogOverlay").setAttribute("aria-label", t("jira_log_action"));
   $("jiraLogSubmit").textContent = t("jira_log_submit");
@@ -187,6 +189,8 @@ let graphPoll = null;
 // prova ao vivo (não só o prazo do token em cache) de que o pedido de 20 em 20
 // segundos ao OneDrive falhou por falta de rede — ver checkForChanges() em main.js
 let liveOffline = false;
+// motivo dessa falha, para o distintivo o poder explicar em vez de só ficar vermelho
+let liveError = "";
 
 function renderGraphState() {
   $("sourceSel").value = SOURCE;
@@ -199,8 +203,12 @@ function renderGraphState() {
   else if (graphInfo.pending) txt = t("graph_wait");
   else if (graphInfo.connected) txt = t(graphInfo.method === "cli" ? "graph_on_cli" : "graph_on");
   else txt = graphInfo.can_login ? t("graph_off") : `${t("graph_off")} — ${t("graph_need_cli")}`;
-  // ponto verde/vermelho a acompanhar o texto do estado
-  const cor = graphInfo.connected ? "ok" : (graphInfo.pending ? "" : "err");
+  // ponto verde/vermelho a acompanhar o texto do estado. Com sessão iniciada
+  // mas o último pedido ao OneDrive falhado, isto tem de dizer o mesmo que o
+  // distintivo lá em cima — senão fica "ligado" aqui e vermelho lá
+  const falhaViva = graphInfo.connected && liveOffline;
+  if (falhaViva) txt = `${t("conn_web_err")}${liveError ? ` — ${liveError}` : ""}`;
+  const cor = graphInfo.connected && !falhaViva ? "ok" : (graphInfo.pending ? "" : "err");
   $("graphState").innerHTML = `<span class="stateDot ${cor}"></span>` +
     esc(graphInfo.error && !graphInfo.pending ? `${txt} — ${graphInfo.error}` : txt);
   $("graphBtn").textContent = graphInfo.connected ? t("graph_disconnect") : t("graph_connect");
@@ -225,22 +233,28 @@ function renderBookState() {
 // vermelho quando algo está por ligar/falhou, neutro com o ficheiro local
 function renderConnBadge() {
   const badge = $("connBadge"), dot = $("connDot"), txt = $("connText");
+  // "pronto a ligar" só quando a sessão do OneDrive não está mesmo iniciada;
+  // com sessão iniciada a culpa é do pedido/rede e dizer o contrário confunde
+  // quem acabou de se ligar
+  const semSessao = !!(graphInfo.configured && !graphInfo.connected);
+  const webErr = () => (semSessao ? t("conn_web_off") : t("conn_web_err"));
   let estado, texto, extra = "";
   if (liveOffline) {
     // o token em cache ainda parece válido, mas o pedido de 20/20s ao OneDrive
     // acabou de falhar de verdade (sem rede) — isso pesa mais do que o prazo do token
     estado = "err";
-    texto = t("conn_web_off");
+    texto = webErr();
+    if (liveError) extra = ` — ${liveError}`;
   } else if (lastData && lastData.error) {
     // um erro é sempre vermelho, mesmo quando a resposta de erro traz
     // "source": "onedrive" (ex: pedido de login) — isso não prova ligação
     estado = "err";
-    texto = lastData.source === "onedrive" ? t("conn_web_off") : t("conn_offline");
+    texto = lastData.source === "onedrive" ? webErr() : t("conn_offline");
   } else if (lastData && (lastData.source === "onedrive" || lastData.synced_copy)) {
     estado = "ok";
     texto = graphInfo.book || t("conn_web");
     if (lastData.synced_copy) extra = ` — ${t("t_synced_copy")}`;
-  } else if (graphInfo.configured && !graphInfo.connected) {
+  } else if (semSessao) {
     estado = "err";
     texto = t("conn_web_off");
   } else {

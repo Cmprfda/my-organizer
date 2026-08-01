@@ -337,9 +337,10 @@
         <div id="jiraView" class="hidden">
           <div class="bar">
             <div class="controls">
-              <div class="field grow">
+              <div class="field grow jiraSearchField">
                 <label for="jiraPageSearch">Procurar</label>
-                <input type="text" id="jiraPageSearch" placeholder="Filtrar por chave ou resumo, ou colar uma chave e Enter para adicionar…">
+                <input type="text" id="jiraPageSearch" autocomplete="off" placeholder="Procurar no Jira por palavras ou chave (Enter adiciona a chave)…">
+                <div class="jiraSearchResults hidden" id="jiraSearchResults"></div>
               </div>
             </div>
           </div>

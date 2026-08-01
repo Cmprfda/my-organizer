@@ -163,7 +163,10 @@ document.querySelectorAll(".tabs button[data-view]").forEach(b => {
   b.addEventListener("dragstart", e => {
     e.dataTransfer.setData("application/json",
       JSON.stringify({ kind: "tab", view: b.dataset.view }));
-    e.dataTransfer.effectAllowed = "copy";
+    // "copyMove": copy para as faixas do ecrã dividido, move para reordenar os
+    // separadores (views.js). Só com "copy" o browser recusava o dropEffect
+    // "move" e o drop da reordenação nunca chegava a acontecer.
+    e.dataTransfer.effectAllowed = "copyMove";
     $("dropZones").classList.remove("hidden");
   });
   b.addEventListener("dragend", () => {

@@ -23,7 +23,8 @@ from .feedback import (attach_server_log, deliver, flush_pending,
                        report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
                     graph_logout, graph_pick, graph_state)
-from .jira import fetch_issue, load_jira_config, log_work, save_jira_config
+from .jira import (fetch_issue, load_jira_config, log_work, save_jira_config,
+                   search_issues)
 from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
@@ -32,8 +33,8 @@ from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes
 from .tasks import (build_payload, current_stamp, forget_web_cache, push_overrides,
                     warm_cache)
 from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
-                    normalize_todo_item, save_todo, stop_todo_timer,
-                    sync_todo_timer_with_column, todo_identity)
+                    normalize_todo_item, save_todo, sort_todos_by_priority,
+                    stop_todo_timer, sync_todo_timer_with_column, todo_identity)
 from .updates import (GITHUB_REPO, check_update, find_releases_dir, github_latest,
                       read_changelog)
 from . import cli
@@ -162,6 +163,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"configured": bool(cfg),
                                         "baseUrl": (cfg or {}).get("baseUrl", "")}),
                        "application/json")
+        elif parsed.path == "/api/jira/search":
+            # procura por palavras (resumo ou chave) para se escolher a issue
+            # sem sair da app; devolve `more` quando ha mais do que o limite
+            query = (parse_qs(parsed.query).get("q") or [""])[0]
+            try:
+                issues, more = search_issues(query)
+                self._send(200, json.dumps({"issues": issues, "more": more}),
+                           "application/json")
+            except Exception as exc:
+                self._send(400, json.dumps({"error": str(exc)}), "application/json")
         elif re.match(r"^/api/jira/issue/[^/]+$", parsed.path):
             # confirma que a issue existe e devolve {key, summary, parentSummary?} -
             # usado para criar um cartão "placeholder" na página do Jira antes de
@@ -355,6 +366,9 @@ class Handler(BaseHTTPRequestHandler):
                     if priority not in TODO_PRIORITIES:
                         raise ValueError("prioridade TODO inválida")
                     target["priority"] = priority
+                    # mudar a prioridade arruma logo a lista (mais importante
+                    # primeiro); a ordem manual mantém-se dentro de cada nível
+                    todos = sort_todos_by_priority(todos)
                 elif action == "move_kanban":
                     ids = [t.get("id") for t in todos]
                     task_id = payload.get("id")

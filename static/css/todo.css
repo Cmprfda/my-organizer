@@ -591,6 +591,64 @@ a.todoJiraKey:hover {
 }
 
 /* ---------- página Jira (issues usadas na app + tarefas ligadas) ---------- */
+/* resultados da procura no Jira: lista flutuante por baixo do campo, para não
+   empurrar a grelha de cartões para baixo enquanto se escreve */
+.jiraSearchField {
+  position: relative;
+}
+
+.jiraSearchResults {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin-top: 4px;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow-lg);
+  padding: 4px;
+}
+
+.jiraSearchItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.jiraSearchItem:hover,
+.jiraSearchItem:focus-visible {
+  background: var(--accent-soft);
+}
+
+.jiraSearchSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jiraSearchNote {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .jiraPageBody {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

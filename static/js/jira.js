@@ -296,6 +296,7 @@ function addJiraManualKey(rawKey) {
   }
   jiraPageFilter = "";
   $("jiraPageSearch").value = "";
+  hideJiraSearchResults();
   renderJiraPage();                 // mostra logo o cartão (com "…" no resumo)
   if (!already) fetchJiraManualInfo(key);
 }
@@ -422,14 +423,78 @@ function renderJiraPage() {
 $("jiraPageSearch").addEventListener("input", e => {
   jiraPageFilter = e.target.value || "";
   renderJiraPage();
+  scheduleJiraSearch(jiraPageFilter);
 });
 
 // o mesmo campo serve para acrescentar: escrever/colar uma chave e Enter cria
 // logo o cartão, mesmo que a issue ainda não esteja ligada a tarefa nenhuma
 $("jiraPageSearch").addEventListener("keydown", e => {
+  if (e.key === "Escape") { hideJiraSearchResults(); return; }
   if (e.key !== "Enter") return;
   e.preventDefault();
   addJiraManualKey(e.target.value);
+});
+
+// ---------- procurar issues no próprio Jira (não só nos cartões da app) ----------
+// O campo acima filtra o que já está na página; quem procura por palavras quer
+// encontrar uma issue que ainda não está cá. A lista de resultados vem do
+// servidor (/api/jira/search) e escolher um resultado cria o cartão.
+let jiraSearchTimer = null;
+let jiraSearchSeq = 0;
+
+function hideJiraSearchResults() {
+  $("jiraSearchResults").classList.add("hidden");
+  $("jiraSearchResults").innerHTML = "";
+}
+
+function showJiraSearchHint(msg) {
+  $("jiraSearchResults").innerHTML = `<div class="jiraSearchNote">${esc(msg)}</div>`;
+  $("jiraSearchResults").classList.remove("hidden");
+}
+
+function renderJiraSearchResults(issues, more) {
+  if (!issues.length) { showJiraSearchHint(t("jira_search_none")); return; }
+  const rows = issues.map(j => {
+    const label = jiraIssueLabel(j);
+    return `<button type="button" class="jiraSearchItem" data-jirapick="${esc(j.key)}" title="${esc(label)}">
+    <span class="todoJiraKey">${esc(j.key)}</span><span class="jiraSearchSummary">${esc(label)}</span>
+  </button>`;
+  }).join("");
+  const note = more ? `<div class="jiraSearchNote">${esc(t("jira_search_more"))}</div>` : "";
+  $("jiraSearchResults").innerHTML = rows + note;
+  $("jiraSearchResults").classList.remove("hidden");
+}
+
+function scheduleJiraSearch(text) {
+  clearTimeout(jiraSearchTimer);
+  const termo = String(text || "").trim();
+  if (!jiraConfigured || termo.length < 2) { hideJiraSearchResults(); return; }
+  jiraSearchTimer = setTimeout(() => runJiraSearch(termo), 400);
+}
+
+async function runJiraSearch(termo) {
+  const seq = ++jiraSearchSeq;
+  showJiraSearchHint(t("jira_search_wait"));
+  try {
+    const res = await fetch("/api/jira/search?q=" + encodeURIComponent(termo));
+    const out = await res.json();
+    if (seq !== jiraSearchSeq) return;          // já há uma pesquisa mais recente
+    if (out.error) { showJiraSearchHint(out.error); return; }
+    renderJiraSearchResults(out.issues || [], !!out.more);
+  } catch (err) {
+    if (seq === jiraSearchSeq) showJiraSearchHint(err.message || t("err_server"));
+  }
+}
+
+$("jiraSearchResults").addEventListener("click", e => {
+  const btn = e.target.closest("[data-jirapick]");
+  if (!btn) return;
+  hideJiraSearchResults();
+  addJiraManualKey(btn.dataset.jirapick);
+});
+
+document.addEventListener("click", e => {
+  if (!e.target.closest(".jiraSearchField")) hideJiraSearchResults();
 });
 
 // vai para a página Jira e destaca o cartão desta issue (a partir do badge de

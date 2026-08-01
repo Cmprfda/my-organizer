@@ -209,7 +209,13 @@ async function checkForChanges() {
     if (lastData.source === "onedrive") {
       const estavaOffline = liveOffline;
       liveOffline = !!out.error;
-      if (liveOffline !== estavaOffline) renderConnBadge();
+      liveError = out.error || "";
+      if (liveOffline !== estavaOffline) renderGraphState();
+    } else if (liveOffline) {
+      // a fonte deixou de ser a nuvem: o sinal antigo já não diz nada
+      liveOffline = false;
+      liveError = "";
+      renderGraphState();
     }
     if (out.stamp && out.stamp !== lastData.stamp) {
       const antes = { rows: JSON.stringify(lastData.rows || []), digest: lastData.digest };

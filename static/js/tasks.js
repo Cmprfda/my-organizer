@@ -661,14 +661,17 @@ async function load(cycle = false, fresh = false) {
   } catch (e) {
     lastData = { error: t("err_server") };
   }
+  // esta recarga já é uma prova fresca do estado da ligação — o sinal do
+  // pedido de 20/20s (ver checkForChanges) fica desatualizado. Tem de ser
+  // limpo ANTES de desenhar, senão o estado velho ainda aparece
+  liveOffline = false;
+  liveError = "";
   if (lastData && lastData.graph) {
     graphInfo = lastData.graph;
     renderGraphState();
+  } else {
+    renderConnBadge();
   }
-  // esta recarga já é uma prova fresca do estado da ligação — o sinal do
-  // pedido de 20/20s (ver checkForChanges) fica desatualizado
-  liveOffline = false;
-  renderConnBadge();
   updateExcelTabVisibility();
   // os todos são atualizados primeiro: as CCRs precisam deles para saber
   // se ainda mostram o "+ TODO"
