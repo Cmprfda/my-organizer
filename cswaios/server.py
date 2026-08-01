@@ -767,6 +767,13 @@ def open_ui(url):
         except KeyboardInterrupt:
             pass
         return
+    # sem isto o Windows agrupa a janela sob o icone do python.exe na barra de
+    # tarefas (herdado do interpretador), em vez do icone proprio da app
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("CSW.MyOrganizer")
+    except (AttributeError, OSError):
+        pass
     # private_mode=False: preserva localStorage (preferência de tema, etc.)
     # entre arranques da app, tal como um browser normal faria.
     webview.create_window("My Organizer", url, width=1300, height=850,
