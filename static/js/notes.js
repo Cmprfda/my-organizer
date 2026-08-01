@@ -353,6 +353,22 @@ function noteDrawSvgInner(note) {
     (note.shapes || []).map(noteShapeSvg).join("");
 }
 
+// O quadro fica com a altura que sobra até ao fundo da página: a barra de
+// separadores flutua no rodapé e o fundo do quadro não pode ficar por baixo
+// dela (a folga é o mesmo padding que a .wrap já reserva).
+function fitNoteCanvas() {
+  const canvas = $("noteCanvas");
+  if (canvas.classList.contains("hidden") || !canvas.offsetParent) return;
+  // no ecrã dividido a altura vem do CSS das faixas
+  if (document.body.classList.contains("split")) { canvas.style.height = ""; return; }
+  const wrap = canvas.closest(".wrap");
+  const gap = (wrap && parseFloat(getComputedStyle(wrap).paddingBottom)) || 92;
+  const top = canvas.getBoundingClientRect().top + window.scrollY;
+  canvas.style.height = `${Math.max(320, Math.floor(window.innerHeight - top - gap))}px`;
+}
+
+window.addEventListener("resize", fitNoteCanvas);
+
 function renderNoteBoard(focusBoxId) {
   const note = currentNote();
   const has = !!note;
@@ -363,6 +379,7 @@ function renderNoteBoard(focusBoxId) {
   if (!has) return;
   if (document.activeElement !== $("notePathInput")) $("notePathInput").value = notePathString(note);
   renderNoteLink(note);
+  fitNoteCanvas();
   if (noteTyping && !focusBoxId) return;   // a escrever: não mexer nas caixas
   const canvas = $("noteCanvas");
   const scroll = { left: canvas.scrollLeft, top: canvas.scrollTop };
