@@ -18,6 +18,8 @@ const HELP = [
                 "The installed version is always visible in the bottom-right corner of the screen."],
             ["Clica em qualquer item (tarefa, CCR ou item da lista Por fazer) para o abrir numa <strong>caixa</strong> com tudo o que ele tem, sem cortes. Dentro da caixa podes editar tudo como na lista: estados, OBS, notas, checklists e passos. <strong>Esc</strong> ou ✕ fecham a caixa.",
                 "Click any item (task, CCR or TODO entry) to open it in a <strong>box</strong> with everything it holds, nothing truncated. Inside the box you can edit everything just like in the list: statuses, OBS, notes, checklists and steps. <strong>Esc</strong> or ✕ close the box."],
+            ["<strong>Botão direito</strong> em qualquer sítio abre um menu para <strong>copiar</strong>: a seleção de texto, a célula, a linha ou o item inteiro (cartão do Kanban, caixa de nota, cartão do Jira) e as <strong>imagens</strong> coladas nas Notas. Nas caixas de texto continua a aparecer o menu normal do Windows.",
+                "<strong>Right-click</strong> anywhere opens a menu to <strong>copy</strong>: the selected text, the cell, the row or the whole item (Kanban card, note box, Jira card) and the <strong>images</strong> pasted in Notes. Text fields keep the normal Windows menu."],
         ],
     },
     {

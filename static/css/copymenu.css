@@ -1,0 +1,35 @@
+/* My Organizer — menu do botão direito (copiar). Fica acima de tudo: das caixas
+   de detalhe/ajuda (70) e da barra de separadores (45). */
+
+.copyMenu {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  box-shadow: var(--ios-shadow-lg);
+}
+
+.copyMenu button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  padding: 7px 10px;
+  border-radius: var(--ios-radius-btn);
+  cursor: pointer;
+}
+
+.copyMenu button:hover,
+.copyMenu button:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
