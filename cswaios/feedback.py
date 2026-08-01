@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 from datetime import datetime
 
 from . import config
@@ -23,6 +24,45 @@ BUGS_STATE_FILE = os.path.join(HERE, "bug_reports.json")
 # caso, pela pasta partilhada sincronizada. Se nenhuma via estiver disponível
 # (sem sessão, sem rede), fica cá e segue mais tarde.
 PENDING_DIR = os.path.join(HERE, "feedback_pending")
+
+# Repositório GitHub onde as issues de feedback são criadas (vazio desliga esta via)
+GITHUB_REPO = os.environ.get("BSP_GITHUB_REPO", "Cmprfda/my-organizer")
+
+
+def _find_gh():
+    """Caminho para o GitHub CLI (gh), ou None se não estiver instalado."""
+    import shutil as _sh
+    exe = _sh.which("gh")
+    if exe:
+        return exe
+    fallback = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"),
+                            "GitHub CLI", "gh.exe")
+    return fallback if os.path.isfile(fallback) else None
+
+
+def _post_github_issue(nome, folder):
+    """Cria uma GitHub Issue com o conteúdo da pasta de feedback."""
+    gh = _find_gh()
+    if not gh or not GITHUB_REPO:
+        raise OSError("gh CLI não encontrado ou GITHUB_REPO não configurado")
+    feedback_file = os.path.join(folder, "feedback.txt")
+    if not os.path.isfile(feedback_file):
+        raise OSError("sem feedback.txt")
+    with open(feedback_file, encoding="utf-8", errors="replace") as f:
+        body = f.read()
+    images = [n for n in os.listdir(folder)
+              if n.lower().endswith((".png", ".jpg", ".jpeg"))]
+    if images:
+        body += f"\n\n_Imagens em anexo (feedback_pending): {', '.join(images)}_"
+    proc = subprocess.run(
+        [gh, "issue", "create", "--repo", GITHUB_REPO,
+         "--title", f"[Feedback] {nome}", "--body", body],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        out = (proc.stdout + proc.stderr).strip()
+        raise OSError(f"gh issue create falhou: {out[:300]}")
 
 
 def share_url():
@@ -96,6 +136,14 @@ def deliver(folder):
         return "local"
     except OSError as exc:
         log_event(f"feedback: pasta sincronizada indisponivel ({exc}) - "
+                  f"a tentar GitHub Issues")
+    try:
+        _post_github_issue(nome, folder)
+        shutil.rmtree(folder, ignore_errors=True)
+        log_event(f"feedback: {nome} submetido como GitHub Issue")
+        return "github"
+    except Exception as exc:
+        log_event(f"feedback: GitHub Issue falhou ({exc}) - "
                   f"fica em feedback_pending\\{nome}")
     return ""
 
