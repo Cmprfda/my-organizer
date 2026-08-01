@@ -6,8 +6,11 @@ let sideView = null;
 
 function showView(name) {
   currentView = name;
-  document.querySelectorAll(".tabs button[data-view]").forEach(x =>
-    x.classList.toggle("active", x.dataset.view === name));
+  document.querySelectorAll(".tabs button[data-view]").forEach(x => {
+    x.classList.toggle("active", x.dataset.view === name);
+    // a vista do painel lateral também está no ecrã: marca-se como aberta
+    x.classList.toggle("side", x.dataset.view === sideView && x.dataset.view !== name);
+  });
   for (const [view, elId] of Object.entries(VIEWS)) {
     // a vista do painel lateral fica sempre visível, seja qual for o separador ativo
     if (view === sideView) $(elId).classList.remove("hidden");

@@ -42,7 +42,8 @@
      de um toque): aqui os nomes não aparecem nunca, só o ícone */
   .tabs button[data-view],
   .tabs button[data-view]:hover,
-  .tabs button[data-view].active {
+  .tabs button[data-view].active,
+  .tabs button[data-view].side {
     font-size: 0;
     gap: 0;
     padding: 9px 13px;
@@ -50,7 +51,8 @@
   }
 
   /* sem palavras, a vista ativa precisa de cor para se distinguir */
-  .tabs button[data-view].active {
+  .tabs button[data-view].active,
+  .tabs button[data-view].side {
     color: var(--accent-text);
   }
 

@@ -62,7 +62,7 @@ function jiraEpicOf(key, issue) {
       jiraRenderPageIfVisible();
       if (!editorOpen) renderTodo();
     })
-    .catch(() => {});
+    .catch(() => { });
   return null;
 }
 

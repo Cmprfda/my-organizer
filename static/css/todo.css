@@ -712,7 +712,7 @@ a.todoJiraKey:hover {
   color: var(--muted);
 }
 
-.jiraCard > .jiraEpic {
+.jiraCard>.jiraEpic {
   margin: -3px 0 8px;
 }
 
