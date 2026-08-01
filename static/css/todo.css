@@ -511,6 +511,38 @@ tr.todoRow td.todoCtl>* {
   margin-right: 6px;
 }
 
+/* outras origens do mesmo trabalho (Excel + CCR + escrito à mão): linha leve,
+   como as issues do Jira logo abaixo */
+.todoLinkList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.todoLinkItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 1px 0;
+}
+
+.todoLinkTitle {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.todoLinkItem .srcBtn,
+.todoLinkItem .ccr-x {
+  flex: 0 0 auto;
+  margin-left: 0;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
 /* issues do Jira ligadas a um item do TODO (mesma linguagem visual das
    subtarefas: lista leve, sem caixa própria) */
 .todoJiraList {

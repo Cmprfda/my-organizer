@@ -58,7 +58,7 @@ UI (badge de estado ou célula `Obs:`) -> POST /api/update (colunas permitidas: 
 
 - Notas de execução por tarefa: [notes.json](notes.json)
 - Estado de CCRs: [ccrs.json](ccrs.json)
-- TODO pessoal (manual): [todo.json](todo.json)
+- TODO pessoal (manual): [todo.json](todo.json) — cada item tem uma origem principal (`kind`/`ref`) e pode ter outras ligadas em `links` (é o mesmo trabalho vindo do Excel, de um CCR ou escrito à mão)
 
 Todos estes sidecars são servidos pelo backend e renderizados no frontend; no workspace DEV são considerados dados descartáveis.
 

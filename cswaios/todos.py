@@ -15,6 +15,30 @@ TODO_COLUMNS = {"todo", "inprogress", "review", "done"}
 # criados sem a indicar) ficam em "normal" — é o valor neutro.
 TODO_PRIORITIES = ("low", "normal", "high", "urgent")
 TODO_PRIORITY_DEFAULT = "normal"
+# origens que um item pode ter ligadas além da sua (só as que sabem apontar
+# para uma linha: escrever à mão não tem para onde ir)
+TODO_LINK_KINDS = ("task", "ccr")
+TODO_REF_KEYS = ("sheet", "fn", "todo", "ccr")
+
+
+def normalize_ref(raw):
+    if not isinstance(raw, dict):
+        return {}
+    return {k: str(v).strip()[:200] for k, v in raw.items() if k in TODO_REF_KEYS and v}
+
+
+def normalize_todo_link(raw):
+    """Origem extra de um item: {kind, title, ref}."""
+    if not isinstance(raw, dict):
+        return None
+    kind = str(raw.get("kind") or "").strip().lower()
+    if kind not in TODO_LINK_KINDS:
+        return None
+    title = str(raw.get("title") or "").strip()[:200]
+    ref = normalize_ref(raw.get("ref"))
+    if not title or not ref:
+        return None
+    return {"kind": kind, "title": title, "ref": ref}
 
 
 def normalize_subtask(sub):
@@ -80,6 +104,20 @@ def normalize_todo_item(item):
     # subtarefas (checklist leve): lista de {id, title, done}
     raw_subs = out.get("subtasks")
     out["subtasks"] = [s for s in (normalize_subtask(s) for s in raw_subs) if s] if isinstance(raw_subs, list) else []
+    # outras origens do mesmo trabalho (a mesma linha do Excel e um CCR, por
+    # exemplo): a principal fica em kind/ref, as restantes aqui
+    raw_links = out.get("links")
+    links, seen = [], {todo_identity(out.get("kind"), out.get("title"), out.get("ref"))}
+    for raw in (raw_links if isinstance(raw_links, list) else [])[:8]:
+        link = normalize_todo_link(raw)
+        if link is None:
+            continue
+        ident = todo_identity(link["kind"], link["title"], link["ref"])
+        if ident in seen:
+            continue
+        seen.add(ident)
+        links.append(link)
+    out["links"] = links
     # issue do Jira ligada ao item: no máximo uma, {key, summary, parentSummary?, epic*?}
     raw_jira = out.get("jiraIssues")
     out["jiraIssues"] = [j for j in (normalize_jira_issue(j) for j in raw_jira[:1]) if j] \
@@ -167,14 +205,20 @@ def sync_todo_review_from_tasks(todos, row_meta, sheet_name):
     for item in todos:
         if not isinstance(item, dict) or item.get("done"):
             continue
-        ref = item.get("ref") if isinstance(item.get("ref"), dict) else None
-        if not ref or not ref.get("fn"):
-            continue
-        ref_sheet = str(ref.get("sheet") or "")
-        if ref_sheet and normalize(ref_sheet) != sheet_norm:
-            continue
-        key = (str(ref.get("fn") or ""), str(ref.get("todo") or ""))
-        new_col = target_by_key.get(key)
+        # a linha do Excel pode ser a origem do item ou uma origem ligada a ele
+        links = item.get("links") if isinstance(item.get("links"), list) else []
+        refs = [item.get("ref")] + [lk.get("ref") for lk in links
+                                    if isinstance(lk, dict) and lk.get("kind") == "task"]
+        new_col = None
+        for ref in refs:
+            if not isinstance(ref, dict) or not ref.get("fn"):
+                continue
+            ref_sheet = str(ref.get("sheet") or "")
+            if ref_sheet and normalize(ref_sheet) != sheet_norm:
+                continue
+            new_col = target_by_key.get((str(ref.get("fn") or ""), str(ref.get("todo") or "")))
+            if new_col:
+                break
         if not new_col:
             continue
         old_col = str(item.get("col") or "todo")
@@ -200,6 +244,31 @@ def todo_identity(kind, title, ref):
     if kind == "task":
         return ("task", title, ref.get("sheet", ""), ref.get("fn", ""), ref.get("todo", ""))
     return ("manual", title)
+
+
+def todo_sources(item):
+    """Identidades de todas as origens do item: a principal + as ligadas."""
+    item = item if isinstance(item, dict) else {}
+    out = [todo_identity(item.get("kind"), item.get("title"), item.get("ref"))]
+    for link in item.get("links") or []:
+        if isinstance(link, dict):
+            out.append(todo_identity(link.get("kind"), link.get("title"), link.get("ref")))
+    return out
+
+
+def todo_link_target(todos, kind, title):
+    """Item por fechar que já representa este trabalho, mas vindo de outro sítio.
+
+    Só junta origens de TIPOS diferentes (Excel + CCR + escrito à mão): duas
+    linhas do Excel com o mesmo nome (ex.: "Multiple") são trabalhos distintos
+    e continuam a ser itens separados.
+    """
+    for item in todos:
+        if item.get("done") or str(item.get("title") or "") != title:
+            continue
+        if kind not in {src[0] for src in todo_sources(item)}:
+            return item
+    return None
 
 
 def load_todo():

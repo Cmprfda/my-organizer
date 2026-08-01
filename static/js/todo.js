@@ -21,6 +21,9 @@ const TODO_PRIORITY_LABEL = {
 };
 const TODO_PRIORITY_GLYPH = { low: "↓", normal: "•", high: "↑", urgent: "↑↑" };
 let todoLayout = localStorage.getItem(TODO_LAYOUT_KEY) === "kanban" ? "kanban" : "list";
+// o que o servidor fez com o último pedido ("added"/"exists"/"linked"), para o
+// aviso mostrado ao utilizador
+let lastTodoResult = null;
 
 function todoColOf(it) {
   const col = String((it && it.col) || "").toLowerCase();
@@ -38,6 +41,23 @@ function kindChip(kind) {
   if (kind === "task") return `<span class="chip done" style="opacity:1">Excel</span> `;
   if (kind === "ccr") return `<span class="chip" style="opacity:1;background:var(--accent-soft);color:var(--accent)">CCR</span> `;
   return "";
+}
+
+// Todas as origens do item: a principal (kind/ref) e as que lhe foram ligadas
+// por serem o mesmo trabalho vindo de outro lado (Excel + CCR + escrito à mão).
+function todoSources(it) {
+  const out = [{ kind: (it && it.kind) || "manual", title: (it && it.title) || "", ref: (it && it.ref) || {} }];
+  ((it && it.links) || []).forEach(l => {
+    if (l && l.kind) out.push({ kind: l.kind, title: l.title || "", ref: l.ref || {} });
+  });
+  return out;
+}
+
+// uma etiqueta por tipo de origem, sem repetir
+function todoKindChips(it) {
+  const seen = [];
+  todoSources(it).forEach(src => { if (!seen.includes(src.kind)) seen.push(src.kind); });
+  return seen.map(kindChip).join("");
 }
 
 function formatTodoElapsed(ms) {
@@ -127,18 +147,24 @@ function todoPriorityHtml(it) {
 
 // De onde veio um item do TODO: {view, ...chaves}. Itens escritos à mão não têm origem.
 // Os itens antigos não têm `ref` guardada — aí adivinha-se pelo título.
-function srcOf(it) {
-  if (!it) return null;
-  const ref = it.ref || {};
-  if (it.kind === "ccr") {
-    const id = ref.ccr || (String(it.title).match(/\d+/) || [])[0];
+function srcOfSource(src) {
+  if (!src) return null;
+  const ref = src.ref || {};
+  if (src.kind === "ccr") {
+    const id = ref.ccr || (String(src.title).match(/\d+/) || [])[0];
     return id ? { view: "ccrs", ccr: String(id) } : null;
   }
-  if (it.kind === "task") {
-    const fn = ref.fn || String(it.title).trim();
+  if (src.kind === "task") {
+    const fn = ref.fn || String(src.title).trim();
     return fn ? { view: "excel", fn, todo: ref.todo || "", sheet: ref.sheet || "" } : null;
   }
   return null;
+}
+
+// origem principal do botão ↗ do item (a 1.ª que sabe para onde ir)
+function srcOf(it) {
+  if (!it) return null;
+  return todoSources(it).map(srcOfSource).find(Boolean) || null;
 }
 
 // O servidor corta os textos guardados (título e origem) a 200 caracteres; sem
@@ -159,9 +185,11 @@ function todoHas(kind, title, ref) {
   const keys = kind === "ccr" ? ["ccr"] : kind === "task" ? ["sheet", "fn", "todo"] : [];
   return todos.some(it => {
     if (!it || it.done) return false;
-    if ((it.kind || "manual") !== kind || todoText(it.title) !== wanted) return false;
-    const got = it.ref || {};
-    return keys.every(k => !got[k] || todoText(got[k]) === todoText(want[k]));
+    return todoSources(it).some(src => {
+      if ((src.kind || "manual") !== kind || todoText(src.title) !== wanted) return false;
+      const got = src.ref || {};
+      return keys.every(k => !got[k] || todoText(got[k]) === todoText(want[k]));
+    });
   });
 }
 
@@ -185,11 +213,12 @@ function taskIndex() {
 }
 
 function taskRowFor(it) {
-  if (!it || it.kind !== "task") return null;
+  const src = it && todoSources(it).find(s => s.kind === "task");
+  if (!src) return null;
   const map = taskIndex();
   if (!map || !map.size) return null;
-  const ref = it.ref || {};
-  const fn = ref.fn || String(it.title).trim();
+  const ref = src.ref || {};
+  const fn = ref.fn || String(src.title).trim();
   const exact = map.get(`${fn}\u001F${ref.todo || ""}`);
   if (exact) return exact;
   // itens antigos foram guardados sem o `todo`: aceita-se a 1.ª linha com o mesmo nome
@@ -265,6 +294,32 @@ function todoJiraHtml(it) {
     <button type="button" class="srcBtn" data-tjiragoto="${esc(issue.key)}" title="${esc(t("jira_goto_action"))}">↗</button>
     <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>
   </li></ul>`;
+}
+
+// origens ligadas ao item além da principal (o mesmo trabalho aparece no Excel
+// e num CCR, por exemplo): uma linha por origem, com o atalho para a ver e o ✕
+// para desfazer a ligação
+function todoLinksHtml(it) {
+  const links = Array.isArray(it.links) ? it.links : [];
+  if (!links.length) return "";
+  const rows = links.map((l, i) => {
+    // as origens só se ligam quando têm o mesmo nome do item: repetir o nome
+    // aqui parecia um item duplicado, por isso só se mostra quando difere
+    const ref = l.ref || {};
+    const label = l.title === it.title ? "" : l.title;
+    const tip = `${l.title}${ref.todo ? ` — ${ref.todo}` : ""}`;
+    return `<li class="todoLinkItem" title="${esc(tip)}">${kindChip(l.kind)}` +
+      (label ? `<span class="todoLinkTitle">${esc(label)}</span>` : "") +
+      `<button type="button" class="srcBtn" data-tlinkgo="${esc(it.id)}|${i}" title="${t("t_src")}">↗</button>` +
+      `<button type="button" class="ccr-x" data-tlinkdel="${esc(it.id)}|${i}" title="${t("t_link_remove")}">✕</button></li>`;
+  }).join("");
+  return `<ul class="todoLinkList">${rows}</ul>`;
+}
+
+function todoLinkAt(key) {
+  const [id, idx] = String(key).split("|");
+  const it = todos.find(x => x.id === id);
+  return (it && (it.links || [])[+idx]) || null;
 }
 
 // título editável só para tarefas criadas na app (as de Excel/CCR mantêm o
@@ -417,7 +472,7 @@ function renderTodo() {
         : "";
       return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     <td class="todoCtl" style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
-    <td>${todoMySideFlag(it, false)}${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoSubtasksHtml(it)}${todoJiraHtml(it)}</td>
+    <td>${todoMySideFlag(it, false)}${todoKindChips(it)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoLinksHtml(it)}${todoSubtasksHtml(it)}${todoJiraHtml(it)}</td>
     <td class="todoCtl" style="width:1%">${todoPriorityHtml(it)}</td>
     <td class="todoCtl" style="width:1%">${todoStatusHtml(it)}</td>
     <td class="todoCtl" style="width:1%"><span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span></td>
@@ -438,9 +493,10 @@ function renderTodo() {
         : "";
       return `<article draggable="true" class="todoCard${it.done ? " done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     ${todoMySideFlag(it, true)}
-    <div class="todoCardTitle">${kindChip(it.kind)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}</div>
+    <div class="todoCardTitle">${todoKindChips(it)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}</div>
     ${todoNoteHtml(it, true)}
     ${todoTaskInfoHtml(it)}
+    ${todoLinksHtml(it)}
     ${todoSubtasksHtml(it)}
     ${todoJiraHtml(it)}
     <div class="todoCardMeta">
@@ -470,6 +526,7 @@ async function postTodo(body) {
     });
     const out = await res.json();
     if (!out.ok) { alert("Operação TODO falhou: " + (out.error || "?")); return false; }
+    lastTodoResult = out.result || null;
     todos = out.todo;
     renderTodo();
     // as origens mostram "+ TODO" só enquanto não estiverem na lista
@@ -488,11 +545,11 @@ async function postTodo(body) {
 // o servidor ignora tarefas repetidas (mesmo título por fechar); sem aviso
 // parecia que arrastar/clicar não fazia nada
 async function addTodoWithFeedback(body) {
-  const before = todos.length;
   const ok = await postTodo(body);
   if (!ok) return;
-  const novo = todos.length > before;
-  toast(novo ? tf("todo_added", body.title) : tf("todo_exists", body.title), novo ? "ok" : "");
+  if (lastTodoResult === "linked") toast(tf("todo_linked", body.title), "ok");
+  else if (lastTodoResult === "exists") toast(tf("todo_exists", body.title), "");
+  else toast(tf("todo_added", body.title), "ok");
 }
 
 // a célula "To Do" tem a OBS colada a seguir (obsHtml) só para a vista da
@@ -538,7 +595,7 @@ function setTodoPriorityById(id, dir = 1) {
 function addManualTodo() {
   const title = $("todoNew").value.trim();
   if (!title) return;
-  postTodo({ action: "add", title, kind: "manual", col: todoLayout === "kanban" ? "todo" : null });
+  addTodoWithFeedback({ action: "add", title, kind: "manual", col: todoLayout === "kanban" ? "todo" : null });
   $("todoNew").value = "";
 }
 $("todoAdd").addEventListener("click", addManualTodo);
@@ -596,6 +653,19 @@ function todoItemTap(e) {
   if (del) { postTodo({ action: "delete", id: del.dataset.tdel }); return; }
   const src = e.target.closest("[data-src]");
   if (src) { revealSource(srcOf(todos.find(it => it.id === src.dataset.src))); return; }
+  const linkGo = e.target.closest("[data-tlinkgo]");
+  if (linkGo) { revealSource(srcOfSource(todoLinkAt(linkGo.dataset.tlinkgo))); return; }
+  const linkDel = e.target.closest("[data-tlinkdel]");
+  if (linkDel) {
+    const link = todoLinkAt(linkDel.dataset.tlinkdel);
+    if (link) {
+      postTodo({
+        action: "unlink_source", id: linkDel.dataset.tlinkdel.split("|")[0],
+        kind: link.kind, title: link.title, ref: link.ref,
+      });
+    }
+    return;
+  }
   const titleEl = e.target.closest("[data-ttitle]");
   if (titleEl && !titleEl.dataset.editing) { openTodoTitle(titleEl); return; }
   const subEdit = e.target.closest("[data-tsubedit]");

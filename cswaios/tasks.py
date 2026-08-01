@@ -324,19 +324,21 @@ def _relink_row(sheet, fn, todo, new_fn, new_todo):
     for item in todos:
         if not isinstance(item, dict):
             continue
-        ref = item.get("ref")
-        if not isinstance(ref, dict):
-            continue
-        # aba em branco = ligação antiga sem aba guardada; conta como
-        # coincidência (mesma convenção do sync com o TODO em todos.py)
-        ref_sheet = str(ref.get("sheet") or "")
-        if ref_sheet and normalize(ref_sheet) != sheet_norm:
-            continue
-        if str(ref.get("fn") or "") != fn or str(ref.get("todo") or "") != todo:
-            continue
-        ref["fn"] = new_fn
-        ref["todo"] = new_todo
-        changed = True
+        links = item.get("links") if isinstance(item.get("links"), list) else []
+        refs = [item.get("ref")] + [lk.get("ref") for lk in links if isinstance(lk, dict)]
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            # aba em branco = ligação antiga sem aba guardada; conta como
+            # coincidência (mesma convenção do sync com o TODO em todos.py)
+            ref_sheet = str(ref.get("sheet") or "")
+            if ref_sheet and normalize(ref_sheet) != sheet_norm:
+                continue
+            if str(ref.get("fn") or "") != fn or str(ref.get("todo") or "") != todo:
+                continue
+            ref["fn"] = new_fn
+            ref["todo"] = new_todo
+            changed = True
     if changed:
         save_todo(todos)
 

@@ -33,8 +33,9 @@ from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes
 from .tasks import (build_payload, current_stamp, forget_web_cache, push_overrides,
                     warm_cache)
 from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
-                    normalize_todo_item, save_todo, sort_todos_by_priority,
-                    stop_todo_timer, sync_todo_timer_with_column, todo_identity)
+                    normalize_ref, normalize_todo_item, save_todo, sort_todos_by_priority,
+                    stop_todo_timer, sync_todo_timer_with_column, todo_identity,
+                    todo_link_target, todo_sources)
 from .updates import (GITHUB_REPO, check_update, find_releases_dir, github_latest,
                       read_changelog)
 from . import cli
@@ -289,6 +290,9 @@ class Handler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 action = payload.get("action", "")
                 todos = load_todo()
+                # o que aconteceu ao pedido de "add": novo, repetido ou ligado a
+                # um item que já existia (a UI dá avisos diferentes)
+                result = None
                 if action == "add":
                     title = str(payload.get("title") or "").strip()[:200]
                     kind = payload.get("kind")
@@ -298,16 +302,12 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("tarefa vazia")
                     # referência à linha de origem (aba/função/to-do ou ID de CCR),
                     # para o botão "ver item original" saber onde ir
-                    raw_ref = payload.get("ref")
-                    ref = {k: str(v).strip()[:200] for k, v in raw_ref.items()
-                           if k in ("sheet", "fn", "todo", "ccr") and v} if isinstance(raw_ref, dict) else {}
+                    ref = normalize_ref(payload.get("ref"))
                     # repetidos: comparar pela origem, não só pelo título, senão
                     # linhas diferentes com o mesmo nome ficavam de fora
                     ident = todo_identity(kind, title, ref)
                     open_todos = [t for t in todos if not t.get("done")]
-                    existing = next((t for t in open_todos
-                                     if todo_identity(t.get("kind"), t.get("title"),
-                                                      t.get("ref")) == ident), None)
+                    existing = next((t for t in open_todos if ident in todo_sources(t)), None)
                     legacy = None
                     if existing is None and ref:
                         # itens antigos foram guardados sem `ref`; adota-se o primeiro
@@ -315,6 +315,11 @@ class Handler(BaseHTTPRequestHandler):
                         legacy = next((t for t in open_todos
                                        if t.get("title") == title and t.get("kind") == kind
                                        and not t.get("ref")), None)
+                    # mesmo trabalho vindo de outro lado (Excel + CCR + escrito à
+                    # mão): fica um só item, ligado a ambas as origens
+                    link_target = None
+                    if existing is None and legacy is None:
+                        link_target = todo_link_target(open_todos, kind, title)
                     col = str(payload.get("col") or "").strip().lower()
                     if col not in TODO_COLUMNS:
                         col = "todo"
@@ -322,23 +327,50 @@ class Handler(BaseHTTPRequestHandler):
                     priority = str(payload.get("priority") or "").strip().lower()
                     if priority not in TODO_PRIORITIES:
                         priority = TODO_PRIORITY_DEFAULT
-                    if existing is None and legacy is None:
+                    detail = str(payload.get("detail") or "").strip()[:300]
+                    if existing is not None:
+                        result = "exists"
+                    elif legacy is not None:
+                        # item antigo (sem referência): aproveita o novo arrasto para a preencher
+                        legacy["ref"] = ref
+                        result = "exists"
+                        log_event(f"{ip} TODO ref preenchida: {title[:60]!r}")
+                    elif link_target is not None:
+                        result = "linked"
+                        if ref:
+                            links = link_target.get("links")
+                            link_target["links"] = (links if isinstance(links, list) else []) + \
+                                [{"kind": kind, "title": title, "ref": ref}]
+                        if detail and not str(link_target.get("detail") or "").strip():
+                            link_target["detail"] = detail
+                        log_event(f"{ip} TODO ligado [{kind}] a {title[:60]!r}")
+                    else:
                         item = {"id": f"t{int(time.time() * 1000)}", "title": title,
                                 "kind": kind, "done": False,
                                 "col": col,
                                 "priority": priority,
-                                "detail": str(payload.get("detail") or "").strip()[:300],
+                                "detail": detail,
                                 "elapsed_ms": 0,
                                 "timer_started": int(time.time() * 1000) if col == "inprogress" else None,
                                 "created": datetime.now().strftime("%d/%m %H:%M")}
                         if ref:
                             item["ref"] = ref
                         todos.append(item)
+                        result = "added"
                         log_event(f"{ip} TODO + [{kind}] {title[:60]!r}")
-                    elif legacy is not None:
-                        # item antigo (sem referência): aproveita o novo arrasto para a preencher
-                        legacy["ref"] = ref
-                        log_event(f"{ip} TODO ref preenchida: {title[:60]!r}")
+                elif action == "unlink_source":
+                    # desfaz uma ligação feita por engano (títulos iguais de
+                    # origens diferentes); a origem principal do item fica
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    kind = str(payload.get("kind") or "").strip().lower()
+                    ident = todo_identity(kind, str(payload.get("title") or "").strip()[:200],
+                                          normalize_ref(payload.get("ref")))
+                    links = target.get("links") if isinstance(target.get("links"), list) else []
+                    target["links"] = [link for link in links
+                                       if todo_identity(link.get("kind"), link.get("title"),
+                                                        link.get("ref")) != ident]
                 elif action == "toggle":
                     for t in todos:
                         if t.get("id") == payload.get("id"):
@@ -510,7 +542,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError(f"ação inválida: {action}")
                 todos = [normalize_todo_item(t) for t in todos if normalize_todo_item(t)]
                 save_todo(todos)
-                self._send(200, json.dumps({"ok": True, "todo": todos}), "application/json")
+                self._send(200, json.dumps({"ok": True, "todo": todos, "result": result}),
+                           "application/json")
             except Exception as exc:
                 log_event(f"{ip} operação TODO FALHOU: {exc}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
