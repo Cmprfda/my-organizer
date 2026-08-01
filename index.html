@@ -54,7 +54,7 @@
       <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
       <button data-view="notes" data-icon="&#9998;" draggable="true">Notas</button>
       <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
-      <button data-view="jira" data-icon="&#9875;" draggable="true" class="hidden">Jira</button>
+      <button data-view="jira" data-icon="" draggable="true" class="hidden"><img src="/static/img/jira.svg" alt="" width="17" height="17" style="flex-shrink:0">Jira</button>
       <button id="settingsBtn" type="button" title="Definições" aria-label="Definições"
         aria-expanded="false">&#9881;</button>
     </nav>
@@ -305,6 +305,11 @@
                   title="Aumentar zoom (ou Ctrl+scroll no quadro)">
                   <span class="noteToolIcon">+</span><span class="noteToolLabel">Zoom +</span>
                 </button>
+                <span class="noteToolSep"></span>
+                <button type="button" class="noteToolBtn" id="noteFullscreenBtn"
+                  title="Ecrã inteiro">
+                  <span class="noteToolIcon">&#x26F6;</span><span class="noteToolLabel">Ecrã inteiro</span>
+                </button>
               </div>
               <div class="noteCanvas" id="noteCanvas">
                 <svg class="noteDrawLayer" id="noteDrawLayer" width="4000" height="4000"></svg>
@@ -320,6 +325,12 @@
 
         <div id="fbView" class="hidden">
           <div class="bar">
+            <div class="controls">
+              <div class="field">
+                <label for="fbName">O teu nome</label>
+                <input type="text" id="fbName" placeholder="O teu nome…" maxlength="60" autocomplete="name">
+              </div>
+            </div>
             <div class="controls">
               <div class="field grow">
                 <label for="fbText">O teu feedback</label>

@@ -24,6 +24,7 @@ const NOTE_PASTE_OFFSET = 24;   // desvio da cópia colada em relação à origi
 const NOTE_ZOOM_MIN = 0.25, NOTE_ZOOM_MAX = 2, NOTE_ZOOM_STEP = 0.1;
 let noteZoom = Math.min(NOTE_ZOOM_MAX, Math.max(NOTE_ZOOM_MIN,
   parseFloat(localStorage.getItem("bsp-tracker-note-zoom")) || 1));
+let noteFull = false;  // quadro em ecrã inteiro
 const NOTE_SIDE_MIN = 200, NOTE_SIDE_MAX = 480;
 let noteSideW = Math.min(NOTE_SIDE_MAX, Math.max(NOTE_SIDE_MIN,
   parseInt(localStorage.getItem("bsp-tracker-note-side-w"), 10) || 250));
@@ -361,6 +362,11 @@ function fitNoteCanvas() {
   if (canvas.classList.contains("hidden") || !canvas.offsetParent) return;
   // no ecrã dividido a altura vem do CSS das faixas
   if (document.body.classList.contains("split")) { canvas.style.height = ""; return; }
+  if (noteFull) {
+    const top = canvas.getBoundingClientRect().top;
+    canvas.style.height = `${Math.max(320, Math.floor(window.innerHeight - top - 8))}px`;
+    return;
+  }
   const wrap = canvas.closest(".wrap");
   const gap = (wrap && parseFloat(getComputedStyle(wrap).paddingBottom)) || 92;
   const top = canvas.getBoundingClientRect().top + window.scrollY;
@@ -387,8 +393,7 @@ function renderNoteBoard(focusBoxId) {
       style="width:${NOTE_BOARD}px;height:${NOTE_BOARD}px">` +
     `<svg class="noteDrawLayer" id="noteDrawLayer" width="${NOTE_BOARD}" height="${NOTE_BOARD}">${noteDrawSvgInner(note)}</svg>` +
     (note.frames || []).map(noteFrameHtml).join("") +
-    `<div class="noteCanvasHint" id="noteCanvasHint">${
-      note.boxes.length ? "" : esc(t("note_canvas_hint"))}</div>` +
+    `<div class="noteCanvasHint" id="noteCanvasHint">${note.boxes.length ? "" : esc(t("note_canvas_hint"))}</div>` +
     note.boxes.map(noteBoxHtml).join("") +
     `</div></div>`;
   applyNoteZoom();
@@ -755,6 +760,24 @@ function setNoteZoom(next, anchorClientX, anchorClientY) {
 $("noteZoomInBtn").addEventListener("click", () => setNoteZoom(noteZoom + NOTE_ZOOM_STEP));
 $("noteZoomOutBtn").addEventListener("click", () => setNoteZoom(noteZoom - NOTE_ZOOM_STEP));
 $("noteZoomLabel").addEventListener("click", () => setNoteZoom(1));
+
+function toggleNoteFullscreen() {
+  noteFull = !noteFull;
+  document.body.classList.toggle("notes-full", noteFull);
+  const btn = $("noteFullscreenBtn");
+  btn.querySelector(".noteToolIcon").textContent = noteFull ? "\u229F" : "\u26F6";
+  btn.querySelector(".noteToolLabel").textContent = noteFull ? "Sair" : "Ecr\u00e3 inteiro";
+  btn.title = noteFull ? "Sair do ecr\u00e3 inteiro (Esc)" : "Ecr\u00e3 inteiro";
+  fitNoteCanvas();
+}
+$("noteFullscreenBtn").addEventListener("click", toggleNoteFullscreen);
+
+// Escape em ecr\u00e3 inteiro: sai (captura antes do split.js fechar o ecr\u00e3 dividido)
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !noteFull) return;
+  e.stopImmediatePropagation();
+  toggleNoteFullscreen();
+}, true);
 
 // Ctrl/Cmd+scroll no quadro dá zoom em vez de scroll (como em qualquer editor
 // gráfico); scroll normal, sem modificador, continua só a mover a vista
@@ -1418,8 +1441,7 @@ function openNoteColorPop(anchor, current, onPick) {
   closeNoteColorPop();
   const el = document.createElement("div");
   el.className = "noteColorPop";
-  el.innerHTML = NOTE_COLORS.map(c => `<button type="button" class="noteColorDot c-${c}${
-    c === current ? " active" : ""}" data-ncolor="${c}" title="${esc(t(`color_${c}`))}"></button>`).join("");
+  el.innerHTML = NOTE_COLORS.map(c => `<button type="button" class="noteColorDot c-${c}${c === current ? " active" : ""}" data-ncolor="${c}" title="${esc(t(`color_${c}`))}"></button>`).join("");
   document.body.appendChild(el);
   const r = anchor.getBoundingClientRect();
   const left = Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.left - 6));

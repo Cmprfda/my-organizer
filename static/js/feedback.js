@@ -2,6 +2,13 @@
 
 let fbImages = [];  // imagens do input de ficheiros + printscreens colados
 
+// nome do remetente: persiste no localStorage
+$('fbName').value = localStorage.getItem('bsp-tracker-fb-name') || PERSON;
+$('fbName').addEventListener('change', () => {
+  const v = $('fbName').value.trim();
+  if (v) localStorage.setItem('bsp-tracker-fb-name', v);
+});
+
 function renderFbList() {
   $("fbList").innerHTML = fbImages.length
     ? `${t("imgs")} ` + fbImages.map((it, i) =>
@@ -62,7 +69,7 @@ $("fbSend").addEventListener("click", async () => {
     const res = await fetch("/api/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: PERSON, text, images }),
+      body: JSON.stringify({ name: $('fbName').value.trim() || PERSON, text, images }),
     });
     const out = await res.json();
     if (out.ok) {
