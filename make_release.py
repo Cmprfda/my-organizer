@@ -178,13 +178,26 @@ def get_current_app_version() -> str:
     return match.group(1)
 
 def bump_version(current: str, bump_type: str) -> str:
-    """Incrementa versão semântica (X.Y.Z).
+    """Incrementa versão (suporta inteiros e semântica X.Y.Z).
     
-    bump_type: 'major' (X.0.0), 'minor' (X.Y+1.0), 'patch' (X.Y.Z+1)
+    bump_type: 'major', 'minor', 'patch' (ou '+1' para inteiros)
+    - Semântica: X.Y.Z → major (X+1.0.0), minor (X.Y+1.0), patch (X.Y.Z+1)
+    - Inteiros: 107 → 108 (sempre +1)
     """
+    # Detectar formato
+    if "." not in current:
+        # Formato inteiro
+        try:
+            version_int = int(current)
+            return str(version_int + 1)
+        except ValueError:
+            print(f"  ❌ Versão inválida: {current}. Formato esperado: inteiro ou X.Y.Z")
+            sys.exit(1)
+    
+    # Formato semântico X.Y.Z
     parts = current.split(".")
     if len(parts) != 3 or not all(p.isdigit() for p in parts):
-        print(f"  ❌ Versão inválida: {current}. Formato esperado: X.Y.Z")
+        print(f"  ❌ Versão inválida: {current}. Formato esperado: X.Y.Z ou inteiro")
         sys.exit(1)
     major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
     
@@ -249,26 +262,43 @@ def main():
     print(f"\n[2/9] Versão atual detetada em cswaios/config.py: v{current_version}")
     
     # 3. Perguntar qual parte bumpar
+    is_semantic = "." in current_version
+    
     print("\n[3/9] Escolha a parte a incrementar:")
-    print(f"  [p]atch (v{bump_version(current_version, 'patch')})")
-    print(f"  [m]inor (v{bump_version(current_version, 'minor')})")
-    print(f"  [M]ajor (v{bump_version(current_version, 'major')})")
-    print("  ou introduza uma versão customizada (ex: 2.1.5)")
-    
-    choice = input("  > ").strip().lower()
-    
-    if choice == "p":
-        new_version = bump_version(current_version, "patch")
-    elif choice == "m":
-        new_version = bump_version(current_version, "minor")
-    elif choice == "M":
-        new_version = bump_version(current_version, "major")
+    if is_semantic:
+        # Formato X.Y.Z
+        print(f"  [p]atch (v{bump_version(current_version, 'patch')})")
+        print(f"  [m]inor (v{bump_version(current_version, 'minor')})")
+        print(f"  [M]ajor (v{bump_version(current_version, 'major')})")
+        print("  ou introduza uma versão customizada (ex: 2.1.5)")
+        choice = input("  > ").strip().lower()
+        
+        if choice == "p":
+            new_version = bump_version(current_version, "patch")
+        elif choice == "m":
+            new_version = bump_version(current_version, "minor")
+        elif choice == "M":
+            new_version = bump_version(current_version, "major")
+        else:
+            # Validar versão customizada
+            new_version = choice
     else:
-        # Validar versão customizada
-        if not re.match(r'^[0-9]+\.[0-9]+\.[0-9]+$', choice):
-            print("  ❌ Formato inválido. Use X.Y.Z (ex: 1.2.3)")
-            sys.exit(1)
-        new_version = choice
+        # Formato inteiro
+        next_version = bump_version(current_version, "+1")
+        print(f"  [+] Incrementar (+1) → v{next_version}")
+        print("  ou introduza um número customizado (ex: 108)")
+        choice = input("  > ").strip()
+        
+        if choice == "+" or choice == "":
+            new_version = next_version
+        else:
+            # Validar versão customizada (inteiro)
+            try:
+                int(choice)
+                new_version = choice
+            except ValueError:
+                print(f"  ❌ Versão inválida: {choice}. Formato esperado: inteiro")
+                sys.exit(1)
     
     print(f"  → Nova versão: v{new_version}")
     

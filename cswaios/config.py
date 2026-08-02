@@ -20,7 +20,7 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
-APP_VERSION = "1.0.109"  # semantic versioning (X.Y.Z): incrementado a cada release
+APP_VERSION = "107"  # versioning de inteiros (com detecção retroativa de X.Y.Z)
 
 DEFAULT_SHEET = "PRJ_CFG1_reworks_julho"
 DEFAULT_PERSON = "Carlos Andrade"
