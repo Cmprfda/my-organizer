@@ -22,6 +22,33 @@ GITHUB_TIMEOUT = 10
 _USER_AGENT = "my-organizer-app"
 
 
+def _parse_version(version_str):
+    """Converte uma versão (inteira ou semântica) para tuple comparável.
+    
+    Exemplos:
+    - "106" ou "v106" → (106,)
+    - "1.0.107" ou "v1.0.107" → (1, 0, 107)
+    """
+    v = str(version_str or "").lstrip("vV").strip()
+    if not v:
+        return (0,)
+    try:
+        # Se tem pontos, é semântica (X.Y.Z)
+        if "." in v:
+            return tuple(int(x) for x in v.split("."))
+        # Senão, é inteira (N)
+        return (int(v),)
+    except (ValueError, AttributeError):
+        return (0,)
+
+
+def _version_tuple(version_str_or_obj):
+    """Extrai versão de string ou dict e converte para tuple."""
+    if isinstance(version_str_or_obj, dict):
+        version_str_or_obj = version_str_or_obj.get("version", "0")
+    return _parse_version(version_str_or_obj)
+
+
 def find_releases_dir():
     """Pasta partilhada com as releases: no OneDrive do dono ou no atalho
     OneDrive de quem recebeu a partilha. Os atalhos podem ganhar um prefixo
@@ -52,7 +79,9 @@ def github_latest():
     except (OSError, ValueError):
         return None, None, ""
     try:
-        version = int(str(data.get("tag_name") or "").lstrip("vV"))
+        version = _parse_version(data.get("tag_name") or "")
+        if not version or version == (0,):
+            return None, None, ""
     except ValueError:
         return None, None, ""
     asset = next((a for a in data.get("assets") or []
@@ -70,6 +99,8 @@ def read_changelog():
     a mesma ordem de preferência do check_update(). Nunca levanta erros:
     devolve [] quando não consegue nada."""
     rel = find_releases_dir()
+    current_version = _parse_version(APP_VERSION)
+    
     if rel:
         try:
             # utf-8-sig: tolera o BOM que editores/PowerShell acrescentam
@@ -77,10 +108,10 @@ def read_changelog():
                 changelog = json.load(f)
             entries = []
             for key, notes in (changelog or {}).items():
-                version = int(key)
-                if version <= APP_VERSION:
-                    entries.append({"version": version, "notes": list(notes or [])})
-            return sorted(entries, key=lambda e: e["version"], reverse=True)
+                version_tuple = _parse_version(key)
+                if version_tuple <= current_version:
+                    entries.append({"version": key, "notes": list(notes or [])})
+            return sorted(entries, key=lambda e: _parse_version(e["version"]), reverse=True)
         except (OSError, ValueError):
             pass  # sem pasta partilhada utilizável — tenta o GitHub
 
@@ -93,18 +124,20 @@ def read_changelog():
         entries = []
         for rlz in releases or []:
             try:
-                version = int(str(rlz.get("tag_name") or "").lstrip("vV"))
+                version_tuple = _parse_version(rlz.get("tag_name") or "")
+                if not version_tuple or version_tuple == (0,):
+                    continue  # tag que não é uma versão (ex.: "beta")
             except ValueError:
-                continue  # tag que não é uma versão (ex.: "beta") — ignora-se
-            if version > APP_VERSION:
+                continue
+            if version_tuple > current_version:
                 continue
             # o corpo da release já vem com "- " no início de cada linha
             # (ver make_release.py): tira-se o traço para ficar só o texto
             notes = [line.strip().lstrip("-").strip()
                      for line in str(rlz.get("body") or "").splitlines()
                      if line.strip()]
-            entries.append({"version": version, "notes": notes})
-        return sorted(entries, key=lambda e: e["version"], reverse=True)
+            entries.append({"version": rlz.get("tag_name", ""), "notes": notes})
+        return sorted(entries, key=lambda e: _parse_version(e["version"]), reverse=True)
     except (OSError, ValueError):
         return []
 
@@ -171,8 +204,11 @@ def _check_update_local(rel):
     # utf-8-sig: tolera o BOM que editores/PowerShell costumam acrescentar
     with open(os.path.join(rel, "latest.json"), encoding="utf-8-sig") as f:
         latest = json.load(f)
-    new_version = int(latest.get("version", 0))
-    if new_version <= APP_VERSION:
+    new_version = latest.get("version", "0")
+    new_version_tuple = _parse_version(new_version)
+    current_version_tuple = _parse_version(APP_VERSION)
+    
+    if new_version_tuple <= current_version_tuple:
         return False
     zip_path = os.path.join(rel, latest.get("file", ""))
     if not os.path.isfile(zip_path):
@@ -186,8 +222,15 @@ def _check_update_local(rel):
             changelog = json.load(f)
     except (OSError, ValueError):
         changelog = {}
-    _print_news(f"v{v}: {line}" for v in range(APP_VERSION + 1, new_version + 1)
-                for line in changelog.get(str(v), []))
+    
+    # Gerar notas para todas as versões entre current e new
+    news_lines = []
+    for version_key in sorted(changelog.keys(), key=_parse_version):
+        version_tuple = _parse_version(version_key)
+        if current_version_tuple < version_tuple <= new_version_tuple:
+            for line in changelog.get(version_key, []):
+                news_lines.append(f"v{version_key}: {line}")
+    _print_news(news_lines)
     return True
 
 
@@ -196,17 +239,20 @@ def _check_update_github():
     funciona mesmo sem a pasta OneDrive partilhada (instalações fora da
     Critical Software). Devolve True se atualizou, False se não havia nada
     mais recente (ou não foi possível chegar ao GitHub)."""
-    new_version, asset_url, body = github_latest()
-    if not new_version or new_version <= APP_VERSION or not asset_url:
+    new_version_tuple, asset_url, body = github_latest()
+    current_version_tuple = _parse_version(APP_VERSION)
+    
+    if not new_version_tuple or new_version_tuple <= current_version_tuple or not asset_url:
         return False
 
-    print(f"Versão nova encontrada no GitHub: v{new_version} (local: v{APP_VERSION}). A descarregar...")
+    new_version_str = ".".join(str(x) for x in new_version_tuple)
+    print(f"Versão nova encontrada no GitHub: v{new_version_str} (local: v{APP_VERSION}). A descarregar...")
     with tempfile.TemporaryDirectory() as td:
         zip_path = os.path.join(td, "release.zip")
         req = urllib.request.Request(asset_url, headers={"User-Agent": _USER_AGENT})
         with urllib.request.urlopen(req, timeout=60) as resp, open(zip_path, "wb") as f:
             shutil.copyfileobj(resp, f)
-        _apply_zip(zip_path, new_version)
+        _apply_zip(zip_path, new_version_str)
 
     # o corpo da release do GitHub já vem com "- " no início de cada linha
     # (ver make_release.py); _print_news acrescenta o seu próprio traço
