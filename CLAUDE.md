@@ -56,7 +56,7 @@ Trivial edits (one-liners, typos) may be done directly without the pipeline.
 | :--- | :--- | :--- |
 | **DEV / Project** | `C:\Users\cm-andrade\Desktop\my_projects\bsp-tracker` | **Work area.** Runs on port **8766** via `run-dev.bat`. Has red DEV bar. JSONs here are disposable test data. `run-dev.bat` & `CLAUDE.md` stay local. |
 | **User Stable** | `C:\Users\cm-andrade\Desktop\my_projects\bsp-tracker-app` | **Real user instance.** Runs on port **8765**. Contains real user data (`notes.json`, `ccrs.json`, etc.). **NEVER edit code or test here.** |
-| **Releases Share** | `C:\Users\cm-andrade\OneDrive - CRITICAL SOFTWARE, S.A\BSP-G2-Tracker-App` | Contains `releases\bsp-tracker-vN.zip`, `latest.json`, `changelog.json` (Source of Truth), `RELEASES.md`, and `feedback\`. |
+| **Releases Share** | `C:\Users\cm-andrade\OneDrive - CRITICAL SOFTWARE, S.A\BSP-G2-Tracker-App` | Contains `releases\bsp-tracker-vX.Y.Z.zip`, `latest.json`, `changelog.json` (Source of Truth), `RELEASES.md`, and `feedback\`. |
 | **Production Excel** | `C:\Users\cm-andrade\OneDrive - CRITICAL SOFTWARE, S.A\WRSHALLOWFORD - BSP_G2 (Moreira)\BSP-G2_Daily_Tracker.xlsx` | Default workbook. Main sheet: `PRJ_CFG1_reworks_julho`. Status list sheet: `Admin`. Other workbooks can be opened from the OneDrive picker. |
 | **Zip Mirror** | `..\bsp-tracker.zip` | Mirror copy of the latest release zip. |
 
@@ -82,12 +82,16 @@ Trivial edits (one-liners, typos) may be done directly without the pipeline.
 ## 📦 Release Procedure (Execution Checklist)
 
 1. Validate code: `python -m py_compile app.py` and every file in `cswaios\`.
-2. Increment `APP_VERSION = N` in **`cswaios/config.py`**.
-3. Run `.\make-release.bat` (or `python make_release.py`).
+2. Run `.\make-release.bat` (or `python make_release.py`).
+3. Choose version bump when prompted:
+   - **[p]atch** — X.Y.Z+1 (bug fixes, minor updates)
+   - **[m]inor** — X.Y+1.0 (new features, backwards-compatible)
+   - **[M]ajor** — X+1.0.0 (breaking changes)
+   - or enter custom version (ex: 2.1.5)
 4. Enter changelog notes when prompted — **only functional, user-visible changes**. Internal refactors, file reorganisations and tooling changes are never mentioned to users.
 5. **Commit and push the release** — no confirmation needed, this is standing approval:
-   `git add -A` (skip local state/JSON data), `git commit -m "vN: <resumo>"`, `git push origin main`.
-   Commit **before** running the release when possible, so the `vN` tag created by `make_release.py` points at the released code; if the code was committed afterwards, move the tag (`git tag -f vN` + `git push -f origin vN`).
+   `git add -A` (skip local state/JSON data), `git commit -m "vX.Y.Z: <resumo>"`, `git push origin main`.
+   Commit **before** running the release when possible, so the `vX.Y.Z` tag created by `make_release.py` points at the released code; if the code was committed afterwards, move the tag (`git tag -f vX.Y.Z` + `git push -f origin vX.Y.Z`).
 6. Restart DEV server via `run-dev.bat` (Port 8766).
 7. Verify release: `Invoke-RestMethod http://localhost:8766/api/tasks` -> verify `app_version` and `mode=dev`.
 8. Inform user to refresh browser (F5).

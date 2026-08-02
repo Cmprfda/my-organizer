@@ -24,6 +24,10 @@ let todoLayout = localStorage.getItem(TODO_LAYOUT_KEY) === "kanban" ? "kanban" :
 // o que o servidor fez com o último pedido ("added"/"exists"/"linked"), para o
 // aviso mostrado ao utilizador
 let lastTodoResult = null;
+// item cuja checklist está em modo de reordenação (só um de cada vez); e a
+// subtarefa que está a ser arrastada nesse modo
+let subtasksEditingId = null;
+let subtaskDrag = null;
 
 function todoColOf(it) {
   const col = String((it && it.col) || "").toLowerCase();
@@ -264,16 +268,29 @@ function todoSubProgress(it) {
   return subs.length ? `<span class="todoSubProgress">${subs.filter(s => s.done).length}/${subs.length}</span>` : "";
 }
 
-// checklist de subtarefas + campo para adicionar mais uma (Enter submete)
+// checklist de subtarefas + campo para adicionar mais uma (Enter submete).
+// Com o modo de reordenação ligado (só faz sentido com mais do que um passo)
+// cada linha ganha uma pega e passa a poder arrastar-se dentro da lista.
 function todoSubtasksHtml(it) {
   const subs = Array.isArray(it.subtasks) ? it.subtasks : [];
-  const rows = subs.map(s => `<li class="todoSubItem${s.done ? " done" : ""}">
+  const editing = subtasksEditingId === it.id && subs.length > 1;
+  const rows = subs.map(s => `<li class="todoSubItem${s.done ? " done" : ""}" data-tsubid="${esc(s.id)}"${editing ? ' draggable="true"' : ""}>
+    ${editing ? '<span class="todoSubHandle">⠿</span>' : ""}
     <input type="checkbox" data-tsubtgl="${esc(it.id)}|${esc(s.id)}"${s.done ? " checked" : ""}>
     <span class="todoSubTitle" data-tsubedit="${esc(it.id)}|${esc(s.id)}" title="${t("t_edit_title")}">${esc(s.title)}</span>
     <button type="button" class="ccr-x" data-tsubdel="${esc(it.id)}|${esc(s.id)}" title="${t("t_remove")}">✕</button>
   </li>`).join("");
-  return `<ul class="todoSubList">${rows}<li class="todoSubAddRow">` +
-    `<input type="text" class="todoSubInput" data-tsubnew="${esc(it.id)}" placeholder="${t("ph_subtask")}"></li></ul>`;
+  const mode = subs.length > 1
+    ? `<button type="button" class="ccr-x todoSubMode${editing ? " on" : ""}" data-tsubmode="${esc(it.id)}" title="${t(editing ? "t_reorder_done" : "t_reorder_subs")}">${editing ? "✓" : "⇅"}</button>`
+    : "";
+  return `<ul class="todoSubList${editing ? " editingSubs" : ""}" data-tsublist="${esc(it.id)}">${rows}<li class="todoSubAddRow">` +
+    `<input type="text" class="todoSubInput" data-tsubnew="${esc(it.id)}" placeholder="${t("ph_subtask")}">${mode}</li></ul>`;
+}
+
+function toggleSubtasksEdit(id) {
+  subtasksEditingId = subtasksEditingId === id ? null : id;
+  subtaskDrag = null;
+  renderTodo();
 }
 
 // issue do Jira ligada ao item (no máximo uma): só o código, clicável para
@@ -370,6 +387,9 @@ function openSubtaskEdit(el) {
   editorOpen = true;
   const host = el.closest("[data-tid]");
   if (host) host.draggable = false;
+  // em modo de reordenação o próprio passo é arrastável e roubava a seleção
+  const li = el.closest(".todoSubItem");
+  if (li) li.draggable = false;
   el.innerHTML = `<input type="text" class="todoSubEditInput" value="${esc(sub.title)}" maxlength="200">`;
   const box = el.querySelector(".todoSubEditInput");
   box.focus();
@@ -380,6 +400,7 @@ function openSubtaskEdit(el) {
     finished = true;
     editorOpen = false;
     if (host) host.draggable = true;
+    if (li) li.draggable = subtasksEditingId === id;
     const title = box.value.trim();
     if (save && title && title !== sub.title) postTodo({ action: "rename_subtask", id, sub_id: subId, title });
     else renderTodo();
@@ -623,6 +644,8 @@ function todoItemTap(e) {
   if (status) { setTodoStatusById(status.dataset.tocol); return; }
   const prio = e.target.closest("[data-tprio]");
   if (prio) { setTodoPriorityById(prio.dataset.tprio); return; }
+  const subMode = e.target.closest("[data-tsubmode]");
+  if (subMode) { toggleSubtasksEdit(subMode.dataset.tsubmode); return; }
   const subDel = e.target.closest("[data-tsubdel]");
   if (subDel) {
     const [id, subId] = subDel.dataset.tsubdel.split("|");
@@ -741,6 +764,54 @@ function dragPayload(e) {
   } catch { return null; }
 }
 
+// reordenar os passos de um item: só com a checklist em modo de reordenação e
+// sempre dentro da mesma lista (arrastar um passo para outro item não faz
+// sentido — o passo pertence ao item)
+function clearSubtaskOver() {
+  document.querySelectorAll(".todoSubItem.over").forEach(x => x.classList.remove("over"));
+}
+
+function endSubtaskDrag() {
+  subtaskDrag = null;
+  clearSubtaskOver();
+}
+
+function subtaskDragStart(e) {
+  const li = e.target.closest(".todoSubList.editingSubs .todoSubItem");
+  if (!li) return false;
+  subtaskDrag = { id: li.closest(".todoSubList").dataset.tsublist, subId: li.dataset.tsubid };
+  e.dataTransfer.setData("application/json",
+    JSON.stringify({ kind: "subtask", id: subtaskDrag.id, sub_id: subtaskDrag.subId }));
+  e.dataTransfer.effectAllowed = "move";
+  return true;
+}
+
+function subtaskDragOver(e) {
+  if (!subtaskDrag) return;
+  const li = e.target.closest ? e.target.closest(".todoSubItem") : null;
+  const list = li ? li.closest(".todoSubList") : null;
+  clearSubtaskOver();
+  if (!list || list.dataset.tsublist !== subtaskDrag.id || li.dataset.tsubid === subtaskDrag.subId) return;
+  e.preventDefault();
+  li.classList.add("over");
+}
+
+function subtaskDrop(e) {
+  if (!subtaskDrag) return;
+  // impede que o drop suba até aos handlers da tab/lista de TODOs (dropready,
+  // handleTodoPayload) — o passo nunca é um item TODO nem um drop noutra aba
+  e.stopPropagation();
+  const li = e.target.closest ? e.target.closest(".todoSubItem") : null;
+  const list = li ? li.closest(".todoSubList") : null;
+  const drag = subtaskDrag;
+  endSubtaskDrag();
+  if (!list || list.dataset.tsublist !== drag.id || li.dataset.tsubid === drag.subId) return;
+  e.preventDefault();
+  // o campo de novo passo é sempre o último filho, por isso não entra na conta
+  const to = [...list.children].indexOf(li);
+  postTodo({ action: "reorder_subtask", id: drag.id, sub_id: drag.subId, to });
+}
+
 $("tbody").addEventListener("dragstart", e => {
   const tr = e.target.closest("tr");
   if (!tr || !tr.cells.length) return;
@@ -767,6 +838,7 @@ $("ccrBody").addEventListener("dragstart", e => {
   e.dataTransfer.effectAllowed = "copy";
 });
 $("todoBody").addEventListener("dragstart", e => {
+  if (subtaskDragStart(e)) return;
   const tr = e.target.closest("tr.todoRow");
   if (!tr) return;
   // arrastar o botão ↗ (e não a linha) serve para dividir o ecrã
@@ -781,6 +853,7 @@ $("todoBody").addEventListener("dragstart", e => {
   e.dataTransfer.effectAllowed = "move";
 });
 $("todoBoard").addEventListener("dragstart", e => {
+  if (subtaskDragStart(e)) return;
   const card = e.target.closest(".todoCard");
   if (!card) return;
   if (e.target.closest("[data-src]")) {
@@ -796,12 +869,18 @@ $("todoBoard").addEventListener("dragstart", e => {
 $("todoBody").addEventListener("dragend", () => {
   $("dropZones").classList.add("hidden");
   document.querySelectorAll("#dropZones .dropZone").forEach(z => z.classList.remove("over"));
+  endSubtaskDrag();
 });
 $("todoBoard").addEventListener("dragend", () => {
   $("dropZones").classList.add("hidden");
   document.querySelectorAll("#dropZones .dropZone").forEach(z => z.classList.remove("over"));
   document.querySelectorAll(".todoCol.over").forEach(x => x.classList.remove("over"));
+  endSubtaskDrag();
 });
+$("todoBody").addEventListener("dragover", subtaskDragOver);
+$("todoBoard").addEventListener("dragover", subtaskDragOver);
+$("todoBody").addEventListener("drop", subtaskDrop);
+$("todoBoard").addEventListener("drop", subtaskDrop);
 
 const todoTab = document.querySelector('.tabs button[data-view="todo"]');
 function handleTodoPayload(p, targetRow, targetCol, beforeCardId) {
@@ -835,17 +914,24 @@ function todoColUnder(target) {
 }
 
 [todoTab, $("todoView")].forEach(el => {
-  el.addEventListener("dragover", e => { e.preventDefault(); todoTab.classList.add("dropready"); });
+  el.addEventListener("dragover", e => {
+    // a arrastar um passo dentro da checklist: a tab não é alvo nenhum
+    if (subtaskDrag) return;
+    e.preventDefault(); todoTab.classList.add("dropready");
+  });
   el.addEventListener("dragleave", () => todoTab.classList.remove("dropready"));
 });
 todoTab.addEventListener("drop", e => handleTodoDrop(e, null, null, null));
 $("todoView").addEventListener("drop", e => {
+  if (subtaskDrag) return;
   const row = e.target.closest("tr.todoRow");
   const card = e.target.closest(".todoCard");
   handleTodoDrop(e, row, todoColUnder(e.target), card ? card.dataset.tid : null);
 });
 
 $("todoBoard").addEventListener("dragover", e => {
+  // a arrastar um passo dentro da checklist: a coluna não é alvo nenhum
+  if (subtaskDrag) return;
   e.preventDefault();
   const col = e.target.closest ? e.target.closest(".todoCol") : null;
   document.querySelectorAll(".todoCol.over").forEach(x => x.classList.remove("over"));

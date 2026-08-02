@@ -460,7 +460,7 @@ class Handler(BaseHTTPRequestHandler):
                     target["detail"] = str(payload.get("detail") or "").strip()[:1000]
                     log_event(f'{ip} TODO nota: {str(target.get("title", "?"))[:60]!r}')
                 elif action == "add_subtask":
-                    # checklist leve dentro do item (sem edição/reordenação)
+                    # checklist leve dentro do item
                     target = next((t for t in todos if t.get("id") == payload.get("id")), None)
                     if target is None:
                         raise ValueError("item TODO não encontrado")
@@ -538,6 +538,19 @@ class Handler(BaseHTTPRequestHandler):
                     subs = target.get("subtasks") if isinstance(target.get("subtasks"), list) else []
                     target["subtasks"] = [s for s in subs
                                           if not (isinstance(s, dict) and s.get("id") == payload.get("sub_id"))]
+                elif action == "reorder_subtask":
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    subs = target.get("subtasks") if isinstance(target.get("subtasks"), list) else []
+                    ids = [s.get("id") for s in subs if isinstance(s, dict)]
+                    sub_id = payload.get("sub_id")
+                    if sub_id not in ids:
+                        raise ValueError("subtarefa não encontrada")
+                    sub = subs.pop(ids.index(sub_id))
+                    to = max(0, min(len(subs), int(payload.get("to", 0))))
+                    subs.insert(to, sub)
+                    target["subtasks"] = subs
                 else:
                     raise ValueError(f"ação inválida: {action}")
                 todos = [normalize_todo_item(t) for t in todos if normalize_todo_item(t)]

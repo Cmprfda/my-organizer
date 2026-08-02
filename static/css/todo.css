@@ -432,13 +432,52 @@ tr.todoRow td.todoCtl>* {
   color: var(--muted);
 }
 
+/* modo de reordenação dos passos: pega à esquerda, arrasto dentro da lista e
+   realce do passo por baixo do cursor (o mesmo tracejado das colunas) */
+.todoSubList.editingSubs .todoSubItem {
+  cursor: grab;
+}
+
+.todoSubList.editingSubs .todoSubItem:active {
+  cursor: grabbing;
+}
+
+.todoSubHandle {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: grab;
+}
+
+.todoSubItem.over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 .todoSubAddRow {
   margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.todoSubMode {
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.todoSubMode.on {
+  color: var(--accent);
 }
 
 /* seletor composto (em vez de só ".todoSubInput"): sobrepõe-se a
    "input[type=text]" de forms.css, que tem mais especificidade e vem depois */
 .todoSubAddRow .todoSubInput {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   border: 1px dashed var(--border);
   background: transparent;

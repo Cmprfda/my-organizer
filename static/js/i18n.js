@@ -237,6 +237,8 @@ const TR = {
   t_remove: ["Remover da lista", "Remove from the list"],
   t_link_remove: ["Desligar esta origem do item", "Unlink this source from the item"],
   t_edit_title: ["Clica para editar", "Click to edit"],
+  t_reorder_subs: ["Reordenar os passos (arrasta para mudar a ordem)", "Reorder the steps (drag to change the order)"],
+  t_reorder_done: ["Terminar a reordenação dos passos", "Finish reordering the steps"],
   lbl_fb: ["O teu feedback", "Your feedback"],
   ph_fb: ["Sugestões, problemas, ideias…", "Suggestions, issues, ideas…"],
   lbl_imgs: ["Imagens (opcional, máx. 15 MB no total)", "Images (optional, max. 15 MB total)"],

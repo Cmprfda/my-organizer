@@ -166,20 +166,66 @@ def validate_python_syntax():
             sys.exit(1)
     print(f"  ✓ {len(alvos)} ficheiros Python validados com sucesso.")
 
-def get_current_app_version() -> int:
+def get_current_app_version() -> str:
+    """Lê APP_VERSION (formato X.Y.Z) de cswaios/config.py."""
     config_py = os.path.join(DEV_DIR, "cswaios", "config.py")
     with open(config_py, "r", encoding="utf-8") as f:
         content = f.read()
-    match = re.search(r'APP_VERSION\s*=\s*(\d+)', content)
+    match = re.search(r'APP_VERSION\s*=\s*["\']([0-9.]+)["\']', content)
     if not match:
         print("  ❌ Não foi possível encontrar APP_VERSION em cswaios/config.py.")
         sys.exit(1)
-    return int(match.group(1))
+    return match.group(1)
+
+def bump_version(current: str, bump_type: str) -> str:
+    """Incrementa versão semântica (X.Y.Z).
+    
+    bump_type: 'major' (X.0.0), 'minor' (X.Y+1.0), 'patch' (X.Y.Z+1)
+    """
+    parts = current.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        print(f"  ❌ Versão inválida: {current}. Formato esperado: X.Y.Z")
+        sys.exit(1)
+    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+    
+    if bump_type == "major":
+        major += 1
+        minor = 0
+        patch = 0
+    elif bump_type == "minor":
+        minor += 1
+        patch = 0
+    elif bump_type == "patch":
+        patch += 1
+    else:
+        print(f"  ❌ Tipo de bump inválido: {bump_type}")
+        sys.exit(1)
+    return f"{major}.{minor}.{patch}"
+
+def update_app_version_in_config(new_version: str):
+    """Atualiza APP_VERSION em cswaios/config.py."""
+    config_py = os.path.join(DEV_DIR, "cswaios", "config.py")
+    with open(config_py, "r", encoding="utf-8") as f:
+        content = f.read()
+    content = re.sub(
+        r'APP_VERSION\s*=\s*["\']([0-9.]+)["\']',
+        f'APP_VERSION = "{new_version}"',
+        content
+    )
+    with open(config_py, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+    print(f"  ✓ APP_VERSION atualizado para {new_version} em cswaios/config.py.")
 
 def update_releases_md(changelog_data: dict):
     """Regenera o RELEASES.md a partir do changelog.json sem BOM em UTF-8."""
     lines = ["# My Organizer - historico de versoes", ""]
-    for version in sorted(changelog_data, key=int, reverse=True):
+    # Ordenar versões semanticamente (X.Y.Z) em ordem descendente
+    sorted_versions = sorted(
+        changelog_data.keys(),
+        key=lambda v: tuple(map(int, v.split("."))),
+        reverse=True
+    )
+    for version in sorted_versions:
         lines.append(f"## v{version}")
         for item in changelog_data[version]:
             lines.append(f"- {item}")
@@ -198,12 +244,40 @@ def main():
     # 1. Validar sintaxe do app.py
     validate_python_syntax()
 
-    # 2. Obter versão atual do app.py
-    version = get_current_app_version()
-    print(f"\n[2/9] Versão atual detetada em cswaios/config.py: v{version}")
+    # 2. Obter versão atual
+    current_version = get_current_app_version()
+    print(f"\n[2/9] Versão atual detetada em cswaios/config.py: v{current_version}")
     
-    # Pergunta notas da release ao utilizador
-    print("\n[3/9] Introduza as notas da release (uma por linha).")
+    # 3. Perguntar qual parte bumpar
+    print("\n[3/9] Escolha a parte a incrementar:")
+    print(f"  [p]atch (v{bump_version(current_version, 'patch')})")
+    print(f"  [m]inor (v{bump_version(current_version, 'minor')})")
+    print(f"  [M]ajor (v{bump_version(current_version, 'major')})")
+    print("  ou introduza uma versão customizada (ex: 2.1.5)")
+    
+    choice = input("  > ").strip().lower()
+    
+    if choice == "p":
+        new_version = bump_version(current_version, "patch")
+    elif choice == "m":
+        new_version = bump_version(current_version, "minor")
+    elif choice == "M":
+        new_version = bump_version(current_version, "major")
+    else:
+        # Validar versão customizada
+        if not re.match(r'^[0-9]+\.[0-9]+\.[0-9]+$', choice):
+            print("  ❌ Formato inválido. Use X.Y.Z (ex: 1.2.3)")
+            sys.exit(1)
+        new_version = choice
+    
+    print(f"  → Nova versão: v{new_version}")
+    
+    # 4. Atualizar APP_VERSION em config.py
+    print("\n[4/9] A atualizar APP_VERSION em cswaios/config.py...")
+    update_app_version_in_config(new_version)
+    
+    # 5. Pergunta notas da release ao utilizador
+    print("\n[5/9] Introduza as notas da release (uma por linha).")
     print("      Pressione Enter numa linha vazia quando terminar:")
     changes = []
     while True:
@@ -215,8 +289,8 @@ def main():
             break
         changes.append(sanitize_text(line))
 
-    # 4. Atualizar changelog.json
-    print("\n[4/9] A atualizar changelog.json...")
+    # 6. Atualizar changelog.json
+    print("\n[6/9] A atualizar changelog.json...")
     changelog = {}
     if os.path.exists(CHANGELOG_PATH):
         with open(CHANGELOG_PATH, "r", encoding="utf-8-sig") as f:
@@ -226,22 +300,22 @@ def main():
         print("  ❌ changelog.json inesperado: era esperado um objeto {versao: [notas]}.")
         sys.exit(1)
 
-    # a app lê o changelog como {"30": ["nota", ...]}; re-executar sobrepõe a versao
-    changelog[str(version)] = changes
-    changelog = {k: changelog[k] for k in sorted(changelog, key=int)}
+    # a app lê o changelog como {"1.0.0": ["nota", ...]}; re-executar sobrepõe a versao
+    changelog[new_version] = changes
+    changelog = {k: changelog[k] for k in sorted(changelog, key=lambda v: tuple(map(int, v.split("."))))}
 
     with open(CHANGELOG_PATH, "w", encoding="utf-8", newline="\n") as f:
         json.dump(changelog, f, indent=2, ensure_ascii=False)
     print("  ✓ changelog.json atualizado (UTF-8 sem BOM).")
 
-    # 5. Regenerar RELEASES.md
-    print("\n[5/9] A regenerar RELEASES.md...")
+    # 7. Regenerar RELEASES.md
+    print("\n[7/9] A regenerar RELEASES.md...")
     update_releases_md(changelog)
 
-    # 6. Criar ZIP da release
-    print("\n[6/9] A empacotar ficheiros no ZIP da release...")
+    # 8. Criar ZIP da release
+    print("\n[8/9] A empacotar ficheiros no ZIP da release...")
     os.makedirs(RELEASES_ZIP_DIR, exist_ok=True)
-    zip_filename = f"bsp-tracker-v{version}.zip"
+    zip_filename = f"bsp-tracker-v{new_version}.zip"
     zip_target_path = os.path.join(RELEASES_ZIP_DIR, zip_filename)
 
     with zipfile.ZipFile(zip_target_path, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -264,8 +338,8 @@ def main():
     print(f"  ✓ {n_dirs} ficheiros de cswaios/ e static/ incluídos (+ {PAYLOAD_NAME}).")
     print(f"  ✓ Release zip criada em: {zip_target_path}")
 
-    # 7. Atualizar latest.json
-    print("\n[7/9] A atualizar latest.json...")
+    # 9. Atualizar latest.json
+    print("\n[9/9] A atualizar latest.json...")
     # preservar campos extras (ex.: relay_server) ja existentes no ficheiro
     try:
         with open(LATEST_PATH, encoding="utf-8") as f:
@@ -275,8 +349,8 @@ def main():
     latest_data = {
         **{k: v for k, v in existing_latest.items()
            if k not in ("version", "id", "file", "released")},
-        "version": version,
-        "id": f"v{version}",
+        "version": new_version,
+        "id": f"v{new_version}",
         "file": f"releases/{zip_filename}",
         "released": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
@@ -284,17 +358,17 @@ def main():
         json.dump(latest_data, f, indent=2, ensure_ascii=False)
     print("  ✓ latest.json atualizado.")
 
-    # 8. Sincronizar Zip de Espelho
-    print("\n[8/9] A espelhar zip para ..\\bsp-tracker.zip...")
+    # 10. Sincronizar Zip de Espelho
+    print("\n[10/9] A espelhar zip para ..\\bsp-tracker.zip...")
     shutil.copy2(zip_target_path, MIRROR_ZIP_PATH)
     print("  ✓ Espelho atualizado com sucesso.")
 
-    # 9. Publicar o zip na pagina de Releases do GitHub
-    print("\n[9/9] A publicar o zip no GitHub...")
-    publish_github_release(version, zip_target_path, changes)
+    # 11. Publicar o zip na pagina de Releases do GitHub
+    print("\n[11/9] A publicar o zip no GitHub...")
+    publish_github_release(new_version, zip_target_path, changes)
 
     print("\n==================================================")
-    print(f"🎉 RELEASE v{version} PUBLICADA COM SUCESSO!")
+    print(f"🎉 RELEASE v{new_version} PUBLICADA COM SUCESSO!")
     print("==================================================")
     print("Próximos passos:")
     print(" 1. Reiniciar a instância DEV via `run-dev.bat` (Porto 8766).")
