@@ -176,11 +176,21 @@ function viewMapKey(data) {
   return `${VIEWMAP_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
 }
 
+// cada campo aceita várias colunas (map[slot] é um array de nomes) — a mesma
+// coluna nunca pode alimentar dois campos ao mesmo tempo, regra imposta na UI
+// (renderViewMapRows em viewmap.js), não aqui
 function loadViewMap(data) {
   if (!data || !data.sheet) return null;
   try {
     const raw = JSON.parse(localStorage.getItem(viewMapKey(data)) || "null");
-    return raw && typeof raw === "object" ? raw : null;
+    if (!raw || typeof raw !== "object") return null;
+    const map = {};
+    VIEWMAP_SLOTS.forEach(([slot]) => {
+      const v = raw[slot];
+      const arr = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+      if (arr.length) map[slot] = arr;
+    });
+    return Object.keys(map).length ? map : null;
   } catch (e) {
     return null;
   }
@@ -189,34 +199,39 @@ function loadViewMap(data) {
 function saveViewMap(data, map) {
   if (!data || !data.sheet) return;
   const limpo = {};
-  Object.entries(map || {}).forEach(([k, v]) => { if (v) limpo[k] = v; });
+  Object.entries(map || {}).forEach(([k, v]) => {
+    const arr = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+    if (arr.length) limpo[k] = arr;
+  });
   if (Object.keys(limpo).length) localStorage.setItem(viewMapKey(data), JSON.stringify(limpo));
   else localStorage.removeItem(viewMapKey(data));
 }
 
 function buildCustomCompact(data) {
   if (!data || data.error || !(data.headers || []).length) return null;
-  if (hasCanonicalCompact(data)) return null;   // a folha do tracker tem vista própria
   const map = loadViewMap(data);
   if (!map) return null;
   const h = data.headers.map(norm);
   const col = name => (name ? h.findIndex(x => x === norm(name)) : -1);
+  const cols = names => (names || []).map(col).filter(i => i >= 0);
   const idx = {
-    fn: col(map.fn), author: col(map.author), reviewer: col(map.reviewer),
-    status: col(map.status), todo: col(map.todo),
+    fn: cols(map.fn), author: cols(map.author), reviewer: cols(map.reviewer),
+    status: cols(map.status), todo: cols(map.todo),
   };
   // nenhuma das colunas escolhidas existe nesta folha (mudou de aba ou de livro)
-  if (!Object.values(idx).some(i => i >= 0)) return null;
+  if (!Object.values(idx).some(arr => arr.length)) return null;
 
   const cel = (row, i) => (i >= 0 && row[i]) ? String(row[i]).trim() : "";
+  // várias colunas no mesmo campo: cada uma contribui o seu valor, vazias são ignoradas
+  const celMulti = (row, idxs, sep) => idxs.map(i => cel(row, i)).filter(Boolean).join(sep);
   const rows = data.rows.map((row, ri) => {
     const meta = (data.row_meta || [])[ri] || null;
-    const quem = [[t("role_author"), cel(row, idx.author)], [t("role_reviewer"), cel(row, idx.reviewer)]]
+    const quem = [[t("role_author"), celMulti(row, idx.author, ", ")], [t("role_reviewer"), celMulti(row, idx.reviewer, ", ")]]
       .filter(([, nome]) => nome);
     // side/linesCols/rawTodo/roleKey ficam vazios: sem os papéis e os estados do
     // tracker não há "lado" nem coluna do Excel para onde escrever
-    return [cel(row, idx.fn), quem.map(([r, nome]) => `${r}: ${nome}`).join("\n"),
-    cel(row, idx.status), cel(row, idx.todo), "", null, meta, [], "", ""];
+    return [celMulti(row, idx.fn, " / "), quem.map(([r, nome]) => `${r}: ${nome}`).join("\n"),
+    celMulti(row, idx.status, "\n"), celMulti(row, idx.todo, "\n"), "", null, meta, [], "", ""];
   });
 
   return { headers: compactHeaders(), rows, readonly: true };
@@ -398,7 +413,7 @@ function render() {
   if (!data) return;
   populateSelectors(data);
   renderVersionBadge(data);
-  renderViewMap(data);
+  updateViewMapButton(data);
   // instância de desenvolvimento: marcar bem, para não se confundir com a estável
   if (data.mode === "dev" && !document.body.classList.contains("devmode")) {
     document.body.classList.add("devmode");
@@ -452,11 +467,12 @@ function render() {
 
   // vista resumida do tracker ou, para outras folhas, a que o utilizador
   // mapeou nas Definições (só leitura)
-  const compact = buildCompact(data) || buildCustomCompact(data);
+  const compact = buildCustomCompact(data) || buildCompact(data);
   $("viewToggle").classList.toggle("hidden", !compact);
   const useCompact = compact && compactView;
   // vista mapeada à medida: nada aqui se escreve no Excel
   const readOnlyRows = !!(useCompact && compact.readonly);
+  if (readOnlyRows) $("fileInfo").innerHTML += `<br><span class="notice">ℹ ${esc(t("viewmap_readonly"))}</span>`;
   // lista/caixas vale para as duas vistas (resumida e completa)
   $("taskMode").classList.remove("hidden");
   const headers = useCompact ? compact.headers : data.headers;
