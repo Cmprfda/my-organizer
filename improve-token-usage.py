@@ -13,13 +13,23 @@ OUT.mkdir(exist_ok=True)
 SECTION_MIN_SIZE = 500
 
 section_map = {}
-section_refs = {}
 manifest = []
+
+#
+# Clean previously generated files
+#
+for f in OUT.glob("*.md"):
+    f.unlink()
+
+for f in OUT.glob("*.json"):
+    f.unlink()
+
 
 def slugify(text):
     text = re.sub(r"[^\w\s-]", "", text)
     text = text.strip().lower()
     return re.sub(r"[-\s]+", "-", text)
+
 
 def split_sections(content):
     pattern = re.compile(r"^(#{1,2}\s+.+)$", re.MULTILINE)
@@ -33,7 +43,11 @@ def split_sections(content):
 
     for i, match in enumerate(matches):
         start = match.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+        end = (
+            matches[i + 1].start()
+            if i + 1 < len(matches)
+            else len(content)
+        )
 
         title = match.group(1)
         body = content[start:end].strip()
@@ -42,9 +56,18 @@ def split_sections(content):
 
     return sections
 
+
+#
+# Keeps track of filenames already used during this run
+#
+generated_names = {}
+
 for md_file in ROOT.rglob("*.md"):
 
-    if "docs" in md_file.parts:
+    #
+    # Skip generated docs
+    #
+    if OUT in md_file.parents:
         continue
 
     content = md_file.read_text(
@@ -53,8 +76,6 @@ for md_file in ROOT.rglob("*.md"):
     )
 
     sections = split_sections(content)
-
-    links = []
 
     for title, body in sections:
 
@@ -65,37 +86,52 @@ for md_file in ROOT.rglob("*.md"):
             body.encode("utf-8")
         ).hexdigest()
 
+        #
+        # Skip duplicate content
+        #
         if digest in section_map:
-            section_refs[digest] = section_map[digest]
             continue
 
-        name = slugify(
+        base_name = slugify(
             re.sub(r"^#+\s*", "", title)
         )
 
-        out_file = OUT / f"{name}.md"
+        if not base_name:
+            base_name = "untitled"
 
-        counter = 1
-        while out_file.exists():
-            counter += 1
-            out_file = OUT / f"{name}-{counter}.md"
+        #
+        # Only create -2/-3 when there are duplicate
+        # section titles in the SAME execution
+        #
+        count = generated_names.get(base_name, 0)
+
+        if count == 0:
+            filename = f"{base_name}.md"
+        else:
+            filename = f"{base_name}-{count + 1}.md"
+
+        generated_names[base_name] = count + 1
+
+        out_file = OUT / filename
 
         out_file.write_text(
             body,
             encoding="utf-8"
         )
 
-        section_map[digest] = out_file.name
-
-        links.append(out_file.name)
+        section_map[digest] = filename
 
         manifest.append({
             "source": str(md_file),
             "section": title,
-            "file": out_file.name,
+            "file": filename,
             "chars": len(body)
         })
 
+
+#
+# Build root document indexes
+#
 for root_doc in [
     "CLAUDE.md",
     "CONTEXT.md",
@@ -117,18 +153,42 @@ for root_doc in [
     ]
 
     for m in manifest:
+
         if m["source"].endswith(root_doc):
             content.append(
                 f"- {m['section']} -> docs/{m['file']}"
             )
 
-    new_file = OUT / f"{root_doc}.index.md"
-
-    new_file.write_text(
+    (OUT / f"{root_doc}.index.md").write_text(
         "\n".join(content),
         encoding="utf-8"
     )
 
+
+#
+# Build context index
+#
+context_index = [
+    "# Context Index",
+    "",
+    "Load only the required file.",
+    ""
+]
+
+for item in sorted(manifest, key=lambda x: x["file"]):
+    context_index.append(
+        f"- {item['section']} -> {item['file']}"
+    )
+
+(OUT / "context-index.md").write_text(
+    "\n".join(context_index),
+    encoding="utf-8"
+)
+
+
+#
+# Save manifest
+#
 (OUT / "manifest.json").write_text(
     json.dumps(
         manifest,
@@ -138,4 +198,11 @@ for root_doc in [
     encoding="utf-8"
 )
 
-print(f"{len(manifest)} documents created.")
+print()
+print("========== Documentation Split Report ==========")
+print(f"Generated sections : {len(manifest)}")
+print(f"Generated files    : {len(list(OUT.glob('*.md')))}")
+print(f"Manifest           : {OUT / 'manifest.json'}")
+print(f"Index              : {OUT / 'context-index.md'}")
+print()
+print("Done.")

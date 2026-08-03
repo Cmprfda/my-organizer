@@ -1,21 +1,48 @@
-# Agent Instructions
+# Project Context
 
-## Tech Stack & Core Standards
-- Stack: Python 3.x, stdlib `ThreadingHTTPServer`, `openpyxl` (read), Excel/COM (write), vanilla JS (ES5-compatible globals), CSS custom properties
-- Style: Functional over OOP. Short, single-responsibility functions.
-- Formatting: No fluff, no conversational filler in responses.
+## Project
 
-## Code Conventions
-- Python: No bare `except`; always log before falling back to cache.
-- JS: No ES modules — files share one global scope; load order in `index.html` is authoritative.
-- CSS: Use `theme.css` tokens only. Never hardcode colours.
-- Config globals (`FORCED_FILE`, `SERVER_PORT`, `DEV_MODE`): always read as `config.X`, never import directly.
+My Organizer (CSW.AI.OS)
 
-## Rules of Engagement
-1. Read existing code before modifying. Never re-invent utilities.
-2. Maintain minimal diffs. Do not refactor unrelated code.
-3. Writes to Excel must use COM — never `openpyxl` write paths.
-4. Reference external specs when relevant:
-   - Project instructions: `CLAUDE.md`
-   - Theme rules: `THEME.md`
-   - Task list: `tasks/active.md`
+Local web application used by V&V engineers to:
+
+- Open Excel workbooks
+- Manage tasks
+- Manage CCRs
+- Track TODO items
+- Record notes
+- Submit feedback
+
+## Technology Stack
+
+Backend:
+- Python
+- openpyxl (read only)
+- Excel COM (writes)
+- Microsoft Graph
+
+Frontend:
+- HTML
+- CSS
+- Vanilla JavaScript
+
+## Detailed Documentation
+
+Architecture:
+docs/architecture-overview.md
+
+Environment:
+docs/environment-folder-locations.md
+
+Release Process:
+docs/release-procedure-execution-checklist.md
+
+Safety Rules:
+docs/rigid-safety-development-rules.md
+
+Testing:
+docs/ui-testing-playwright-mcp.md
+
+## Retrieval Rule
+
+Do not load all documents unless required.
