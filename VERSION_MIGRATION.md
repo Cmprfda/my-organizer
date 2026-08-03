@@ -1,82 +1,82 @@
-# Conversão de Versioning — Resumo Executivo
+# Versioning Conversion — Executive Summary
 
-Data: 2 de agosto de 2026
+Date: August 2, 2026
 
-## ✅ Trabalho Completado
+## ✅ Work Completed
 
-### 1. Conversion changelog.json (v1-v106 → v1.0.0-v1.0.105)
-- **105 versões convertidas** de formato inteiro para semântico
-- Estratégia: `v{N}` → `v1.0.{N-1}`
+### 1. Conversion of changelog.json (v1-v106 → v1.0.0-v1.0.105)
+- **105 versions converted** from integer to semantic format
+- Strategy: `v{N}` → `v1.0.{N-1}`
   - v1 → v1.0.0
   - v2 → v1.0.1
   - ...
   - v106 → v1.0.105
-- Ficheiro actualizado: `C:\Users\cm-andrade\OneDrive - CRITICAL SOFTWARE, S.A\BSP-G2-Tracker-App\changelog.json`
+- File updated: `C:\Users\cm-andrade\OneDrive - CRITICAL SOFTWARE, S.A\BSP-G2-Tracker-App\changelog.json`
 
-### 2. Atualizar RELEASES.md
-- Ficheiro regenerado com versões semânticas em ordem descendente
-- Mantém histórico completo de todas as alterações
+### 2. Update RELEASES.md
+- File regenerated with semantic versions in descending order
+- Keeps the complete history of all changes
 
-### 3. Atualizar latest.json
-- Versão mais recente: `1.0.105`
+### 3. Update latest.json
+- Latest version: `1.0.105`
 - ID: `v1.0.105`
-- Ficheiro de release: `releases/bsp-tracker-v1.0.105.zip`
+- Release file: `releases/bsp-tracker-v1.0.105.zip`
 
-### 4. Criar Git Tags
-- **105 tags semânticas** criadas em `.git/refs/tags/`
-  - v1.0.0 até v1.0.105 (v1.0.75 não existe, como esperado)
-  - Cada tag aponta para HEAD com mensagem descritiva
-- Exemplo: `git show v1.0.0` mostraria "Release v1.0.0: Versão inicial..."
+### 4. Create Git Tags
+- **105 semantic tags** created in `.git/refs/tags/`
+  - v1.0.0 through v1.0.105 (v1.0.75 doesn't exist, as expected)
+  - Each tag points to HEAD with a descriptive message
+- Example: `git show v1.0.0` would show "Release v1.0.0: Initial version..."
 
-### 5. Atualizar Configuração de Desenvolvimento
-- Ficheiro: `cswaios/config.py`
-- `APP_VERSION = "1.0.106"` (próxima versão a ser lançada)
+### 5. Update Development Configuration
+- File: `cswaios/config.py`
+- `APP_VERSION = "1.0.106"` (next version to be released)
 
-## 📊 Estatísticas
+## 📊 Statistics
 
-| Item | Antes | Depois |
+| Item | Before | After |
 |------|-------|--------|
-| Formato de Versão | Inteiro (1-106) | Semântico (1.0.0-1.0.105) |
-| Git Tags | v1-v106 | v1.0.0-v1.0.105 (105 novas) |
-| Changelog Versões | 105 | 105 (reformatadas) |
+| Version Format | Integer (1-106) | Semantic (1.0.0-1.0.105) |
+| Git Tags | v1-v106 | v1.0.0-v1.0.105 (105 new) |
+| Changelog Versions | 105 | 105 (reformatted) |
 | APP_VERSION | 106 | 1.0.106 |
 
-## 🚀 Próximos Passos
+## 🚀 Next Steps
 
-1. **Testar a app com a versão 1.0.106:**
+1. **Test the app with version 1.0.106:**
    ```powershell
    .\run-dev.bat
    Invoke-RestMethod http://localhost:8766/api/tasks
    ```
-   Verificar que `app_version` mostra `1.0.106`
+   Verify that `app_version` shows `1.0.106`
 
-2. **Primeira release semântica (1.0.106):**
+2. **First semantic release (1.0.106):**
    ```powershell
    .\make-release.bat
-   # Escolher: [p]atch (será 1.0.107 automaticamente)
-   # Ou customizar para 1.1.0 se preferir para assinalar o milestone
+   # Choose: [p]atch (will become 1.0.107 automatically)
+   # Or customize to 1.1.0 if you'd rather mark the milestone
    ```
 
-3. **Git (Opcional):**
+3. **Git (Optional):**
    ```powershell
-   git push origin --tags  # Enviar todos os tags
+   git push origin --tags  # Push all tags
    ```
 
-## 📝 Scripts Criados
+## 📝 Scripts Created
 
-- `convert_versions.py` — Converte changelog.json
-- `create_git_tags.py` — Cria tags git para todas as versões
+- `convert_versions.py` — Converts changelog.json
+- `create_git_tags.py` — Creates git tags for all versions
 
-Estes scripts podem ser removidos após verificação ou guardados para referência futura.
+These scripts can be removed after verification or kept for future reference.
 
-## ✨ Benefícios
+## ✨ Benefits
 
-- **Versionamento claro:** 1.0.105 é imediatamente compreensível
-- **Compatibilidade:** GitHub, auto-update, e changelog agora usam semver
-- **Escalabilidade:** Futuras mudanças major/minor são triviais
-- **Rastreabilidade:** Cada versão tem um tag git correspondente
+- **Clear versioning:** 1.0.105 is immediately understandable
+- **Compatibility:** GitHub, auto-update, and changelog now use semver
+- **Scalability:** Future major/minor changes are trivial
+- **Traceability:** Every version has a matching git tag
 
 ---
 
-**Status:** ✅ **CONCLUÍDO**  
-Todas as versões foram renumeradas e o git foi actualizado com sucesso.
+**Status:** ✅ **COMPLETE**
+All versions have been renumbered and git has been updated successfully.

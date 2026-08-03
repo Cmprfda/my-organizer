@@ -1,79 +1,79 @@
-# Tema — Critical Software Design System
+# Theme — Critical Software Design System
 
-A interface do **My Organizer (CSW.AI.OS)** segue o *Critical Software Design System*
-(pasta de origem: `critical-software-design-system-652547b1-93ba-462e-82fc-9f8e8b78ea78`).
-Este documento é a referência única do tema; qualquer CSS novo deve usar os tokens abaixo
-em vez de valores fixos.
+The **My Organizer (CSW.AI.OS)** interface follows the *Critical Software Design System*
+(source folder: `critical-software-design-system-652547b1-93ba-462e-82fc-9f8e8b78ea78`).
+This document is the single reference for the theme; any new CSS must use the tokens below
+instead of fixed values.
 
-> A estética iOS anterior foi substituída. Os nomes de variáveis `--ios-*` **mantêm-se**
-> como aliases (para não partir o CSS existente), mas apontam agora para tokens da marca.
+> The previous iOS aesthetic has been superseded. The `--ios-*` variable names **remain**
+> as aliases (so existing CSS doesn't break), but now point to brand tokens.
 
 ---
 
-## 1. Onde vive o tema
+## 1. Where the theme lives
 
-- [static/css/theme.css](static/css/theme.css) — `@font-face` da Aptos, tokens de marca,
-  aliases legacy, tema claro/escuro e a classe utilitária `.eyebrow`.
+- [static/css/theme.css](static/css/theme.css) — Aptos `@font-face`, brand tokens,
+  legacy aliases, light/dark theme and the `.eyebrow` utility class.
 - `static/fonts/*.ttf` — Aptos, Aptos SemiBold, Aptos Narrow Bold, Aptos Mono
-  (servidos por `/static/fonts/...`; `cswaios/server.py` mapeia `.ttf`).
-- Os restantes `static/css/*.css` consomem apenas variáveis.
+  (served via `/static/fonts/...`; `cswaios/server.py` maps `.ttf`).
+- The remaining `static/css/*.css` files only consume variables.
 
-## 2. Cor
+## 2. Color
 
-| Token | Valor | Uso |
+| Token | Value | Use |
 | :-- | :-- | :-- |
-| `--csw-red-600` | `#C00000` | **Critical Red** — acento primário (botões, links, `//`, destaques) |
+| `--csw-red-600` | `#C00000` | **Critical Red** — primary accent (buttons, links, `//`, highlights) |
 | `--csw-red-700` | `#8E0407` | hover/pressed |
-| `--csw-red-900` | `#63090D` | maroon profundo (superfícies escuras de marca) |
-| `--csw-sand-400` | `#ECA682` | warm sand — acento secundário, usado com parcimónia |
-| `--ink-950 … --ink-50`, `--white` | rampa neutra | texto, superfícies, bordas |
-| `--green-600` / `--amber-600` / `--blue-600` | semânticos | estado positivo / atenção / informação |
+| `--csw-red-900` | `#63090D` | deep maroon (dark brand surfaces) |
+| `--csw-sand-400` | `#ECA682` | warm sand — secondary accent, used sparingly |
+| `--ink-950 … --ink-50`, `--white` | neutral ramp | text, surfaces, borders |
+| `--green-600` / `--amber-600` / `--blue-600` | semantic | positive / warning / info state |
 
-Aliases aplicacionais: `--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`,
+Application-level aliases: `--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`,
 `--accent-hover`, `--accent-soft`, `--focus-ring`.
 
-**Vermelho/verde como texto:** usar `--accent-text` e `--ok-text` (nunca `--accent`
-ou `--ios-red`/`--ios-green`) sempre que a cor for aplicada em `color:`. No tema
-escuro estes tokens são tons mais claros (`#e08b8b` / `#6fd39a`), porque o
-vermelho de marca sobre preto perde legibilidade. `--accent` continua a ser a cor
-certa para fundos, bordas e realces.
+**Red/green as text:** use `--accent-text` and `--ok-text` (never `--accent`
+or `--ios-red`/`--ios-green`) whenever the color is applied to `color:`. In the
+dark theme these tokens are lighter shades (`#e08b8b` / `#6fd39a`), because the
+brand red on black loses legibility. `--accent` remains the right color for
+backgrounds, borders and highlights.
 
-**Estados** (usar sempre estes pares, já resolvidos para claro/escuro):
+**States** (always use these pairs, already resolved for light/dark):
 `--status-done-bg/-fg`, `--status-doing-bg/-fg`, `--status-blocked-bg/-fg`,
 `--status-info-bg/-fg`.
 
-Regra do utilizador mantém-se: feedback positivo em verde (`--ios-green` → `--green-600`),
-falha em vermelho (`--ios-red` → `--csw-red-600`).
+The user's rule still applies: positive feedback in green (`--ios-green` → `--green-600`),
+failure in red (`--ios-red` → `--csw-red-600`).
 
-## 3. Tipografia
+## 3. Typography
 
-- `--font-sans` → **Aptos** (corpo e UI).
-- `--font-display` → **Aptos Narrow** (h1/h2/h3, números grandes).
-- `--font-mono` → **Aptos Mono** (eyebrows `// LABEL`, cabeçalhos de tabela,
-  labels de campos, títulos de coluna do Kanban).
-- Títulos em *sentence case*, tracking `-0.01em`.
-- Motivo da marca: classe `.eyebrow` (mono, maiúsculas, `letter-spacing: .14em`,
-  prefixo `// ` automático). Usada no cabeçalho da app.
+- `--font-sans` → **Aptos** (body and UI).
+- `--font-display` → **Aptos Narrow** (h1/h2/h3, large numbers).
+- `--font-mono` → **Aptos Mono** (eyebrows `// LABEL`, table headers,
+  field labels, Kanban column titles).
+- Titles in *sentence case*, tracking `-0.01em`.
+- Brand motif: `.eyebrow` class (mono, uppercase, `letter-spacing: .14em`,
+  automatic `// ` prefix). Used in the app header.
 
-## 4. Forma, sombra e movimento
+## 4. Shape, shadow and motion
 
-- **Cantos nítidos:** cartões `--ios-radius-card` = 12px; botões/campos
-  `--ios-radius-btn` = 4px; pílulas 999px só em chips/badges.
-- **Bordas:** hairline 1px (`--border`).
-- **Sombras neutras** (sem brilhos coloridos): `--ios-shadow` (repouso) e
-  `--ios-shadow-lg` (overlays, elementos flutuantes, hover de cartões).
-- **Sem vidro/blur:** `--ios-blur: none` — o design system usa superfícies planas.
-  Bónus: evita que `backdrop-filter` crie *containing blocks* para `position: fixed`.
-- **Fundos planos:** sem gradientes decorativos.
-- **Movimento:** `--dur-fast` 120ms / `--dur-base` 200ms com `--ease-standard`
-  `cubic-bezier(.2,0,0,1)`. Hover = escurecer + pequena elevação; sem bounce.
-  `prefers-reduced-motion` é respeitado em `theme.css`.
-- **Foco:** `box-shadow: var(--focus-ring)` (anel vermelho de 3px) em `:focus-visible`.
+- **Crisp corners:** cards `--ios-radius-card` = 12px; buttons/fields
+  `--ios-radius-btn` = 4px; pills 999px only on chips/badges.
+- **Borders:** 1px hairline (`--border`).
+- **Neutral shadows** (no colored glow): `--ios-shadow` (resting) and
+  `--ios-shadow-lg` (overlays, floating elements, card hover).
+- **No glass/blur:** `--ios-blur: none` — the design system uses flat surfaces.
+  Bonus: avoids `backdrop-filter` creating *containing blocks* for `position: fixed`.
+- **Flat backgrounds:** no decorative gradients.
+- **Motion:** `--dur-fast` 120ms / `--dur-base` 200ms with `--ease-standard`
+  `cubic-bezier(.2,0,0,1)`. Hover = darken + slight elevation; no bounce.
+  `prefers-reduced-motion` is respected in `theme.css`.
+- **Focus:** `box-shadow: var(--focus-ring)` (3px red ring) on `:focus-visible`.
 
-## 5. Regras ao escrever CSS novo
+## 5. Rules for writing new CSS
 
-1. Nunca introduzir hex/rgba fixos — usar tokens ou os pares `--status-*`.
-2. Não recriar overrides `html[data-theme="dark"]` para cores: os tokens já mudam.
-3. Botões: primário usa `--accent` e escurece no hover; `.secondary` inverte para tinta sólida.
-4. Labels/eyebrows/cabeçalhos de tabela em `--font-mono` com `--tracking-eyebrow`.
-5. Emoji não são elementos de UI; `→`, `·` e `//` são os únicos glifos decorativos.
+1. Never introduce fixed hex/rgba values — use tokens or the `--status-*` pairs.
+2. Don't recreate `html[data-theme="dark"]` overrides for colors: the tokens already change.
+3. Buttons: primary uses `--accent` and darkens on hover; `.secondary` inverts to a solid fill.
+4. Labels/eyebrows/table headers in `--font-mono` with `--tracking-eyebrow`.
+5. Emoji are not UI elements; `→`, `·` and `//` are the only decorative glyphs.

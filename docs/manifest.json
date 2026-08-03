@@ -1,0 +1,440 @@
+[
+  {
+    "source": "CLAUDE.md",
+    "section": "# My Organizer (CSW.AI.OS) — Instructions for AI Assistant",
+    "file": "my-organizer-cswaios-instructions-for-ai-assistant.md",
+    "chars": 585
+  },
+  {
+    "source": "CLAUDE.md",
+    "section": "## 🤖 Model Workflow for New Implementations",
+    "file": "model-workflow-for-new-implementations.md",
+    "chars": 525
+  },
+  {
+    "source": "CLAUDE.md",
+    "section": "## 🛠️ Quick Commands & CLI",
+    "file": "quick-commands-cli.md",
+    "chars": 867
+  },
+  {
+    "source": "CLAUDE.md",
+    "section": "## 🏗️ Architecture Overview",
+    "file": "architecture-overview.md",
+    "chars": 8176
+  },
+  {
+    "source": "CLAUDE.md",
+    "section": "## 📍 Environment & Folder Locations",
+    "file": "environment-folder-locations.md",
+    "chars": 1163
+  },
+  {
+    "source": "CLAUDE.md",
+    "section": "## 🚨 Rigid Safety & Development Rules",
+    "file": "rigid-safety-development-rules.md",
+    "chars": 1375
+  },
+  {
+    "source": "CLAUDE.md",
+    "section": "## 📦 Release Procedure (Execution Checklist)",
+    "file": "release-procedure-execution-checklist.md",
+    "chars": 1488
+  },
+  {
+    "source": "CLAUDE.md",
+    "section": "## 🧪 UI Testing (Playwright MCP)",
+    "file": "ui-testing-playwright-mcp.md",
+    "chars": 2040
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## My Organizer (CSW.AI.OS)",
+    "file": "my-organizer-cswaios.md",
+    "chars": 761
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## 2) Tech Stack & Dependencies",
+    "file": "2-tech-stack-dependencies.md",
+    "chars": 1259
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## Main flow (read and render)",
+    "file": "main-flow-read-and-render.md",
+    "chars": 1324
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## Feedback/bugs flow",
+    "file": "feedbackbugs-flow.md",
+    "chars": 676
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## 4) Directory Map & Key Files",
+    "file": "4-directory-map-key-files.md",
+    "chars": 2789
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## 5) Critical Constraints & Invariants",
+    "file": "5-critical-constraints-invariants.md",
+    "chars": 1130
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## Environments",
+    "file": "environments.md",
+    "chars": 602
+  },
+  {
+    "source": "CONTEXT.md",
+    "section": "## Quick verification endpoints",
+    "file": "quick-verification-endpoints.md",
+    "chars": 783
+  },
+  {
+    "source": "README.md",
+    "section": "## Installation (one time)",
+    "file": "installation-one-time.md",
+    "chars": 595
+  },
+  {
+    "source": "README.md",
+    "section": "## Daily use",
+    "file": "daily-use.md",
+    "chars": 1130
+  },
+  {
+    "source": "README.md",
+    "section": "## Features",
+    "file": "features.md",
+    "chars": 2285
+  },
+  {
+    "source": "README.md",
+    "section": "## Reading Excel directly from OneDrive (no download)",
+    "file": "reading-excel-directly-from-onedrive-no-download.md",
+    "chars": 2361
+  },
+  {
+    "source": "README.md",
+    "section": "## Logs",
+    "file": "logs.md",
+    "chars": 631
+  },
+  {
+    "source": "README.md",
+    "section": "## Access from phone / other devices",
+    "file": "access-from-phone-other-devices.md",
+    "chars": 528
+  },
+  {
+    "source": "README.md",
+    "section": "## Versions and auto-update",
+    "file": "versions-and-auto-update.md",
+    "chars": 1081
+  },
+  {
+    "source": "README.md",
+    "section": "## Commands (command line)",
+    "file": "commands-command-line.md",
+    "chars": 1191
+  },
+  {
+    "source": "README.md",
+    "section": "## Integration Notes",
+    "file": "integration-notes.md",
+    "chars": 905
+  },
+  {
+    "source": "THEME.md",
+    "section": "# Theme — Critical Software Design System",
+    "file": "theme-critical-software-design-system.md",
+    "chars": 509
+  },
+  {
+    "source": "THEME.md",
+    "section": "## 2. Color",
+    "file": "2-color.md",
+    "chars": 1335
+  },
+  {
+    "source": "THEME.md",
+    "section": "## 4. Shape, shadow and motion",
+    "file": "4-shape-shadow-and-motion.md",
+    "chars": 841
+  },
+  {
+    "source": "VERSION_MIGRATION.md",
+    "section": "## ✅ Work Completed",
+    "file": "work-completed.md",
+    "chars": 1003
+  },
+  {
+    "source": "tasks\\active.md",
+    "section": "## Backlog",
+    "file": "backlog.md",
+    "chars": 1337
+  },
+  {
+    "source": ".claude\\agents\\external-access.md",
+    "section": "## Domains you own",
+    "file": "domains-you-own.md",
+    "chars": 882
+  },
+  {
+    "source": ".claude\\agents\\external-access.md",
+    "section": "## Hard safety rules (non-negotiable)",
+    "file": "hard-safety-rules-non-negotiable.md",
+    "chars": 1804
+  },
+  {
+    "source": ".claude\\agents\\external-access.md",
+    "section": "## Typical jobs you'll be asked to do",
+    "file": "typical-jobs-youll-be-asked-to-do.md",
+    "chars": 1198
+  },
+  {
+    "source": ".claude\\skills\\excel-sync-handler\\SKILL.md",
+    "section": "# Role & Mandate",
+    "file": "role-mandate.md",
+    "chars": 647
+  },
+  {
+    "source": ".claude\\skills\\excel-sync-handler\\SKILL.md",
+    "section": "## 🛠️ Excel Implementation Details",
+    "file": "excel-implementation-details.md",
+    "chars": 613
+  },
+  {
+    "source": ".claude\\skills\\excel-sync-handler\\SKILL.md",
+    "section": "## 💬 Example",
+    "file": "example.md",
+    "chars": 1140
+  },
+  {
+    "source": ".claude\\skills\\feedback-bug-fixer\\SKILL.md",
+    "section": "# Role & Mandate",
+    "file": "role-mandate-2.md",
+    "chars": 585
+  },
+  {
+    "source": ".claude\\skills\\feedback-bug-fixer\\SKILL.md",
+    "section": "## 🛠️ Step-by-Step Resolution Workflow",
+    "file": "step-by-step-resolution-workflow.md",
+    "chars": 1107
+  },
+  {
+    "source": ".claude\\skills\\ios-ui\\SKILL.md",
+    "section": "# Role & Goal",
+    "file": "role-goal.md",
+    "chars": 509
+  },
+  {
+    "source": ".claude\\skills\\ios-ui\\SKILL.md",
+    "section": "## 🎨 Color Palette & CSS Variables (iOS Palette)",
+    "file": "color-palette-css-variables-ios-palette.md",
+    "chars": 1384
+  },
+  {
+    "source": ".claude\\skills\\ios-ui\\SKILL.md",
+    "section": "## 📐 Visual & Interaction Rules (iOS HIG)",
+    "file": "visual-interaction-rules-ios-hig.md",
+    "chars": 1215
+  },
+  {
+    "source": ".claude\\skills\\ios-ui\\SKILL.md",
+    "section": "## 🧩 Base Components (iOS Pattern)",
+    "file": "base-components-ios-pattern.md",
+    "chars": 1672
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CLAUDE.md",
+    "section": "## 🛠️ Quick Commands & CLI",
+    "file": "quick-commands-cli-2.md",
+    "chars": 773
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CLAUDE.md",
+    "section": "## 🏗️ Architecture Overview",
+    "file": "architecture-overview-2.md",
+    "chars": 1212
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CLAUDE.md",
+    "section": "## 📍 Environment & Folder Locations",
+    "file": "environment-folder-locations-2.md",
+    "chars": 1085
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CONTEXT.md",
+    "section": "## BSP-G2 Daily Tracker",
+    "file": "bsp-g2-daily-tracker.md",
+    "chars": 625
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CONTEXT.md",
+    "section": "## 2) Stack Tecnológico & Dependências",
+    "file": "2-stack-tecnológico-dependências.md",
+    "chars": 949
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CONTEXT.md",
+    "section": "## 4) Mapa de Diretórios & Ficheiros-Chave",
+    "file": "4-mapa-de-diretórios-ficheiros-chave.md",
+    "chars": 1327
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CONTEXT.md",
+    "section": "## 5) Restrições Críticas & Invariantes",
+    "file": "5-restrições-críticas-invariantes.md",
+    "chars": 1176
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\CONTEXT.md",
+    "section": "## Ambientes",
+    "file": "ambientes.md",
+    "chars": 539
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Uso diário",
+    "file": "uso-diário.md",
+    "chars": 976
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Funcionalidades",
+    "file": "funcionalidades.md",
+    "chars": 1852
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Ler o Excel diretamente do OneDrive (sem download)",
+    "file": "ler-o-excel-diretamente-do-onedrive-sem-download.md",
+    "chars": 2320
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Registos (logs)",
+    "file": "registos-logs.md",
+    "chars": 657
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Acesso a partir do telemóvel / outros dispositivos",
+    "file": "acesso-a-partir-do-telemóvel-outros-dispositivos.md",
+    "chars": 564
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Versões e atualização automática",
+    "file": "versões-e-atualização-automática.md",
+    "chars": 855
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Comandos (linha de comandos)",
+    "file": "comandos-linha-de-comandos.md",
+    "chars": 1179
+  },
+  {
+    "source": "_rollback\\restructure-20260729\\README.md",
+    "section": "## Integration Notes (EN)",
+    "file": "integration-notes-en.md",
+    "chars": 910
+  },
+  {
+    "source": "_rollback\\share-20260728\\RELEASES.md",
+    "section": "## v13",
+    "file": "v13.md",
+    "chars": 519
+  },
+  {
+    "source": "_rollback\\share-20260728-v31\\RELEASES.md",
+    "section": "## v30",
+    "file": "v30.md",
+    "chars": 655
+  },
+  {
+    "source": "_rollback\\share-20260728-v32\\RELEASES.md",
+    "section": "## v31",
+    "file": "v31.md",
+    "chars": 552
+  },
+  {
+    "source": "_rollback\\share-20260728-v35\\RELEASES.md",
+    "section": "## v34",
+    "file": "v34.md",
+    "chars": 673
+  },
+  {
+    "source": "_rollback\\share-20260729-v44\\RELEASES.md",
+    "section": "## v43",
+    "file": "v43.md",
+    "chars": 526
+  },
+  {
+    "source": "_rollback\\share-20260730-v62\\RELEASES.md",
+    "section": "## v53",
+    "file": "v53.md",
+    "chars": 507
+  },
+  {
+    "source": "_rollback\\share-20260730-v66\\RELEASES.md",
+    "section": "## v65",
+    "file": "v65.md",
+    "chars": 908
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v95",
+    "file": "v95.md",
+    "chars": 757
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v89",
+    "file": "v89.md",
+    "chars": 760
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v87",
+    "file": "v87.md",
+    "chars": 544
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v81",
+    "file": "v81.md",
+    "chars": 772
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v78",
+    "file": "v78.md",
+    "chars": 627
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v74",
+    "file": "v74.md",
+    "chars": 921
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v73",
+    "file": "v73.md",
+    "chars": 609
+  },
+  {
+    "source": "_rollback\\share-20260801-v100\\RELEASES.md",
+    "section": "## v72",
+    "file": "v72.md",
+    "chars": 756
+  }
+]

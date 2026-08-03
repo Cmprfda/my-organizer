@@ -1,0 +1,10 @@
+## Hard safety rules (non-negotiable)
+
+1. **Never write to Excel via openpyxl.** Any cell/value change to a real workbook must go through COM.
+2. **Never modify the production workbook during tests.** Copy it to `bsp-tracker\BSP-G2_Daily_Tracker_TESTCOPY.xlsx` (give it an old mtime), test against the copy, delete it after.
+3. **OneDrive source is read-only in tests.** Never call `/api/push` against the production workbook from a test/dev run. `/api/update` (local override only) is safe; clean up with `/api/overrides/clear`.
+4. **Never touch Windows Firewall** or other machine security/network config.
+5. **Git**: never force-push, never `--no-verify`/`--no-gpg-sign`, never rewrite published history, never run destructive commands (`reset --hard`, `clean -f`, `branch -D`) unless explicitly asked. Committing and pushing a release to `origin main` is pre-authorized by CLAUDE.md's Release Procedure — everything else (feature branches, arbitrary pushes) needs an explicit go-ahead from whoever invoked you.
+6. **JSON/Markdown you touch that ships to users** (`changelog.json`, `RELEASES.md`) must be written UTF-8 **without BOM** (use Python, not PowerShell `Set-Content`), and any special Unicode glyphs (✎ ⇄ ✕ → ↑) must be mapped to ASCII to avoid a cp1252 console crash during auto-update.
+7. **Local JSON state is real user data** — `status_overrides.json`, `notes.json`, `ccrs.json`, `todo.json`, `notepad.json`, `graph_config.json`, `graph_token.json`, `workbooks.json`, `jira_config.json`. Read before wiping; never assume it's disposable, and never let it leak into a release payload.
+8. **Environment discipline**: only ever act inside `bsp-tracker` (DEV, port 8766) for code/testing. `bsp-tracker-app` is the real user's stable instance — never edit code or run destructive tests there.

@@ -1,22 +1,22 @@
 ---
 name: ios-ui-ux-designer
-description: Directivas de design, componentes UI e regras de CSS/JS para transformar a interface de uma Web App numa experiência visual e tátil idêntica ao iOS (Apple Human Interface Guidelines). Ativar sempre que o utilizador pedir para estilizar, redesenhar ou criar componentes com estética iOS/Apple.
+description: Design directives, UI components and CSS/JS rules for turning a Web App's interface into a visual and tactile experience identical to iOS (Apple Human Interface Guidelines). Activate whenever the user asks to style, redesign or create components with iOS/Apple aesthetics.
 version: 1.0.0
 ---
 
-# Papel & Objetivo
+# Role & Goal
 
-> ⚠️ **Superseded para o My Organizer (CSW.AI.OS).** A app usa agora o **Critical Software
-> Design System** — ver `THEME.md` na raiz do projeto. Os tokens desta skill só se aplicam a
-> projetos que peçam explicitamente estética iOS/Apple.
+> ⚠️ **Superseded for My Organizer (CSW.AI.OS).** The app now uses the **Critical Software
+> Design System** — see `THEME.md` at the project root. This skill's tokens only apply to
+> projects that explicitly ask for an iOS/Apple aesthetic.
 
-Atuas como Lead UI/UX Designer e Frontend Developer especializado no ecossistema Apple. A tua missão é aplicar os princípios das **Apple Human Interface Guidelines (HIG)** à Web App, garantindo uma estética minimalista, fluida e nativa do iOS.
+You act as Lead UI/UX Designer and Frontend Developer specialized in the Apple ecosystem. Your mission is to apply the **Apple Human Interface Guidelines (HIG)** principles to the Web App, ensuring a minimalist, fluid, native-feeling iOS aesthetic.
 
 ---
 
-## 🎨 Paleta de Cores & Variáveis CSS (iOS Palette)
+## 🎨 Color Palette & CSS Variables (iOS Palette)
 
-Aplica e reutiliza sempre estas variáveis CSS padrão do iOS (com suporte nativo a Light e Dark Mode):
+Always apply and reuse these standard iOS CSS variables (with native Light and Dark Mode support):
 
 ```css
 :root {
@@ -67,28 +67,28 @@ Aplica e reutiliza sempre estas variáveis CSS padrão do iOS (com suporte nativ
 
 ---
 
-## 📐 Regras Visuais e de Interação (iOS HIG)
+## 📐 Visual & Interaction Rules (iOS HIG)
 
-1. **Tipografia SF Pro:** Usa sempre a pilha `-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif`. Títulos com font-weight `600` ou `700`, corpo de texto em `400`.
-2. **Efeito Frosted Glass (Glassmorphism):**
-   - Cabeçalhos, modais e barras de navegação fixas devem ter fundo translúcido com desfoque:
+1. **SF Pro Typography:** Always use the `-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif` stack. Titles with font-weight `600` or `700`, body text at `400`.
+2. **Frosted Glass Effect (Glassmorphism):**
+   - Headers, modals and fixed navigation bars should have a translucent, blurred background:
      `background: var(--ios-glass-bg); backdrop-filter: var(--ios-blur); -webkit-backdrop-filter: var(--ios-blur);`
-3. **Cartões com Cantos Arredondados ("Continuous Curves"):**
-   - Agrupa conteúdos em cartões limpos com `border-radius: 16px`, sem sombras pesadas nem bordas pretas. Usa bordas subtis (`1px solid var(--ios-gray-light)` ou `var(--ios-glass-border)`).
-4. **Animações e Micro-interações:**
-   - Efeito de toque nativo: quando um botão ou cartão é clicado/tocado, deve encolher ligeiramente:
+3. **Rounded-Corner Cards ("Continuous Curves"):**
+   - Group content in clean cards with `border-radius: 16px`, no heavy shadows or black borders. Use subtle borders (`1px solid var(--ios-gray-light)` or `var(--ios-glass-border)`).
+4. **Animations & Micro-interactions:**
+   - Native tap effect: when a button or card is clicked/tapped, it should shrink slightly:
      `transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);`
      `active { transform: scale(0.96); opacity: 0.8; }`
-5. **Navegação & Segmented Controls:**
-   - Subsitui tabs convencionais por **Segmented Controls** estilo iOS (fundo cinzento suave com selector branco deslizante).
-6. **Deslocamento Fluido (Momentum Scrolling):**
-   - `-webkit-overflow-scrolling: touch;` para scroll nativo.
+5. **Navigation & Segmented Controls:**
+   - Replace conventional tabs with iOS-style **Segmented Controls** (soft gray background with a sliding white selector).
+6. **Momentum Scrolling:**
+   - `-webkit-overflow-scrolling: touch;` for native scrolling.
 
 ---
 
-## 🧩 Componentes Base (Padrão iOS)
+## 🧩 Base Components (iOS Pattern)
 
-### 1. Botão Nativo iOS
+### 1. Native iOS Button
 ```css
 .ios-button {
   background-color: var(--ios-blue);
@@ -113,7 +113,7 @@ Aplica e reutiliza sempre estas variáveis CSS padrão do iOS (com suporte nativ
 }
 ```
 
-### 2. Cartão de Grupo (Grouped List Card)
+### 2. Grouped List Card
 ```css
 .ios-card {
   background: var(--ios-bg-secondary);
@@ -125,7 +125,7 @@ Aplica e reutiliza sempre estas variáveis CSS padrão do iOS (com suporte nativ
 }
 ```
 
-### 3. Switch / Toggle iOS
+### 3. iOS Switch / Toggle
 ```html
 <label class="ios-switch">
   <input type="checkbox">
@@ -163,10 +163,10 @@ input:checked + .ios-slider:before { transform: translateX(20px); }
 
 ---
 
-## 📋 Estrutura da Resposta da IA
+## 📋 AI Response Structure
 
-Quando pedida qualquer alteração de UI ou criação de componentes:
+When asked for any UI change or component creation:
 
-1. **Plano (1 frase):** Como o componente/layout vai ser adaptado ao estilo iOS.
-2. **CSS/HTML/JS:** Código limpo e pronto a usar com variáveis iOS e animações táticas.
-3. **Instruções de Integração:** Onde colocar o código no `index.html` ou ficheiros CSS da app.
+1. **Plan (1 sentence):** How the component/layout will be adapted to the iOS style.
+2. **CSS/HTML/JS:** Clean, ready-to-use code with iOS variables and tactile animations.
+3. **Integration Instructions:** Where to place the code in `index.html` or the app's CSS files.

@@ -1,207 +1,235 @@
 # CONTEXT.md
 
-## 1) Título do Projeto & Visão Geral
+## 1) Project Title & Overview
 
 ## My Organizer (CSW.AI.OS)
 
-**Resumo:** Aplicação web local (Python + HTML/CSS/JS vanilla) que abre qualquer livro de Excel do OneDrive/SharePoint (navegação por pastas e escolha na app) e o mostra de forma útil. O tracker `BSP-G2_Daily_Tracker.xlsx` mantém a vista resumida dedicada, com filtros por pessoa/papel, edição de estado com escrita segura no Excel via COM, gestão de CCRs, TODO pessoal, notas de execução e feedback/bug reporting.
+**Summary:** Local web app (Python + vanilla HTML/CSS/JS) that opens any
+Excel workbook from OneDrive/SharePoint (folder browsing and pick in the app)
+and shows it in a useful way. The `BSP-G2_Daily_Tracker.xlsx` tracker keeps
+its dedicated compact view, with filters by person/role, status editing with
+safe writes to Excel via COM, CCR management, personal TODO, execution notes
+and feedback/bug reporting.
 
-**Quem usa:**
-- Engenheiros V&V (ex.: Carlos Andrade e equipa).
-- Uso em desktop e mobile na mesma rede local.
+**Who uses it:**
+- V&V engineers (e.g. Carlos Andrade and team).
+- Used on desktop and mobile on the same local network.
 
-**Problema que resolve:**
-- Evita trabalho manual disperso entre Excel, notas locais e mensagens.
-- Cria uma vista operacional única com persistência local controlada e sincronização com Excel/OneDrive.
+**Problem it solves:**
+- Avoids manual work scattered across Excel, local notes and messages.
+- Creates a single operational view with controlled local persistence and
+  sync with Excel/OneDrive.
 
 ---
 
-## 2) Stack Tecnológico & Dependências
+## 2) Tech Stack & Dependencies
 
 **Backend**
-- Python 3 (ponto de entrada [app.py](app.py) + pacote [cswaios/](cswaios)).
-- Bibliotecas standard: http.server, threading, subprocess, json, zipfile, tempfile, glob, os, socket, datetime, etc.
-- openpyxl (leitura de workbook e parsing de dados).
-- Integração Windows Excel COM via PowerShell (escrita no Excel real, nunca via openpyxl).
+- Python 3 (entry point [app.py](app.py) + package [cswaios/](cswaios)).
+- Standard libraries: http.server, threading, subprocess, json, zipfile, tempfile, glob, os, socket, datetime, etc.
+- openpyxl (workbook reading and data parsing).
+- Windows Excel COM integration via PowerShell (writes to the real Excel file, never via openpyxl).
 
 **Frontend**
-- Markup em [index.html](index.html); estilos em `static/css/*.css` e lógica em `static/js/*.js` (HTML + CSS + JavaScript vanilla).
-- Drag and drop + fallback pointer/touch para browsers mobile/tablet.
-- i18n PT/EN no cliente (dicionário interno em `static/js/i18n.js`).
+- Markup in [index.html](index.html); styles in `static/css/*.css` and logic in `static/js/*.js` (HTML + CSS + vanilla JavaScript).
+- Drag and drop + pointer/touch fallback for mobile/tablet browsers.
+- PT/EN i18n on the client (internal dictionary in `static/js/i18n.js`).
 
-**Integrações externas**
-- OneDrive/SharePoint (ficheiro tracker + pasta de releases).
-- Excel desktop local (COM automation para escrita robusta).
-- Rede local LAN (acesso por IP e localhost).
+**External integrations**
+- OneDrive/SharePoint (tracker file + releases folder).
+- Local desktop Excel (COM automation for robust writes).
+- Local LAN network (access by IP and localhost).
 
-**Automação de release**
+**Release automation**
 - Scripts: [make_release.py](make_release.py), [make-release.bat](make-release.bat), [run-dev.bat](run-dev.bat), [run-with-server.bat](run-with-server.bat), [setup.bat](setup.bat).
-- Cada release termina com **commit + push** para `origin/main` (repositório privado `Cmprfda/my-organizer`); o passo 9 do `make_release.py` publica ainda o zip em GitHub Releases com a tag `vN`.
+- Every release ends with **commit + push** to `origin/main` (private repo `Cmprfda/my-organizer`); step 9 of `make_release.py` also publishes the zip to GitHub Releases with the tag `vN`.
 
 ---
 
-## 3) Arquitetura & Fluxo de Dados
+## 3) Architecture & Data Flow
 
-## Fluxo principal (leitura e render)
+## Main flow (read and render)
 
-Excel/OneDrive -> Backend `cswaios/excel.py` ou `cswaios/graph.py` -> Cache de folha crua (_RAW_CACHE) + cache de última leitura (_LAST_GOOD) em `cswaios/tasks.py` -> API /api/tasks (`cswaios/server.py`) -> Frontend `static/js/tasks.js` -> Tabela compacta/completa, CCRs, TODO, feedback
+Excel/OneDrive -> Backend `cswaios/excel.py` or `cswaios/graph.py` -> Raw sheet cache (_RAW_CACHE) + last-good-read cache (_LAST_GOOD) in `cswaios/tasks.py` -> API /api/tasks (`cswaios/server.py`) -> Frontend `static/js/tasks.js` -> Compact/full table, CCRs, TODO, feedback
 
-Na fonte `auto`, quando o livro escolhido no OneDrive também existe como cópia sincronizada no disco (`tasks.local_twin`), é essa cópia que é lida (`synced_copy=true` no payload): o que se grava no Excel aparece logo, enquanto a cópia na nuvem só recebe as alterações quando o OneDrive acabar de sincronizar (pode demorar minutos).
+In the `auto` source, when the workbook chosen on OneDrive also exists as a
+synced copy on disk (`tasks.local_twin`), that copy is the one read
+(`synced_copy=true` in the payload): whatever gets written to Excel shows up
+immediately, while the cloud copy only receives the changes once OneDrive
+finishes syncing (can take minutes).
 
-Enquanto se lê a cópia local, `tasks.sync_gap` compara o conteúdo das duas cópias (`rows_digest`, que ignora células e linhas vazias no fim porque o Excel local e a nuvem não contam a folha da mesma maneira) e, se diferirem, acrescenta ao `notice` do payload o aviso `notice_syncing` (mostrado com ℹ por baixo do nome do ficheiro). As datas não servem para decidir isto: o OneDrive atualiza o `lastModifiedDateTime` do item **antes** de o conteúdo novo estar disponível. A comparação só lê de facto a nuvem quando uma das cópias muda (o veredicto fica em `_SYNC_CHECK`, limpo pelo `forget_cache`); se a Graph falhar, o aviso simplesmente não aparece.
+While reading the local copy, `tasks.sync_gap` compares the content of the
+two copies (`rows_digest`, which ignores empty cells and trailing empty rows
+because local Excel and the cloud don't count the sheet the same way) and, if
+they differ, appends the `notice_syncing` warning to the payload's `notice`
+(shown with an ℹ under the file name). Dates aren't used to decide this:
+OneDrive updates the item's `lastModifiedDateTime` **before** the new content
+is actually available. The comparison only actually reads the cloud when one
+of the copies changes (the verdict is cached in `_SYNC_CHECK`, cleared by
+`forget_cache`); if the Graph call fails, the warning simply doesn't appear.
 
-## Fluxo de atualização de estado (safe write)
+## Status update flow (safe write)
 
-UI (badge de estado ou célula `Obs:`) -> POST /api/update (colunas permitidas: `Status TC`, `Status TP`, `OBS`) -> validação de chave da linha (sheet+fn+todo) -> guarda sempre override local em [status_overrides.json](status_overrides.json) (✎) -> a escrita no Excel/OneDrive acontece só no POST /api/push -> próxima leitura reconcilia base vs override
+UI (status badge or `Obs:` cell) -> POST /api/update (allowed columns: `Status TC`, `Status TP`, `OBS`) -> row key validation (sheet+fn+todo) -> always saves a local override in [status_overrides.json](status_overrides.json) (✎) -> the write to Excel/OneDrive only happens on POST /api/push -> next read reconciles base vs override
 
-## Fluxo de notas/CCRs/TODO
+## Notes/CCRs/TODO flow
 
-- Notas de execução por tarefa: [notes.json](notes.json)
-- Estado de CCRs: [ccrs.json](ccrs.json)
-- TODO pessoal (manual): [todo.json](todo.json) — cada item tem uma origem principal (`kind`/`ref`) e pode ter outras ligadas em `links` (é o mesmo trabalho vindo do Excel, de um CCR ou escrito à mão)
+- Per-task execution notes: [notes.json](notes.json)
+- CCR status: [ccrs.json](ccrs.json)
+- Personal TODO (manual): [todo.json](todo.json) — each item has one main source (`kind`/`ref`) and may have others linked in `links` (it's the same work coming from Excel, a CCR, or typed by hand)
 
-Todos estes sidecars são servidos pelo backend e renderizados no frontend; no workspace DEV são considerados dados descartáveis.
+All these sidecars are served by the backend and rendered on the frontend; in
+the DEV workspace they're considered disposable data.
 
-## Fluxo de feedback/bugs
+## Feedback/bugs flow
 
-Frontend (feedback manual ou erro JS) + backend (exceções) -> `feedback.stage_feedback_folder()` cria a pasta em `feedback_pending\` -> `feedback.deliver()` tenta (1) upload por Microsoft Graph para a pasta partilhada `config.FEEDBACK_SHARE_URL` (link do SharePoint com escrita para qualquer pessoa da Critical Software; override pela variável `BSP_FEEDBACK_SHARE`), (2) a pasta `feedback\` sincronizada localmente, (3) fica pendente e é reenviado depois por `feedback.flush_pending()`. Deduplicação de bugs por assinatura em [bug_reports.json](bug_reports.json) + anexação de [tracker.log](tracker.log); repetições escrevem `repeticao_NN.txt` na mesma pasta.
+Frontend (manual feedback or JS error) + backend (exceptions) ->
+`feedback.stage_feedback_folder()` creates the folder in `feedback_pending\`
+-> `feedback.deliver()` tries (1) upload via Microsoft Graph to the shared
+folder `config.FEEDBACK_SHARE_URL` (a SharePoint link with write access for
+anyone at Critical Software; overridden via the `BSP_FEEDBACK_SHARE`
+variable), (2) the locally synced `feedback\` folder, (3) stays pending and
+is retried later by `feedback.flush_pending()`. Bug deduplication by
+signature in [bug_reports.json](bug_reports.json) + appended
+[tracker.log](tracker.log); repeats write `repeticao_NN.txt` in the same
+folder.
 
 ---
 
-## 4) Mapa de Diretórios & Ficheiros-Chave
+## 4) Directory Map & Key Files
 
 - [app.py](app.py)
-  - Ponto de entrada fino: codificação da consola, instalação do `app_payload.zip` (aceita o antigo `bsp_payload.zip`) e despacho CLI/servidor.
+  - Thin entry point: console encoding, `app_payload.zip` install (also accepts the old `bsp_payload.zip`) and CLI/server dispatch.
 
 - [cswaios/](cswaios)
-  - `config` (constantes e versão), `i18n`, `logs`, `text`.
-  - `store`/`todos`/`feedback` (estado local em JSON), `updates` (auto-atualização).
-  - `excel` (leitura openpyxl + escrita COM) e `graph` (Microsoft Graph: autenticação, navegação `graph_browse`, escolha do livro `graph_pick`, recentes em `workbooks.json`).
-  - `tasks` (serviço de dados: `read_sheet`, `build_payload`, `current_stamp`, `local_twin`, `sync_gap`, `push_overrides`, `forget_cache`/`forget_web_cache`).
-  - `server` (endpoints HTTP: /api/tasks, /api/modified, /api/update, /api/todo, /api/note, /api/ccrs, /api/feedback, /api/bug, /static/...), `cli` (comandos `python app.py <cmd>`).
+  - `config` (constants and version), `i18n`, `logs`, `text`.
+  - `store`/`todos`/`feedback` (local JSON state), `updates` (auto-update).
+  - `excel` (openpyxl read + COM write) and `graph` (Microsoft Graph: auth, browsing `graph_browse`, workbook pick `graph_pick`, recents in `workbooks.json`).
+  - `tasks` (data service: `read_sheet`, `build_payload`, `current_stamp`, `local_twin`, `sync_gap`, `push_overrides`, `forget_cache`/`forget_web_cache`).
+  - `server` (HTTP endpoints: /api/tasks, /api/modified, /api/update, /api/todo, /api/note, /api/ccrs, /api/feedback, /api/bug, /static/...), `cli` (`python app.py <cmd>` commands).
 
 - [index.html](index.html)
-  - Markup das vistas (tabs Tarefas/CCRs/TODO/Feedback) e ligação aos ficheiros de `static/`.
+  - View markup (Tasks/CCRs/TODO/Feedback tabs) and linkage to the `static/` files.
 
 - `static/css/*.css`
-  - Tema, layout, TODO, CCRs, formulários, tabelas, vistas, ajuda, seletor de livro e regras responsíveis (por esta ordem).
-  - O tema segue o **Critical Software Design System** (tokens de marca, Aptos, cantos nítidos): ver [THEME.md](THEME.md).
+  - Theme, layout, TODO, CCRs, forms, tables, views, help, workbook picker and responsive rules (in this order).
+  - The theme follows the **Critical Software Design System** (brand tokens, Aptos, crisp corners): see [THEME.md](THEME.md).
 
 - `static/fonts/*.ttf`
-  - Tipografia da marca (Aptos, Aptos SemiBold, Aptos Narrow Bold, Aptos Mono), servida em `/static/fonts/...`.
+  - Brand typography (Aptos, Aptos SemiBold, Aptos Narrow Bold, Aptos Mono), served at `/static/fonts/...`.
 
 - `static/js/*.js`
-  - `i18n, state, bugs, utils, tasks, ccrs, views, todo, split, feedback, settings, picker, help, main` — carregados por esta ordem (scripts clássicos, âmbito global partilhado).
-  - `picker.js` é o seletor de livro do OneDrive (navegar pastas, procurar, recentes).
-  - `help.js` contém todo o conhecimento de utilização mostrado no botão `?`.
+  - `i18n, state, bugs, utils, tasks, ccrs, views, todo, split, feedback, settings, picker, help, main` — loaded in this order (classic scripts, shared global scope).
+  - `picker.js` is the OneDrive workbook picker (folder browsing, search, recents).
+  - `help.js` holds all the usage knowledge shown in the `?` button.
 
 - [run-dev.bat](run-dev.bat)
-  - Arranque DEV (porta 8766), sem auto-update.
+  - DEV startup (port 8766), no auto-update.
 
 - [run-with-server.bat](run-with-server.bat)
-  - Arranque estável (porta 8765), dependências, stop de instância anterior, auto-update flow. Entrada principal é o atalho "My Organizer" (My Organizer.vbs); este ficheiro é a alternativa com consola visível.
+  - Stable startup (port 8765), dependencies, stopping the prior instance, auto-update flow. The main entry point is the "My Organizer" shortcut (My Organizer.vbs); this file is the console-visible alternative.
 
 - [setup.bat](setup.bat)
-  - Setup inicial (Python/dependências/atalho).
+  - Initial setup (Python/dependencies/shortcut).
 
 - [make_release.py](make_release.py)
-  - Publicação de release (changelog/latest/zip espelho + GitHub Release com tag `vN`).
-  - Depois de publicar: `git commit` + `git push origin main` das alterações da versão.
+  - Release publishing (changelog/latest/mirror zip + GitHub Release with tag `vN`).
+  - After publishing: `git commit` + `git push origin main` of the version changes.
 
 - [README.md](README.md)
-  - Manual operacional e notas de integração.
+  - Operational manual and integration notes.
 
 - [CLAUDE.md](CLAUDE.md)
-  - Regras operacionais críticas para agentes.
+  - Critical operational rules for agents.
 
 - [_rollback/]( _rollback/ )
-  - Snapshots e mecanismos de reversão locais.
+  - Local snapshots and rollback mechanisms.
 
 - [tests/](tests/)
-  - Scripts/casos de teste.
+  - Test scripts/cases.
 
 - [status_overrides.json](status_overrides.json), [notes.json](notes.json), [ccrs.json](ccrs.json), [todo.json](todo.json), [bug_reports.json](bug_reports.json), [tracker.log](tracker.log)
-  - Estado local sidecar e logs.
+  - Local sidecar state and logs.
 
 ---
 
-## 5) Restrições Críticas & Invariantes
+## 5) Critical Constraints & Invariants
 
-1. **Nunca escrever no Excel via openpyxl.**
-   - Escrita permitida apenas por COM (Excel desktop).
+1. **Never write to Excel via openpyxl.**
+   - Writes are only allowed via COM (desktop Excel).
 
-2. **Nunca testar/escrever no Excel real em testes destrutivos.**
-   - Usar cópia temporária de teste quando aplicável.
+2. **Never test/write to the real Excel file in destructive tests.**
+   - Use a temporary test copy where applicable.
 
-3. **TODO é manual-only.**
-   - Estado/coluna de TODO só muda por ação explícita do utilizador (drag/drop, checkbox, timer controls).
+3. **TODO is manual-only.**
+   - TODO status/column only changes via an explicit user action (drag/drop, checkbox, timer controls).
 
-4. **Porta estável e DEV separadas.**
-   - 8765 estável, 8766 DEV, 8767+ instâncias descartáveis de teste.
+4. **Separate stable and DEV ports.**
+   - 8765 stable, 8766 DEV, 8767+ disposable test instances.
 
-5. **Não mexer na firewall/config de segurança do Windows.**
+5. **Never touch Windows Firewall/security config.**
 
-6. **Não corromper encoding de metadados de release.**
-   - changelog/latest/RELEASES em UTF-8 sem BOM (evitar quebra de auto-update/json parsing).
+6. **Never corrupt release metadata encoding.**
+   - changelog/latest/RELEASES in UTF-8 without BOM (avoid breaking auto-update/json parsing).
 
-7. **Preservar identificadores e contratos do frontend/backend.**
-   - IDs/classes usados pelo JS e payloads de API são parte do contrato.
+7. **Preserve frontend/backend identifiers and contracts.**
+   - IDs/classes used by JS and API payloads are part of the contract.
 
-8. **Dados do utilizador estável não devem ser tocados em testes.**
-   - Ambiente estável separado do workspace DEV.
+8. **Stable user data must never be touched in tests.**
+   - Stable environment kept separate from the DEV workspace.
 
-9. **Resiliência de leitura é obrigatória.**
-   - Em lock do Excel, servir cache válida em vez de quebrar experiência.
+9. **Read resilience is mandatory.**
+   - On Excel lock, serve a valid cache instead of breaking the experience.
 
 10. **Thread safety/log safety.**
-   - Escrita de log sincronizada por lock.
+   - Log writes synchronized via lock.
 
 ---
 
-## 6) Ambiente, Modos e Portas
+## 6) Environment, Modes and Ports
 
-## Ambientes
+## Environments
 
-- **DEV (workspace de desenvolvimento):**
-  - Pasta: [bsp-tracker](.)
-  - Arranque: [run-dev.bat](run-dev.bat)
-  - Modo: flag --dev
-  - Porta: 8766
-  - Sem auto-update ativo no fluxo DEV.
+- **DEV (development workspace):**
+  - Folder: [bsp-tracker](.)
+  - Startup: [run-dev.bat](run-dev.bat)
+  - Mode: --dev flag
+  - Port: 8766
+  - No auto-update active in the DEV flow.
 
-- **Estável (instância de utilizador):**
-  - Pasta: bsp-tracker-app (fora do workspace atual)
-  - Arranque: atalho "My Organizer" (My Organizer.vbs → [run-with-server.bat](run-with-server.bat))
-  - Porta: 8765
-  - Auto-update por latest.json + zip de releases.
+- **Stable (user instance):**
+  - Folder: bsp-tracker-app (outside the current workspace)
+  - Startup: "My Organizer" shortcut (My Organizer.vbs → [run-with-server.bat](run-with-server.bat))
+  - Port: 8765
+  - Auto-update via latest.json + release zips.
 
-- **Teste isolado:**
-  - Arranque: python app.py --dev --port 8767 --no-browser --no-update
-  - Uso para smoke tests sem interferir com 8766.
+- **Isolated test:**
+  - Startup: python app.py --dev --port 8767 --no-browser --no-update
+  - Used for smoke tests without interfering with 8766.
 
-## Flags/config relevantes
+## Relevant flags/config
 
-- --dev: ativa DEV_MODE e sem auto-update.
-- --port: define porta do servidor.
-- --file: força workbook específico.
-- --host (quando usado): restringe bind (ex.: localhost only).
+- --dev: enables DEV_MODE and disables auto-update.
+- --port: sets the server port.
+- --file: forces a specific workbook.
+- --host (when used): restricts binding (e.g. localhost only).
 
-## Endpoints de verificação rápida
+## Quick verification endpoints
 
 - GET /api/tasks
-  - devolve app_version, mode, dados processados, sidecars, `modified`, `stamp` (marca de versão do livro) e `digest` (md5 curto das linhas servidas).
-  - `fresh=1` (botão "Atualizar"): esquece as caches em memória e relê o livro de raiz, como na primeira abertura.
+  - returns app_version, mode, processed data, sidecars, `modified`, `stamp` (workbook version marker) and `digest` (short md5 of the served rows).
+  - `fresh=1` ("Refresh" button): forgets in-memory caches and re-reads the workbook from scratch, as on first open.
 - GET /api/modified?file=...
-  - pedido leve (só `lastModifiedDateTime`/mtime) que a interface repete de 20 em 20 segundos; quando o `stamp` muda, recarrega sozinha. Só aceita `onedrive:web` ou ficheiros já conhecidos pela app.
+  - lightweight request (only `lastModifiedDateTime`/mtime) that the UI repeats every 20 seconds; when the `stamp` changes, it reloads on its own. Only accepts `onedrive:web` or files already known to the app.
 - GET /logs
-  - consulta de logs recentes no browser. Para diagnosticar "estado desatualizado": o log tem o livro em uso (item id), `gravado <data> #<digest>` em cada leitura, e o estado que estava no ecrã quando o utilizador clicou num badge.
+  - recent log lookup in the browser. To diagnose "stale state": the log has the workbook in use (item id), `written <date> #<digest>` on each read, and the state that was on screen when the user clicked a badge.
 
 ---
 
-## Nota Operacional para Agentes
+## Operational Note for Agents
 
-Qualquer alteração no projeto deve respeitar:
-1. Contratos de API e comportamento de estado sidecar.
-2. Regras de segurança de escrita Excel/COM.
-3. Separação estrita entre DEV e estável.
-4. Processo de release e validação em DEV após alterações.
+Any change to the project must respect:
+1. API contracts and sidecar state behavior.
+2. Excel/COM write safety rules.
+3. Strict separation between DEV and stable.
+4. Release process and DEV validation after changes.
