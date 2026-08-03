@@ -91,11 +91,6 @@
         <span id="bookState"></span>
         <button type="button" class="mini" id="bookBtn">Escolher</button>
       </div>
-      <div class="setNote hidden" id="viewMapBox">
-        <span id="viewMapTitle">Vista resumida desta aba</span>
-        <span class="setHint" id="viewMapHint"></span>
-        <div class="viewMapRows" id="viewMapRows"></div>
-      </div>
       <div class="setNote" id="jiraBox">
         <input type="url" id="jiraUrl" placeholder="https://jira.empresa.pt">
         <input type="password" id="jiraToken" placeholder="Personal Access Token">
@@ -144,6 +139,7 @@
                   <button type="button" id="taskModeList" class="secondary">Lista</button>
                   <button type="button" id="taskModeCards" class="secondary">Caixas</button>
                 </div>
+                <button class="secondary hidden" id="viewMapBtn"></button>
                 <button class="secondary hidden" id="viewToggle">Vista completa</button>
                 <button class="secondary" id="toggleAll">Ver tudo</button>
                 <button class="secondary hidden" id="clearLocals"
@@ -464,6 +460,21 @@
     </div>
   </div>
 
+  <div id="viewMapOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Vista resumida desta aba">
+    <div class="helpCard jiraLogCard">
+      <div class="helpHead">
+        <strong id="viewMapTitle">Vista resumida desta aba</strong>
+        <button type="button" class="ccr-x" id="viewMapClose" title="Fechar">✕</button>
+      </div>
+      <div id="viewMapBody">
+        <p class="setHint" id="viewMapHint"></p>
+        <div class="viewMapRows" id="viewMapRows"></div>
+        <button type="button" id="viewMapSave"></button>
+      </div>
+    </div>
+  </div>
+
   <datalist id="jiraSuggestions"></datalist>
 
   <div id="jiraLogOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
@@ -506,6 +517,7 @@
   <script src="/static/js/notes.js"></script>
   <script src="/static/js/feedback.js"></script>
   <script src="/static/js/settings.js"></script>
+  <script src="/static/js/viewmap.js"></script>
   <script src="/static/js/picker.js"></script>
   <script src="/static/js/jira.js"></script>
   <script src="/static/js/help.js"></script>
