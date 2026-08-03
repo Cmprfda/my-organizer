@@ -398,7 +398,7 @@ function render() {
   if (!data) return;
   populateSelectors(data);
   renderVersionBadge(data);
-  updateViewMapButton(data);
+  renderViewMap(data);
   // instância de desenvolvimento: marcar bem, para não se confundir com a estável
   if (data.mode === "dev" && !document.body.classList.contains("devmode")) {
     document.body.classList.add("devmode");

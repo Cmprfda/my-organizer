@@ -369,37 +369,43 @@ body.topShrunk .ios-top #helpBtn {
   flex: 1 1 100%;
 }
 
-/* janela "vista resumida desta aba": mapa de colunas (ver viewmap.js) */
-#viewMapBody {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  -webkit-overflow-scrolling: touch;
+/* mapa de colunas da vista resumida: título, dica e uma linha por campo */
+.settingsPanel #viewMapBox {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
 }
 
-#viewMapHint {
-  margin: 0;
-  font-size: 12.5px;
+.settingsPanel #viewMapTitle {
+  flex: 1 1 100%;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--text);
+}
+
+.settingsPanel .setHint {
+  flex: 1 1 100%;
+  font-size: 11.5px;
   color: var(--muted);
 }
 
-.viewMapRows {
+.settingsPanel .viewMapRows {
+  flex: 1 1 100%;
   display: grid;
   gap: 6px;
 }
 
-.viewMapRow {
+.settingsPanel .viewMapRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
-.viewMapRow span {
+.settingsPanel .viewMapRow span {
   font-family: var(--font-mono);
   font-size: 11px;
   text-transform: uppercase;
@@ -407,19 +413,11 @@ body.topShrunk .ios-top #helpBtn {
   color: var(--muted);
 }
 
-.viewMapRow select {
-  flex: 0 1 220px;
+.settingsPanel .viewMapRow select {
+  flex: 0 1 160px;
   min-width: 0;
   font-size: 12px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--ios-radius-btn);
-  background: var(--surface);
-  color: var(--text);
-}
-
-#viewMapSave {
-  align-self: flex-start;
+  padding: 5px 8px;
 }
 
 .settingsPanel .setRowUpdate {
