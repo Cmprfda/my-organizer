@@ -1,8 +1,8 @@
 // My Organizer — avisos por tarefa: quando alguém mexe no livro numa linha que
 // é minha (autor, reviewer ou só mencionada), aparece um cartão do lado direito
 // a dizer o que mudou. Não substitui o toast genérico ("o livro mudou — dados
-// atualizados"): este empilha vários avisos ao mesmo tempo, cada um com o seu
-// próprio tempo de vida e o seu ✕.
+// atualizados"): este empilha vários avisos ao mesmo tempo e nenhum deles
+// desaparece sozinho — cada cartão fica no ecrã até se clicar no seu ✕.
 
 // Colunas seguidas: as mesmas que a app sabe ler/escrever no Excel. Os valores
 // vêm de meta.orig, que é o valor REAL da folha — sem as minhas alterações
@@ -10,9 +10,8 @@
 // mudar um estado aqui gerava um aviso a mim mesmo na gravação seguinte.
 const NOTIFY_COLS = ["Status TC", "Status TP", "OBS", "Function/TC", "To Do"];
 const NOTIFY_MAX = 4;       // cartões detalhados por ronda (o resto vai contado num só)
-const NOTIFY_KEEP = 6;      // cartões no ecrã ao mesmo tempo
+const NOTIFY_KEEP = 3;      // cartões no ecrã ao mesmo tempo (o mais antigo sai)
 const NOTIFY_LINES = 3;     // colunas mostradas por cartão
-const NOTIFY_LIFE = 7000;   // ms até o cartão desaparecer sozinho
 
 // snapshot da última leitura só das minhas linhas: { xlrow: {fn, todo, cols} }.
 // É separado do lastData/rows da tabela à vista de propósito: a tabela pode
@@ -38,12 +37,13 @@ function notifyStackEl() {
 
 function notifyClose(card) {
   if (!card) return;
-  clearTimeout(Number(card.dataset.timer));
   card.remove();
 }
 
-// cada cartão é um elemento independente (id próprio): fechar ou expirar um
-// nunca mexe nos outros, ao contrário do #toast, que só tem um lugar
+// cada cartão é um elemento independente (id próprio): fechar um nunca mexe nos
+// outros, ao contrário do #toast, que só tem um lugar. Não há temporizador: o
+// aviso fica até ser fechado à mão (✕) ou até ser empurrado para fora da pilha
+// por avisos mais recentes.
 function notifyCard(inner) {
   const stack = notifyStackEl();
   const card = document.createElement("div");
@@ -54,8 +54,10 @@ function notifyCard(inner) {
     `aria-label="${esc(t("notify_close"))}">✕</button>`;
   card.querySelector(".notifyX").addEventListener("click", () => notifyClose(card));
   stack.appendChild(card);
-  card.dataset.timer = String(setTimeout(() => notifyClose(card), NOTIFY_LIFE));
-  // o livro é gravado muitas vezes de seguida: a pilha não pode crescer sem fim
+  // o livro é gravado muitas vezes de seguida e nada expira sozinho: a pilha não
+  // pode crescer sem fim, por isso o cartão mais antigo (o primeiro filho) sai
+  // sempre que se passa o limite. Vale para qualquer cartão — o detalhado de uma
+  // tarefa e o resumo "+N".
   while (stack.children.length > NOTIFY_KEEP) notifyClose(stack.firstElementChild);
   return card;
 }

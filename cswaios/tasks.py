@@ -501,6 +501,10 @@ def build_payload(query):
     } for p in files]
 
     graph = graph_state()
+    # /api/tasks não tem o filtro de "só a partir deste PC" do /api/graph (o
+    # servidor está exposto na LAN) — a conta ligada não sai daqui, só do
+    # /api/graph, que é localhost-only
+    graph_public = {k: v for k, v in graph.items() if k not in ("account_email", "account_name")}
     if graph["configured"]:
         files_info.insert(0, {"path": GRAPH_PATH,
                               "label": graph.get("book") or "OneDrive (web)",
@@ -517,7 +521,7 @@ def build_payload(query):
     elif source == "onedrive" and graph["configured"]:
         return _with_app_state({"error": msg("err_graph_login", lang),
                 "hint": msg("hint_graph_login", lang),
-                "files": files_info, "graph": graph, "source": "onedrive"})
+                "files": files_info, "graph": graph_public, "source": "onedrive"})
     if path is None and wanted_file and wanted_file != GRAPH_PATH:
         for p in files:
             if os.path.normcase(p) == os.path.normcase(wanted_file):
@@ -531,7 +535,7 @@ def build_payload(query):
             "hint": msg("hint_nofile", lang),
             "searched": CANDIDATE_DIRS,
             "files": files_info,
-            "graph": graph,
+            "graph": graph_public,
         })
     cycle = cycle and path != GRAPH_PATH   # não há Excel local para fechar
     if fresh:
@@ -612,7 +616,7 @@ def build_payload(query):
                 fallback["file"] = [twin]
             result = build_payload(fallback)
             result["notice"] = msg("notice_graph_fallback", lang)
-            result["graph"] = graph
+            result["graph"] = graph_public
             return result
         try:
             result["modified"], result["stamp"] = graph_modified()
@@ -634,7 +638,7 @@ def build_payload(query):
             except GraphError as exc:
                 log_event(f"não consegui comparar com a cópia do OneDrive ({exc})")
     result["files"] = files_info
-    result["graph"] = graph
+    result["graph"] = graph_public
     result["source"] = "onedrive" if path == GRAPH_PATH else "local"
     result["synced_copy"] = bool(twin) and path == twin
     result = _with_app_state(result)

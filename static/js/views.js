@@ -92,7 +92,15 @@ if (tabsNav) {
     // ficheiros/links vindos de fora continuam a não ser largáveis aqui
     if (!tabDropTarget(e) || ![...e.dataTransfer.types].includes("application/json")) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
+    // O conteúdo do arrasto não se pode ler aqui (no dragover só os "types"
+    // estão acessíveis), por isso o efeito decide-se pelo effectAllowed posto
+    // no dragstart: só os arrastos que permitem "move" — os dos separadores,
+    // "copyMove" em split.js — levam o efeito da reordenação. As linhas das
+    // Tarefas/CCRs vêm com "copy" e ficam com o efeito que o browser deriva;
+    // forçar-lhes "move" fazia o browser recusar a largada e arrastar uma
+    // tarefa para cima do separador Por fazer não a acrescentava.
+    if (/move|all|uninitialized/i.test(e.dataTransfer.effectAllowed))
+      e.dataTransfer.dropEffect = "move";
   });
 
   tabsNav.addEventListener("drop", e => {

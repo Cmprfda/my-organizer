@@ -830,7 +830,10 @@ async function load(cycle = false, fresh = false) {
   liveOffline = false;
   liveError = "";
   if (lastData && lastData.graph) {
-    graphInfo = lastData.graph;
+    // lastData.graph vem do /api/tasks (exposto na LAN, sem o filtro
+    // localhost-only do /api/graph) e por isso nunca traz account_email/name;
+    // um merge preserva o que graphAction("state") já tiver lido dali
+    graphInfo = { ...graphInfo, ...lastData.graph };
     renderGraphState();
   } else {
     renderConnBadge();
@@ -865,9 +868,22 @@ function tbodyTap(e) {
   const cell = e.target.closest(".execCell");
   if (cell && !cell.dataset.editing) openNoteEditor(cell);
 }
-// click + pointerup: alguns browsers móveis não entregam o click delegado
-$("tbody").addEventListener("click", tbodyTap);
-$("tbody").addEventListener("pointerup", tbodyTap);
+// click + pointerup: alguns browsers móveis não entregam o click delegado, daí
+// a reserva — mas em rato/trackpad E em ecrãs táteis os dois costumam disparar
+// para o mesmo toque, duplicando a ação (ex.: "+ TODO" a criar o item duas
+// vezes). Filtrar só por pointerType não chega (o click sintético do touch
+// também dispara), por isso ignora-se um 2.º disparo no MESMO alvo a menos de
+// 500ms do 1.º — cliques a seguir uns aos outros em alvos diferentes continuam
+// todos a contar, só o par duplicado do mesmo toque é que se ignora
+let lastTbodyTap = null;
+function tbodyTapOnce(e) {
+  const now = e.timeStamp || Date.now();
+  if (lastTbodyTap && lastTbodyTap.target === e.target && now - lastTbodyTap.at < 500) return;
+  lastTbodyTap = { target: e.target, at: now };
+  tbodyTap(e);
+}
+$("tbody").addEventListener("click", tbodyTapOnce);
+$("tbody").addEventListener("pointerup", tbodyTapOnce);
 // os mesmos editores também servem o painel da tarefa dentro de um item do TODO
 $("todoBody").addEventListener("click", tbodyTap);
 $("todoBoard").addEventListener("click", tbodyTap);

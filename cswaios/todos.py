@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import time
 
 from .config import HERE
@@ -10,7 +11,46 @@ from .text import normalize
 
 # TODO list pessoal (itens próprios + tarefas/CCRs arrastadas para lá)
 TODO_FILE = os.path.join(HERE, "todo.json")
-TODO_COLUMNS = {"todo", "inprogress", "review", "done"}
+# Colunas de sempre do Kanban (as que têm significado para a app: o cronómetro
+# só corre em "inprogress" e "done" fecha o item).
+TODO_BUILTIN_COLUMNS = ("todo", "inprogress", "review", "done")
+# O utilizador pode criar as suas colunas no quadro ("à espera", "pendente"…) e
+# esconder as que não usa. Essas colunas viajam no campo `col` do item como
+# qualquer outra, por isso a validação não pode ser uma lista fechada: aceita-se
+# qualquer id com forma de slug curto. A lista ordenada (com os nomes escolhidos
+# e as escondidas) é uma preferência de apresentação e vive no browser — ver
+# `todoColConf` em static/js/todo.js.
+TODO_COLUMN_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,23}$")
+
+
+def valid_todo_column(col):
+    """Um id de coluna aceitável para o campo `col` de um item."""
+    return bool(TODO_COLUMN_ID.match(str(col or "").strip().lower()))
+
+
+class _TodoColumns:
+    """Colunas aceitáveis num item: as fixas + as criadas pelo utilizador.
+
+    Comporta-se como o conjunto fixo que substituiu (`col in TODO_COLUMNS`,
+    iterável, `len`), mas o teste de pertença também deixa passar as colunas
+    novas do quadro — sem isso o servidor recusava-as com "coluna TODO
+    inválida" e o cartão nunca saía do sítio.
+    """
+
+    def __contains__(self, col):
+        return valid_todo_column(col)
+
+    def __iter__(self):
+        return iter(TODO_BUILTIN_COLUMNS)
+
+    def __len__(self):
+        return len(TODO_BUILTIN_COLUMNS)
+
+    def __repr__(self):
+        return "TODO_COLUMNS(%s|custom)" % "|".join(TODO_BUILTIN_COLUMNS)
+
+
+TODO_COLUMNS = _TodoColumns()
 # prioridade do item, da mais baixa para a mais alta. Os itens antigos (e os
 # criados sem a indicar) ficam em "normal" — é o valor neutro.
 TODO_PRIORITIES = ("low", "normal", "high", "urgent")

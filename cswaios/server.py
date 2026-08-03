@@ -642,13 +642,18 @@ class Handler(BaseHTTPRequestHandler):
                 images = payload.get("images") or []
                 if not text and not images:
                     raise ValueError("feedback vazio")
+                # página/vista onde o utilizador estava (opcional: quem limpar o
+                # campo no formulário não a vê no reporte)
+                page = re.sub(r"\s+", " ", str(payload.get("page") or "")).strip()[:80]
                 safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(payload.get("name") or "anon"))[:30]
                 folder = stage_feedback_folder(
                     f"{datetime.now():%Y%m%d_%H%M%S}_{safe}")
                 with open(os.path.join(folder, "feedback.txt"), "w", encoding="utf-8") as f:
                     f.write(f"De: {payload.get('name', '?')} ({ip})\n"
                             f"Data: {datetime.now():%d/%m/%Y %H:%M}\n"
-                            f"App: v{APP_VERSION}\n\n{text}\n")
+                            f"App: v{APP_VERSION}\n"
+                            + (f"Página: {page}\n" if page else "")
+                            + f"\n{text}\n")
                 count = 0
                 for img in images[:10]:
                     fname = re.sub(r"[^A-Za-z0-9._-]+", "_", str(img.get("name") or "img.png"))[:60]
@@ -665,6 +670,7 @@ class Handler(BaseHTTPRequestHandler):
                 flush_pending()      # aproveita para entregar o que ficou para trás
                 log_event(f"{ip} feedback de {payload.get('name', '?')}: "
                           f"{text[:80]!r} + {count} imagem(ns) -> {nome}"
+                          + (f" [pagina: {page}]" if page else "")
                           + (" (pendente: sem acesso à partilha)" if pendente else ""))
                 self._send(200, json.dumps({"ok": True, "folder": nome,
                                             "pending": pendente}),

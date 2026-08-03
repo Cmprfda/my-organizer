@@ -122,14 +122,35 @@ function itemBoxEl(ref) {
 
 // Depois de cada render das listas a caixa volta a ler o item, para mostrar o
 // que ficou gravado. Com um editor aberto lá dentro não se mexe em nada.
+// Exceção: os campos de texto livre que não guardam nada por gravar (o "Novo
+// passo..." da checklist e o campo para ligar uma issue do Jira) também põem o
+// editorOpen a true enquanto estão focados, e o Enter deles não tira o foco —
+// sem esta exceção a caixa nunca se refazia e o passo acabado de acrescentar só
+// aparecia depois de a fechar e abrir. O foco volta para o campo equivalente já
+// refeito, para se poder escrever logo o passo seguinte.
 function refreshItemBox() {
-  if (!itemBoxRef || $("itemOverlay").classList.contains("hidden") || editorOpen) return;
+  if (!itemBoxRef || $("itemOverlay").classList.contains("hidden")) return;
+  const body = $("itemBody");
+  const active = document.activeElement;
+  const keepFocusSel = active && body.contains(active) && active.matches(".todoSubInput, .todoJiraLinkInput")
+    ? (active.classList.contains("todoJiraLinkInput") ? ".todoJiraLinkInput" : ".todoSubInput")
+    : null;
+  // um editor de célula (OBS/nota/estado/...) ainda aberto na mesma caixa não
+  // pode ser destruído só porque o foco está agora no campo da subtarefa —
+  // esses editores só marcam editorOpen=false quando se guarda/cancela, nunca
+  // ao perder o foco, por isso a exceção acima não chega sozinha
+  const hasPendingEditor = !!body.querySelector('[data-editing="1"]');
+  if (editorOpen && (!keepFocusSel || hasPendingEditor)) return;
   const el = itemBoxEl(itemBoxRef);
   // o item deixou de existir (apagado, ou fora do filtro): fechar a caixa
   if (!el) { setItemBoxOpen(false); return; }
-  const top = $("itemBody").scrollTop;
+  const top = body.scrollTop;
   fillItemBox(el);
-  $("itemBody").scrollTop = top;
+  body.scrollTop = top;
+  if (keepFocusSel) {
+    const again = body.querySelector(keepFocusSel);
+    if (again) again.focus();
+  }
 }
 
 function openItemBox(el) {

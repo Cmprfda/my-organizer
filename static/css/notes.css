@@ -620,6 +620,14 @@
     pointer-events: none;
 }
 
+/* segunda camada, desenhada DEPOIS das caixas: é onde vivem as anotações
+   presas a uma caixa (desenhar por cima de uma imagem) e a pré-visualização do
+   que se está a desenhar — sem ela o traço ficava escondido atrás da caixa.
+   A camada em si não recebe cliques (só os traços lá dentro, como na de baixo). */
+.noteDrawTop {
+    pointer-events: none;
+}
+
 .noteDrawLayer .noteStroke,
 .noteDrawLayer .noteShape {
     pointer-events: visibleStroke;
@@ -644,6 +652,102 @@
 
 .noteDrawLayer .sel {
     stroke-width: 5 !important;
+}
+
+/* nome da ligação, no meio da linha: o contorno da cor do fundo (paint-order)
+   funciona como caixa de texto sem desenhar caixa nenhuma */
+.noteDrawLayer .noteConnLabel {
+    pointer-events: visiblePainted;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--text);
+    stroke: var(--surface);
+    stroke-width: 4;
+    paint-order: stroke fill;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    user-select: none;
+}
+
+/* ✕ que desfaz a ligação: só aparece na ligação escolhida */
+.noteDrawLayer .noteConnDel {
+    display: none;
+}
+
+.noteDrawLayer .noteConnDel.on {
+    display: block;
+    pointer-events: all;
+    cursor: pointer;
+}
+
+.noteDrawLayer .noteConnDelBg {
+    fill: var(--surface);
+    stroke: var(--accent);
+    stroke-width: 1.5;
+}
+
+.noteDrawLayer .noteConnDel.on:hover .noteConnDelBg {
+    fill: var(--accent);
+}
+
+.noteDrawLayer .noteConnDelX {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    fill: var(--accent);
+    stroke: none;
+    text-anchor: middle;
+    dominant-baseline: central;
+    user-select: none;
+}
+
+.noteDrawLayer .noteConnDel.on:hover .noteConnDelX {
+    fill: var(--surface);
+}
+
+/* ---------- nome de uma ligação: campo de texto junto à linha ---------- */
+.noteLabelPop {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    box-shadow: var(--ios-shadow-lg);
+}
+
+.noteLabelInput {
+    width: 180px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    padding: 5px 8px;
+}
+
+.noteLabelOk {
+    flex: 0 0 auto;
+    padding: 5px 9px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--accent-text);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    cursor: pointer;
+}
+
+.noteLabelOk:hover {
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .noteDrawLayer .c-yellow { stroke: var(--status-doing-fg); }
@@ -737,6 +841,24 @@
     border-radius: 50%;
 }
 
+/* ⧉ : copiar todo o texto da caixa (fica verde por um instante ao copiar) */
+.noteBoxBar .noteBoxCopy.copied {
+    color: var(--status-done-fg);
+}
+
+/* B / S: negrito e riscado no texto escolhido da caixa */
+.noteBoxBar .noteBoxFmt {
+    padding: 2px 3px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.noteBoxBar .noteBoxFmt b,
+.noteBoxBar .noteBoxFmt s {
+    font: inherit;
+}
+
 .noteBoxBody {
     flex: 1 1 auto;
     display: flex;
@@ -764,6 +886,118 @@ body.notes-full #noteCanvas {
     border-radius: 0;
 }
 
+/* em ecrã inteiro o cabeçalho e a barra de ferramentas ficam compactos: uma só
+   fila de ícones (com o nome no title), sem etiquetas por baixo — é aí que se
+   ganha altura para o quadro */
+body.notes-full .notesMain {
+    gap: 6px;
+}
+
+body.notes-full .notesHead {
+    padding: 5px 10px;
+}
+
+body.notes-full .noteToolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 2px;
+    padding: 1px 0 2px;
+}
+
+body.notes-full .noteToolLabel {
+    display: none;
+}
+
+body.notes-full .noteToolBtn {
+    padding: 4px 7px;
+}
+
+body.notes-full .noteToolSep {
+    margin: 0 2px;
+}
+
+/* botão «/» que prende a coluna aberta: só existe em ecrã inteiro */
+.noteSideToggle {
+    display: none;
+}
+
+body.notes-full .noteSideToggle {
+    display: block;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ios-radius-btn);
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1;
+    padding: 3px 5px;
+    cursor: pointer;
+}
+
+body.notes-full .noteSideToggle:hover {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+/* coluna recolhida: fica fora do fluxo (a faixa de 34px é reservada pelo
+   padding da .notesLayout), por isso abri-la ao pousar o rato não empurra nem
+   redimensiona o quadro */
+body.notes-full.notes-rail .notesLayout {
+    position: relative;
+    padding-left: 34px;
+}
+
+body.notes-full.notes-rail .notesSide {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    z-index: 6;
+    gap: 6px;
+    padding: 8px 3px;
+    overflow: hidden;
+}
+
+body.notes-full.notes-rail .notesSide:hover,
+body.notes-full.notes-rail .notesSide:focus-within {
+    width: var(--notes-side-w, 250px);
+    padding: 10px;
+    overflow: auto;
+    box-shadow: var(--ios-shadow-lg);
+}
+
+body.notes-full.notes-rail .noteSideResize {
+    display: none;
+}
+
+/* recolhida mostra só o botão; aberta (rato em cima, ou foco pelo teclado)
+   volta a mostrar tudo */
+body.notes-full.notes-rail .notesSide .notesSideBar,
+body.notes-full.notes-rail .notesSide #noteFilter,
+body.notes-full.notes-rail .notesSide .noteTree {
+    display: none;
+}
+
+body.notes-full.notes-rail .notesSide:hover .notesSideBar,
+body.notes-full.notes-rail .notesSide:focus-within .notesSideBar {
+    display: flex;
+}
+
+body.notes-full.notes-rail .notesSide:hover #noteFilter,
+body.notes-full.notes-rail .notesSide:focus-within #noteFilter,
+body.notes-full.notes-rail .notesSide:hover .noteTree,
+body.notes-full.notes-rail .notesSide:focus-within .noteTree {
+    display: block;
+}
+
+/* em ecrã inteiro a árvore usa a altura que a coluna tiver, não 62vh */
+body.notes-full .noteTree {
+    max-height: none;
+}
+
 .noteBoxImg {
     flex: 1 1 auto;
     min-height: 0;
@@ -774,7 +1008,11 @@ body.notes-full #noteCanvas {
     cursor: zoom-in;
 }
 
+/* o texto de uma caixa tem duas caras: a vista formatada (negrito, riscado e
+   tabelas) e, quando se está a escrever nela, o próprio texto com os
+   marcadores à vista — o <textarea> de sempre */
 .noteBoxText {
+    display: none;
     flex: 1 1 auto;
     min-height: 22px;
     width: 100%;
@@ -790,7 +1028,81 @@ body.notes-full #noteCanvas {
     overflow: auto;
 }
 
-.noteBox:has(.noteBoxImg) .noteBoxText {
+.noteBox.editing .noteBoxText {
+    display: block;
+}
+
+.noteBoxTextView {
+    flex: 1 1 auto;
+    min-height: 22px;
+    width: 100%;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: auto;
+    cursor: text;
+}
+
+.noteBox.editing .noteBoxTextView {
+    display: none;
+}
+
+.noteBoxPh {
+    color: var(--muted);
+}
+
+.noteBoxTextView strong {
+    font-weight: 700;
+}
+
+.noteBoxTextView s {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+
+/* tabelas escritas em "| coluna |": a vista da caixa desenha-lhes a grelha.
+   As caixas não são as tabelas da app: aqui desfazem-se os estilos globais de
+   table/th/td (largura toda, cabeçalho colado ao topo, MAIÚSCULAS) para a
+   tabela ficar do tamanho do que tem escrito */
+.noteBoxTable {
+    width: auto;
+    max-width: 100%;
+    border-collapse: collapse;
+    margin: 2px 0;
+    font-size: 12px;
+}
+
+.noteBoxTable th,
+.noteBoxTable td {
+    min-width: 1.4em;
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    text-align: left;
+    vertical-align: top;
+    white-space: normal;
+}
+
+.noteBoxTable tr:last-child td {
+    border-bottom: 1px solid var(--border);
+}
+
+.noteBoxTable th {
+    position: static;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--muted);
+}
+
+.noteBox:has(.noteBoxImg) .noteBoxText,
+.noteBox:has(.noteBoxImg) .noteBoxTextView {
     flex: 0 0 auto;
     max-height: 40%;
 }
@@ -872,6 +1184,36 @@ body.notes-full #noteCanvas {
     }
 
     .noteTree {
+        max-height: 220px;
+    }
+
+    /* janela estreita: a coluna já fica por cima do quadro (layout de uma só
+       coluna), por isso a faixa do ecrã inteiro não se aplica */
+    body.notes-full .noteSideToggle {
+        display: none;
+    }
+
+    body.notes-full.notes-rail .notesLayout {
+        padding-left: 0;
+    }
+
+    body.notes-full.notes-rail .notesSide {
+        position: static;
+        width: auto;
+        padding: 12px;
+        overflow: visible;
+    }
+
+    body.notes-full.notes-rail .notesSide .notesSideBar {
+        display: flex;
+    }
+
+    body.notes-full.notes-rail .notesSide #noteFilter,
+    body.notes-full.notes-rail .notesSide .noteTree {
+        display: block;
+    }
+
+    body.notes-full .noteTree {
         max-height: 220px;
     }
 }

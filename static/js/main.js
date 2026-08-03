@@ -179,6 +179,11 @@ applyLang();
 // o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
 // (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
 load().then(() => { notifyTaskChanges(); });
+// a conta OneDrive memorizada só vem do /api/graph (localhost-only); o
+// /api/tasks nunca a traz, por estar exposto na LAN — um pedido único no
+// arranque chega, os polls seguintes ao /api/tasks preservam-na (graphInfo é
+// sempre um merge a partir daqui, nunca uma substituição)
+if (typeof graphAction === "function") graphAction("state");
 
 // barra do topo: encolhe (mais estreita e sem subtítulos) assim que se desce
 // zona morta entre os 32 e os 64px para não oscilar (encolhe/expande em

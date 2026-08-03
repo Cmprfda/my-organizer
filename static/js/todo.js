@@ -3,13 +3,25 @@
 // ---------- TODO list ----------
 let todos = [];
 const TODO_LAYOUT_KEY = "bsp-tracker-todo-layout";
-const TODO_COLS = ["todo", "inprogress", "review", "done"];
+// Colunas de sempre do quadro: têm significado para a app (o cronómetro só
+// corre em "inprogress" e "done" fecha o item), por isso nunca se apagam — só
+// se escondem.
+const TODO_BUILTIN_COLS = ["todo", "inprogress", "review", "done"];
 const TODO_COL_LABEL = {
   todo: "todo_col_todo",
   inprogress: "todo_col_inprogress",
   review: "todo_col_review",
   done: "todo_col_done",
 };
+// Que colunas o quadro mostra, em que ordem, com que nome e quais estão
+// escondidas. É uma preferência de apresentação de quem está a ver (como o
+// TODO_LAYOUT_KEY acima), por isso vive no browser e não no servidor; o que o
+// servidor guarda é só a coluna de cada item (campo `col`), que aceita qualquer
+// coluna criada aqui (ver cswaios/todos.py).
+const TODO_COLS_KEY = "bsp-tracker-todo-cols";
+const TODO_COL_ID_RE = /^[a-z0-9][a-z0-9_-]{0,23}$/;
+const TODO_COL_MAX = 10;        // colunas que cabem no quadro
+const TODO_COL_NAME_MAX = 24;   // caracteres do nome de uma coluna criada aqui
 // prioridade do item, da mais baixa para a mais alta (a mesma escala do
 // servidor). "normal" é o valor neutro dos itens que nunca foram marcados.
 const TODO_PRIORITIES = ["low", "normal", "high", "urgent"];
@@ -29,15 +41,225 @@ let lastTodoResult = null;
 let subtasksEditingId = null;
 let subtaskDrag = null;
 
+// ---------- colunas do quadro (esconder / criar / ordenar) ----------
+// nome legível a partir do id: uma coluna pode chegar aqui só pelo campo `col`
+// de um cartão (foi criada noutro browser/janela) e aí o id é tudo o que se sabe
+function todoColNiceId(id) {
+  const s = String(id || "").replace(/[-_]+/g, " ").trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : String(id || "");
+}
+
+// os acentos são tirados antes de cortar o resto ("À espera" -> "a-espera" e
+// não "-espera"), para o id continuar a lembrar o nome escolhido
+const TODO_COL_MARKS = new RegExp(
+  "[" + String.fromCharCode(0x300) + "-" + String.fromCharCode(0x36f) + "]", "g");
+
+function todoColSlug(label) {
+  const base = String(label || "")
+    .normalize("NFD").replace(TODO_COL_MARKS, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "").slice(0, TODO_COL_NAME_MAX).replace(/-+$/, "");
+  return base || "col";
+}
+
+// { order: [id…], hidden: [id…], names: { id: "nome" } }
+function sanitizeTodoColConf(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const conf = { order: [], hidden: [], names: {} };
+  (Array.isArray(src.order) ? src.order : []).forEach(id => {
+    const key = String(id || "").trim().toLowerCase();
+    if (!TODO_COL_ID_RE.test(key) || conf.order.includes(key)) return;
+    conf.order.push(key);
+  });
+  // as colunas de sempre existem sempre; as que faltarem entram antes de
+  // "Concluído" (que é o fim do fluxo)
+  TODO_BUILTIN_COLS.forEach(id => {
+    if (conf.order.includes(id)) return;
+    const doneAt = conf.order.indexOf("done");
+    if (id !== "done" && doneAt >= 0) conf.order.splice(doneAt, 0, id);
+    else conf.order.push(id);
+  });
+  const names = src.names && typeof src.names === "object" ? src.names : {};
+  conf.order.forEach(id => {
+    if (TODO_BUILTIN_COLS.includes(id)) return;
+    conf.names[id] = String(names[id] || "").trim().slice(0, TODO_COL_NAME_MAX) || todoColNiceId(id);
+  });
+  conf.hidden = (Array.isArray(src.hidden) ? src.hidden : [])
+    .map(id => String(id || "").trim().toLowerCase())
+    .filter((id, i, all) => conf.order.includes(id) && all.indexOf(id) === i);
+  // nunca esconder tudo: sem colunas à vista o quadro ficava em branco
+  if (conf.hidden.length >= conf.order.length) {
+    conf.hidden = conf.hidden.filter(id => id !== conf.order[0]);
+  }
+  return conf;
+}
+
+function loadTodoColConf() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(TODO_COLS_KEY) || "null"); } catch { raw = null; }
+  return sanitizeTodoColConf(raw);
+}
+
+let todoColConf = loadTodoColConf();
+
+function saveTodoColConf() {
+  todoColConf = sanitizeTodoColConf(todoColConf);
+  try { localStorage.setItem(TODO_COLS_KEY, JSON.stringify(todoColConf)); } catch { /* sem espaço/modo privado */ }
+}
+
+function todoColHidden(id) { return todoColConf.hidden.includes(id); }
+function todoVisibleColIds() { return todoColConf.order.filter(id => !todoColHidden(id)); }
+function todoColIsCustom(id) { return !TODO_BUILTIN_COLS.includes(id); }
+
+function todoColLabel(id) {
+  if (TODO_BUILTIN_COLS.includes(id)) return t(TODO_COL_LABEL[id]);
+  return todoColConf.names[id] || todoColNiceId(id);
+}
+
+// quantos cartões estão MESMO nesta coluna (não onde são desenhados)
+function todoColCount(id) {
+  return todos.filter(it => todoColOf(it) === id).length;
+}
+
+// Um cartão pode trazer uma coluna que este browser ainda não conhece (criada
+// noutra janela, ou as preferências daqui foram limpas): adota-se a coluna em
+// vez de deixar o cartão sem sítio.
+function adoptTodoCols() {
+  let added = false;
+  todos.forEach(it => {
+    const col = String((it && it.col) || "").trim().toLowerCase();
+    if (!TODO_COL_ID_RE.test(col) || todoColConf.order.includes(col)) return;
+    if (todoColConf.order.length >= TODO_COL_MAX) return;
+    const doneAt = todoColConf.order.indexOf("done");
+    if (doneAt >= 0) todoColConf.order.splice(doneAt, 0, col);
+    else todoColConf.order.push(col);
+    todoColConf.names[col] = todoColNiceId(col);
+    added = true;
+  });
+  if (added) saveTodoColConf();
+}
+
 function todoColOf(it) {
   const col = String((it && it.col) || "").toLowerCase();
-  if (TODO_COLS.includes(col)) return col;
+  if (todoColConf.order.includes(col)) return col;
   return it && it.done ? "done" : "todo";
+}
+
+// Coluna visível mais próxima de `col`: a própria se estiver à vista, senão a
+// primeira à esquerda e, em último recurso, à direita. Serve para os cartões de
+// uma coluna escondida continuarem no quadro em vez de desaparecerem.
+function todoVisibleColFor(col) {
+  const order = todoColConf.order;
+  if (order.includes(col) && !todoColHidden(col)) return col;
+  const at = order.indexOf(col);
+  for (let i = at - 1; i >= 0; i--) if (!todoColHidden(order[i])) return order[i];
+  for (let i = at + 1; i < order.length; i++) if (!todoColHidden(order[i])) return order[i];
+  return todoVisibleColIds()[0] || "todo";
+}
+
+// coluna em que o cartão é desenhado (a sua, ou a de recurso se estiver escondida)
+function todoLaneOf(it) {
+  return todoVisibleColFor(todoColOf(it));
+}
+
+// coluna de entrada de um cartão novo: "Por fazer" quando está à vista
+function todoDefaultCol() {
+  const vis = todoVisibleColIds();
+  if (vis.includes("todo")) return "todo";
+  return vis.find(id => id !== "done") || vis[0] || "todo";
+}
+
+function setTodoColHidden(id, hidden) {
+  if (!todoColConf.order.includes(id)) return false;
+  if (hidden) {
+    if (todoVisibleColIds().length <= 1) { toast(t("todo_col_last"), "err"); return false; }
+    if (!todoColConf.hidden.includes(id)) todoColConf.hidden.push(id);
+  } else {
+    todoColConf.hidden = todoColConf.hidden.filter(x => x !== id);
+  }
+  saveTodoColConf();
+  return true;
+}
+
+function moveTodoCol(id, dir) {
+  const order = todoColConf.order;
+  const at = order.indexOf(id);
+  const to = at + (dir < 0 ? -1 : 1);
+  if (at < 0 || to < 0 || to >= order.length) return false;
+  order.splice(to, 0, order.splice(at, 1)[0]);
+  saveTodoColConf();
+  return true;
+}
+
+function todoColNameTaken(name, exceptId) {
+  const wanted = String(name).trim().toLowerCase();
+  return todoColConf.order.some(id => id !== exceptId && todoColLabel(id).toLowerCase() === wanted);
+}
+
+function addTodoCol(label) {
+  const name = String(label || "").trim().slice(0, TODO_COL_NAME_MAX);
+  if (!name) return false;
+  if (todoColConf.order.length >= TODO_COL_MAX) { toast(tf("todo_col_max", TODO_COL_MAX), "err"); return false; }
+  if (todoColNameTaken(name, null)) { toast(t("todo_col_dup"), "err"); return false; }
+  let id = todoColSlug(name);
+  for (let i = 2; todoColConf.order.includes(id) && i < 100; i++) {
+    id = `${todoColSlug(name).slice(0, 21)}-${i}`;
+  }
+  if (todoColConf.order.includes(id)) return false;
+  // entra antes de "Concluído": as colunas novas ("à espera", "pendente") são
+  // passos do meio do fluxo, não o fim dele
+  const doneAt = todoColConf.order.indexOf("done");
+  if (doneAt >= 0) todoColConf.order.splice(doneAt, 0, id);
+  else todoColConf.order.push(id);
+  todoColConf.names[id] = name;
+  saveTodoColConf();
+  toast(tf("todo_col_added", name), "ok");
+  return true;
+}
+
+function renameTodoCol(id, label) {
+  if (!todoColIsCustom(id) || !todoColConf.order.includes(id)) return false;
+  const name = String(label || "").trim().slice(0, TODO_COL_NAME_MAX);
+  if (!name || name === todoColLabel(id)) return false;
+  if (todoColNameTaken(name, id)) { toast(t("todo_col_dup"), "err"); return false; }
+  todoColConf.names[id] = name;
+  saveTodoColConf();
+  return true;
+}
+
+// para onde vão os cartões de uma coluna que está a ser apagada: a coluna
+// visível mais próxima das que ficam
+function todoColDelTarget(id) {
+  const order = todoColConf.order;
+  const left = order.slice(0, Math.max(0, order.indexOf(id)))
+    .filter(x => x !== id && !todoColHidden(x)).pop();
+  return left || todoVisibleColIds().find(x => x !== id) || "todo";
+}
+
+// Apagar uma coluna criada aqui: os cartões mudam de coluna PRIMEIRO (no
+// servidor), só depois a coluna desaparece — se o servidor recusar, a coluna
+// fica e nenhum cartão se perde.
+async function deleteTodoCol(id) {
+  if (!todoColIsCustom(id) || !todoColConf.order.includes(id)) return;
+  const label = todoColLabel(id);
+  const dest = todoColDelTarget(id);
+  const moving = todos.filter(it => todoColOf(it) === id);
+  closeTodoColsPop();
+  for (const it of moving) {
+    if (!await postTodo({ action: "set_col", id: it.id, col: dest })) return;
+  }
+  todoColConf.order = todoColConf.order.filter(x => x !== id);
+  todoColConf.hidden = todoColConf.hidden.filter(x => x !== id);
+  delete todoColConf.names[id];
+  saveTodoColConf();
+  renderTodo();
+  toast(tf("todo_col_deleted", label), "ok");
 }
 
 function setTodoLayout(layout) {
   todoLayout = layout === "kanban" ? "kanban" : "list";
   localStorage.setItem(TODO_LAYOUT_KEY, todoLayout);
+  closeTodoColsPop();
   renderTodo();
 }
 
@@ -95,32 +317,39 @@ function todoTimerHtml(it) {
   return "";
 }
 
+// o cronómetro pode ser reiniciado em qualquer coluna (incluindo as criadas
+// aqui): o que conta é o item já ter tempo contado
 function todoTimerRestartHtml(it) {
-  const col = todoColOf(it);
   const hasTime = (it.timer_started != null) || ((+it.elapsed_ms || 0) > 0);
   if (!hasTime) return "";
-  if (!["inprogress", "review", "done", "todo"].includes(col)) return "";
   return `<button type="button" class="todoTimerReset" data-treset="${esc(it.id)}" title="${t("todo_timer_restart")}">↺</button>`;
 }
 
-function todoNextCol(it) {
-  const col = todoColOf(it);
-  const idx = TODO_COLS.indexOf(col);
-  return TODO_COLS[(idx + 1) % TODO_COLS.length];
+// o botão de estado só passeia pelas colunas à vista; a coluna atual entra
+// sempre na volta, mesmo escondida, para se poder tirar o cartão de lá
+function todoCycleCols(current) {
+  const list = todoColConf.order.filter(id => !todoColHidden(id) || id === current);
+  return list.length ? list : [current || "todo"];
 }
 
-function todoPrevCol(it) {
+function todoStepCol(it, dir) {
   const col = todoColOf(it);
-  const idx = TODO_COLS.indexOf(col);
-  return TODO_COLS[(idx - 1 + TODO_COLS.length) % TODO_COLS.length];
+  const list = todoCycleCols(col);
+  const idx = Math.max(0, list.indexOf(col));
+  return list[(idx + dir + list.length) % list.length];
 }
+
+function todoNextCol(it) { return todoStepCol(it, 1); }
+
+function todoPrevCol(it) { return todoStepCol(it, -1); }
 
 function todoStatusHtml(it) {
   const col = todoColOf(it);
-  const next = todoNextCol(it);
-  const prev = todoPrevCol(it);
-  const tip = `${t("todo_status_click")}: ${t(TODO_COL_LABEL[next])}\n${t("todo_status_back")}: ${t(TODO_COL_LABEL[prev])}`;
-  return `<button type="button" class="todoStatusBtn" data-tocol="${esc(it.id)}" title="${esc(tip)}">${esc(t(TODO_COL_LABEL[col]))}</button>`;
+  const hidden = todoColHidden(col);
+  const tip = `${t("todo_status_click")}: ${todoColLabel(todoNextCol(it))}\n` +
+    `${t("todo_status_back")}: ${todoColLabel(todoPrevCol(it))}` +
+    (hidden ? `\n${t("todo_col_hidden_here")}` : "");
+  return `<button type="button" class="todoStatusBtn${hidden ? " hiddenCol" : ""}" data-tocol="${esc(it.id)}" title="${esc(tip)}">${esc(todoColLabel(col))}</button>`;
 }
 
 // ---------- prioridade ----------
@@ -174,8 +403,14 @@ function srcOf(it) {
 // O servidor corta os textos guardados (título e origem) a 200 caracteres; sem
 // aplicar o mesmo corte aqui, um "o que fazer" longo nunca batia certo com o
 // item já guardado e o botão "+ TODO" continuava à vista.
+// O corte do servidor é feito DEPOIS de limpar os espaços das pontas, por isso
+// o valor guardado pode acabar em espaço (quando o caractere 200 do original é
+// um espaço). Aí o valor lido de volta perdia esse espaço nesta função e deixava
+// de bater certo com o valor recém-calculado da linha do Excel — o "+ TODO"
+// ficava à vista para sempre nessa linha. Limpar as pontas outra vez depois do
+// corte torna as duas contas iguais.
 function todoText(value) {
-  return String(value == null ? "" : value).trim().slice(0, 200);
+  return String(value == null ? "" : value).trim().slice(0, 200).trim();
 }
 
 // Já está na lista (item por fechar) algo vindo desta origem?
@@ -475,8 +710,14 @@ function openTodoNote(el) {
 
 function renderTodo() {
   renderJiraSuggestions();
+  // uma coluna vinda de outra janela tem de existir antes de se agruparem os
+  // cartões, senão o cartão dela caía na coluna de recurso sem razão
+  adoptTodoCols();
   $("todoModeList").classList.toggle("active", todoLayout === "list");
   $("todoModeKanban").classList.toggle("active", todoLayout === "kanban");
+  todoColsBtn.textContent = `⚙ ${t("todo_cols_btn")}`;
+  todoColsBtn.title = t("t_todo_cols");
+  todoColsBtn.classList.toggle("hidden", todoLayout !== "kanban");
   $("todoBox").classList.toggle("hidden", todoLayout !== "list" || !todos.length);
   $("todoBoardBox").classList.toggle("hidden", todoLayout !== "kanban" || !todos.length);
   $("todoEmpty").classList.toggle("hidden", !!todos.length);
@@ -506,14 +747,17 @@ function renderTodo() {
     return;
   }
 
-  const byCol = Object.fromEntries(TODO_COLS.map(col => [col, []]));
-  todos.forEach(it => byCol[todoColOf(it)].push(it));
-  $("todoBoard").innerHTML = TODO_COLS.map(col => {
+  const cols = todoVisibleColIds();
+  const byCol = Object.fromEntries(cols.map(col => [col, []]));
+  todos.forEach(it => byCol[todoLaneOf(it)].push(it));
+  $("todoBoard").innerHTML = cols.map(col => {
     const cards = byCol[col].map(it => {
       const srcCell = srcOf(it)
         ? `<button type="button" class="srcBtn" data-src="${esc(it.id)}" title="${t("t_src")}">↗</button>`
         : "";
-      return `<article draggable="true" class="todoCard${it.done ? " done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
+      // cartão de uma coluna escondida: está aqui de empréstimo, não é desta coluna
+      const offLane = todoColOf(it) !== col ? " offLane" : "";
+      return `<article draggable="true" class="todoCard${it.done ? " done" : ""}${todoIsFlagged(it) ? " flagged" : ""}${offLane}" data-tid="${esc(it.id)}">
     ${todoMySideFlag(it, true)}
     <div class="todoCardTitle">${todoKindChips(it)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}</div>
     ${todoNoteHtml(it, true)}
@@ -531,11 +775,15 @@ function renderTodo() {
     </div>
   </article>`;
     }).join("");
-    return `<section class="todoCol" data-todocol="${col}">
-  <div class="todoColHead">${esc(t(TODO_COL_LABEL[col]))}<span class="todoColCount">${byCol[col].length}</span></div>
-  <div class="todoColBody" data-todocol="${col}">${cards}</div>
+    const hide = cols.length > 1
+      ? `<button type="button" class="todoColHide" data-tcolhide="${esc(col)}" title="${esc(t("todo_col_hide"))}">✕</button>`
+      : "";
+    return `<section class="todoCol" data-todocol="${esc(col)}">
+  <div class="todoColHead"><span class="todoColName">${esc(todoColLabel(col))}</span><span class="todoColCount">${byCol[col].length}</span>${hide}</div>
+  <div class="todoColBody" data-todocol="${esc(col)}">${cards}</div>
 </section>`;
-  }).join("");
+  }).join("") +
+    `<button type="button" class="todoColNew" data-tcolnew="1" title="${esc(t("todo_col_new"))}">+</button>`;
   refreshItemBox();
 }
 
@@ -592,12 +840,12 @@ function addTodoFromTaskRow(btn) {
   const detail = taskRowDetail(tr);
   const meta = currentMeta[ri] || {};
   const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
-  addTodoWithFeedback({ action: "add", title: fn, kind: "task", detail, ref, col: "todo" });
+  addTodoWithFeedback({ action: "add", title: fn, kind: "task", detail, ref, col: todoDefaultCol() });
 }
 
 function addTodoFromCcr(id) {
   const item = ccrs[id] || {};
-  addTodoWithFeedback({ action: "add", title: `CCR ${id}`, kind: "ccr", detail: String(item.note || "").trim().slice(0, 300), ref: { ccr: id }, col: "todo" });
+  addTodoWithFeedback({ action: "add", title: `CCR ${id}`, kind: "ccr", detail: String(item.note || "").trim().slice(0, 300), ref: { ccr: id }, col: todoDefaultCol() });
 }
 
 // dir = 1 avança, dir = -1 recua (permite voltar a "TODO" sem dar a volta toda)
@@ -617,13 +865,183 @@ function setTodoPriorityById(id, dir = 1) {
 function addManualTodo() {
   const title = $("todoNew").value.trim();
   if (!title) return;
-  addTodoWithFeedback({ action: "add", title, kind: "manual", col: todoLayout === "kanban" ? "todo" : null });
+  addTodoWithFeedback({ action: "add", title, kind: "manual", col: todoLayout === "kanban" ? todoDefaultCol() : null });
   $("todoNew").value = "";
 }
 $("todoAdd").addEventListener("click", addManualTodo);
 $("todoNew").addEventListener("keydown", e => { if (e.key === "Enter") addManualTodo(); });
 $("todoModeList").addEventListener("click", () => setTodoLayout("list"));
 $("todoModeKanban").addEventListener("click", () => setTodoLayout("kanban"));
+// botão que abre o painel das colunas: o index.html só traz os dois botões de
+// vista (Lista/Kanban), este é montado aqui ao lado deles
+const todoColsBtn = document.createElement("button");
+todoColsBtn.type = "button";
+todoColsBtn.id = "todoColsBtn";
+todoColsBtn.className = "secondary todoColsBtn hidden";
+$("todoModeKanban").parentElement.insertAdjacentElement("afterend", todoColsBtn);
+todoColsBtn.addEventListener("click", () => openTodoColsPop(todoColsBtn));
+
+// ---------- painel das colunas do quadro ----------
+// (segue o padrão dos painéis pequenos das Notas: nada de prompt()/confirm()
+// do browser, Enter confirma e Esc desiste)
+let todoColsPop = null;        // { el, anchor } do painel aberto
+let todoColsPopHold = false;   // clicar outra vez no botão fecha (não reabre)
+let todoColDelArm = null;      // coluna à espera de confirmação para ser apagada
+let todoColRenaming = null;    // coluna com o nome em edição
+
+function closeTodoColsPop() {
+  if (!todoColsPop) return;
+  todoColsPop.el.remove();
+  todoColsPop = null;
+  todoColDelArm = null;
+  todoColRenaming = null;
+}
+
+function todoColsPopRowHtml(id, i, total) {
+  const custom = todoColIsCustom(id);
+  const shown = !todoColHidden(id);
+  const n = todoColCount(id);
+  if (todoColDelArm === id) {
+    return `<li class="todoColRow arm">
+    <span class="todoColAsk">${esc(tf("todo_col_del_ask", todoColLabel(id), n, todoColLabel(todoColDelTarget(id))))}</span>
+    <button type="button" class="mini" data-tcoldelok="${esc(id)}">${esc(t("todo_col_del_ok"))}</button>
+    <button type="button" class="ccr-x" data-tcoldelno="1" title="${esc(t("todo_col_del_no"))}">✕</button>
+  </li>`;
+  }
+  const name = todoColRenaming === id
+    ? `<input type="text" class="todoColRenameInput" data-tcolrenin="${esc(id)}" maxlength="${TODO_COL_NAME_MAX}" value="${esc(todoColLabel(id))}">`
+    : `<span class="todoColRowName">${esc(todoColLabel(id))}</span>`;
+  return `<li class="todoColRow${shown ? "" : " off"}">
+    <input type="checkbox" data-tcolshow="${esc(id)}"${shown ? " checked" : ""} title="${esc(t(shown ? "todo_col_hide" : "todo_col_show"))}">
+    ${name}
+    <span class="todoColRowCount">${n}</span>
+    <button type="button" class="todoColMove" data-tcolmove="${esc(id)}|-1" title="${esc(t("todo_col_left"))}"${i === 0 ? " disabled" : ""}>↑</button>
+    <button type="button" class="todoColMove" data-tcolmove="${esc(id)}|1" title="${esc(t("todo_col_right"))}"${i === total - 1 ? " disabled" : ""}>↓</button>
+    ${custom ? `<button type="button" class="todoColMove" data-tcolren="${esc(id)}" title="${esc(t("todo_col_rename"))}">✎</button>` : ""}
+    ${custom ? `<button type="button" class="ccr-x" data-tcoldel="${esc(id)}" title="${esc(t("todo_col_del"))}">✕</button>` : ""}
+  </li>`;
+}
+
+function renderTodoColsPop() {
+  if (!todoColsPop) return;
+  const order = todoColConf.order;
+  todoColsPop.el.innerHTML = `<div class="todoColsPopHead">${esc(t("todo_cols_title"))}</div>
+<p class="todoColsPopHint">${esc(t("todo_cols_hint"))}</p>
+<ul class="todoColsPopList">${order.map((id, i) => todoColsPopRowHtml(id, i, order.length)).join("")}</ul>
+<div class="todoColsPopAdd">
+  <input type="text" class="todoColNewInput" maxlength="${TODO_COL_NAME_MAX}" placeholder="${esc(t("ph_todo_col_new"))}">
+  <button type="button" class="mini" data-tcoladd="1" title="${esc(t("todo_col_new"))}">+</button>
+</div>`;
+  const ren = todoColsPop.el.querySelector(".todoColRenameInput");
+  if (ren) { ren.focus(); ren.select(); }
+}
+
+function commitTodoColNew(keepFocus) {
+  const box = todoColsPop && todoColsPop.el.querySelector(".todoColNewInput");
+  if (!box) return;
+  if (!addTodoCol(box.value)) { box.focus(); box.select(); return; }
+  renderTodoColsPop();
+  renderTodo();
+  const again = keepFocus && todoColsPop && todoColsPop.el.querySelector(".todoColNewInput");
+  if (again) again.focus();
+}
+
+function commitTodoColRename() {
+  const box = todoColsPop && todoColsPop.el.querySelector(".todoColRenameInput");
+  if (!box) return;
+  renameTodoCol(box.dataset.tcolrenin, box.value);
+  todoColRenaming = null;
+  renderTodoColsPop();
+  renderTodo();
+}
+
+function todoColsPopTap(e) {
+  const mv = e.target.closest("[data-tcolmove]");
+  if (mv) {
+    const [id, dir] = mv.dataset.tcolmove.split("|");
+    if (moveTodoCol(id, +dir)) { renderTodoColsPop(); renderTodo(); }
+    return;
+  }
+  const ren = e.target.closest("[data-tcolren]");
+  if (ren) { todoColRenaming = ren.dataset.tcolren; renderTodoColsPop(); return; }
+  const del = e.target.closest("[data-tcoldel]");
+  if (del) { todoColDelArm = del.dataset.tcoldel; renderTodoColsPop(); return; }
+  if (e.target.closest("[data-tcoldelno]")) { todoColDelArm = null; renderTodoColsPop(); return; }
+  const ok = e.target.closest("[data-tcoldelok]");
+  if (ok) { deleteTodoCol(ok.dataset.tcoldelok); return; }
+  if (e.target.closest("[data-tcoladd]")) commitTodoColNew(true);
+}
+
+function openTodoColsPop(anchor, focusNew) {
+  if (todoColsPopHold) { todoColsPopHold = false; return; }
+  const already = !!todoColsPop;
+  closeTodoColsPop();
+  if (already && !focusNew) return;
+  const el = document.createElement("div");
+  el.className = "todoColsPop";
+  document.body.appendChild(el);
+  todoColsPop = { el, anchor };
+  renderTodoColsPop();
+  const r = anchor.getBoundingClientRect();
+  el.style.left = `${Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.right - el.offsetWidth))}px`;
+  const below = r.bottom + 6;
+  el.style.top = `${below + el.offsetHeight > window.innerHeight
+    ? Math.max(6, r.top - el.offsetHeight - 6) : below}px`;
+  el.addEventListener("click", todoColsPopTap);
+  el.addEventListener("change", ev => {
+    const cb = ev.target.closest("[data-tcolshow]");
+    if (!cb) return;
+    if (!setTodoColHidden(cb.dataset.tcolshow, !cb.checked)) { cb.checked = !cb.checked; return; }
+    renderTodoColsPop();
+    renderTodo();
+  });
+  el.addEventListener("keydown", ev => {
+    if (ev.key !== "Enter") return;
+    if (ev.target.closest(".todoColNewInput")) { ev.preventDefault(); commitTodoColNew(true); }
+    else if (ev.target.closest(".todoColRenameInput")) { ev.preventDefault(); commitTodoColRename(); }
+  });
+  el.addEventListener("focusout", ev => {
+    // sair do campo do nome guarda o que lá estiver (é um editor, não um menu)
+    if (ev.target.closest(".todoColRenameInput") && todoColRenaming) commitTodoColRename();
+  });
+  if (focusNew) {
+    const box = el.querySelector(".todoColNewInput");
+    if (box) box.focus();
+  }
+}
+
+// clicar fora fecha; no próprio botão fecha e não deixa reabrir no mesmo clique
+document.addEventListener("pointerdown", e => {
+  if (!todoColsPop || e.target.closest(".todoColsPop")) return;
+  todoColsPopHold = todoColsPop.anchor.contains(e.target);
+  closeTodoColsPop();
+}, true);
+
+// em captura na janela (antes de qualquer tratador do document, incluindo o do
+// ecrã dividido): com o painel aberto o Esc só desiste dele
+window.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !todoColsPop) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  if (todoColRenaming) { todoColRenaming = null; renderTodoColsPop(); return; }
+  if (todoColDelArm) { todoColDelArm = null; renderTodoColsPop(); return; }
+  closeTodoColsPop();
+}, true);
+
+// ✕ no cabeçalho de uma coluna esconde-a; o + no fim do quadro cria uma nova
+$("todoBoard").addEventListener("click", e => {
+  const hide = e.target.closest("[data-tcolhide]");
+  if (hide) {
+    e.stopPropagation();
+    if (setTodoColHidden(hide.dataset.tcolhide, true)) renderTodo();
+    return;
+  }
+  const add = e.target.closest("[data-tcolnew]");
+  if (add) {
+    e.stopPropagation();
+    openTodoColsPop(add, true);
+  }
+});
 
 // tratadores partilhados pela lista, pelo Kanban e pela caixa de detalhe
 function todoItemChange(e) {
@@ -896,7 +1314,7 @@ function handleTodoPayload(p, targetRow, targetCol, beforeCardId) {
   } else if (p.title) {
     addTodoWithFeedback({
       action: "add", title: p.title, kind: p.kind || "manual",
-      detail: p.detail || "", ref: p.ref || null, col: targetCol || "todo"
+      detail: p.detail || "", ref: p.ref || null, col: targetCol || todoDefaultCol()
     });
   }
 }

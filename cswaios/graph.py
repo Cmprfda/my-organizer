@@ -38,6 +38,7 @@ GRAPH_DEFAULT_SCOPES = "https://graph.microsoft.com/.default"
 
 _graph_lock = threading.Lock()
 _graph_login = {}      # estado do device code flow em curso
+_account_probed = threading.Event()   # já se tentou descobrir a conta ligada
 _graph_item = None     # (drive_id, item_id) resolvido a partir do URL do ficheiro
 _graph_source = ""     # de onde veio o último token: "device" ou "cli"
 _cli_token = {"token": "", "expires_at": 0.0}
@@ -176,26 +177,117 @@ def _graph_load_tokens():
         return {}
 
 
-def _graph_save_tokens(out):
-    """Guarda os tokens localmente (nunca são registados no log nem enviados
-    para o browser)."""
-    tokens = {"access_token": out.get("access_token", ""),
-              "refresh_token": out.get("refresh_token", ""),
-              "expires_at": time.time() + int(out.get("expires_in", 3600))}
-    with open(GRAPH_TOKEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(tokens, f)
+def _write_tokens(tokens):
+    """Escreve o ficheiro da sessão, legível só pelo dono. Devolve False se não
+    tiver conseguido escrever."""
+    try:
+        with open(GRAPH_TOKEN_FILE, "w", encoding="utf-8") as f:
+            json.dump(tokens, f)
+    except OSError as exc:
+        log_event(f"nao foi possivel guardar a sessao do OneDrive: {exc}")
+        return False
     try:
         os.chmod(GRAPH_TOKEN_FILE, 0o600)
     except OSError:
         pass
+    return True
+
+
+def _graph_save_tokens(out, account=None):
+    """Guarda os tokens localmente (nunca são registados no log nem enviados
+    para o browser). Junta-lhes o email/nome da conta — descrevem exatamente
+    estes tokens, por isso ficam no mesmo ficheiro."""
+    old = _graph_load_tokens()
+    # a Microsoft nem sempre devolve um refresh token novo na renovação; se o
+    # apagássemos, a sessão morria no fim da hora seguinte e obrigava a
+    # autenticar outra vez à mão (era o que acontecia até aqui)
+    tokens = {"access_token": out.get("access_token", ""),
+              "refresh_token": out.get("refresh_token") or old.get("refresh_token", ""),
+              "expires_at": time.time() + int(out.get("expires_in", 3600))}
+    email = str((account or {}).get("email") or "") or str(old.get("account_email") or "")
+    name = str((account or {}).get("name") or "") or str(old.get("account_name") or "")
+    if email:
+        tokens["account_email"] = email
+    if name:
+        tokens["account_name"] = name
+    _write_tokens(tokens)
     return tokens
 
 
 def _graph_forget_tokens():
+    """Esquece os tokens, mas guarda o email da conta (não é um segredo): é
+    justamente quando a sessão morre que ele faz falta, para o login seguinte
+    já vir preenchido com a conta certa em vez de uma lista vazia."""
+    account = _graph_load_tokens()
+    email = str(account.get("account_email") or "")
+    name = str(account.get("account_name") or "")
+    if (email or name) and _write_tokens({"account_email": email, "account_name": name}):
+        return
     try:
         os.remove(GRAPH_TOKEN_FILE)
     except OSError:
         pass
+
+
+def remembered_account():
+    """Conta Microsoft usada da última vez (email/nome), se for conhecida.
+    Não prova que a sessão esteja viva — só serve para a mostrar na interface
+    e para pré-preencher o login seguinte."""
+    tokens = _graph_load_tokens()
+    return {"email": str(tokens.get("account_email") or ""),
+            "name": str(tokens.get("account_name") or "")}
+
+
+def _graph_account_info(cfg, token):
+    """Email/nome de quem acabou de autenticar (`/me`). Uma falha aqui (rede,
+    permissão) nunca pode estragar o login: devolve simplesmente {}."""
+    if not token:
+        return {}
+    try:
+        out = _http_json(f"{cfg['graph_base']}/me"
+                         "?$select=mail,userPrincipalName,displayName",
+                         headers={"Authorization": f"Bearer {token}"})
+    except (GraphError, ValueError, OSError):
+        return {}
+    if not isinstance(out, dict) or out.get("_status", 200) >= 400:
+        return {}
+    return {"email": str(out.get("mail") or out.get("userPrincipalName") or "").strip(),
+            "name": str(out.get("displayName") or "").strip()}
+
+
+def _graph_remember_account(account):
+    """Guarda o email/nome da conta sem mexer nos tokens que lá estão."""
+    email = str((account or {}).get("email") or "")
+    name = str((account or {}).get("name") or "")
+    if not email and not name:
+        return
+    with _graph_lock:
+        tokens = _graph_load_tokens()
+        if not tokens:
+            return          # sessão apagada entretanto: nada a anotar
+        tokens["account_email"] = email
+        tokens["account_name"] = name
+        _write_tokens(tokens)
+
+
+def _probe_account_async(cfg):
+    """Descobre a conta de uma sessão que já existia antes desta versão (quem
+    nunca voltou ao login interativo não tem o email guardado). Corre em
+    segundo plano para não atrasar a resposta à interface, e uma vez só por
+    arranque para não repetir o pedido se falhar."""
+    if _account_probed.is_set():
+        return
+    _account_probed.set()
+
+    def work():
+        try:
+            token = graph_token(cfg)
+            if token:
+                _graph_remember_account(_graph_account_info(cfg, token))
+        except Exception:
+            pass          # é um extra: nunca pode fazer barulho
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 def azure_cli_token():
@@ -251,7 +343,8 @@ def _graph_own_token(cfg):
             # morreu (revogada/expirada); uma falha temporária do lado deles
             # (5xx, throttling) não pode obrigar a nova autenticação
             if out.get("error") in ("invalid_grant", "interaction_required"):
-                _graph_forget_tokens()
+                _graph_forget_tokens()      # guarda o email para o próximo login
+                log_event("sessão do OneDrive expirou - é preciso ligar outra vez")
             return None
         return _graph_save_tokens(out)["access_token"]
 
@@ -315,18 +408,35 @@ def graph_login_start():
 
 
 def _graph_login_browser(cfg):
-    """Login interativo no browser: o token chega a um endereço local."""
+    """Login interativo no browser: o token chega a um endereço local.
+
+    O dia-a-dia não passa por aqui: o refresh token guardado renova a sessão
+    sozinho e sem browser (ver `_graph_own_token`). Isto só volta a ser
+    preciso quando esse refresh token morre mesmo (revogado, 90 dias sem uso,
+    novas regras de acesso do tenant) — e aí a Microsoft exige interação do
+    utilizador, que não se pode contornar sem um segredo de aplicação ou sem
+    enfraquecer o fluxo. O que se pode fazer é poupar-lhe trabalho: com o
+    email da última conta a lista de contas já vem escolhida (`login_hint`).
+    (Um pedido silencioso `prompt=none` não ajudaria: a sessão da Microsoft
+    vive nos cookies do browser, a que a app não tem acesso.)"""
     verifier = _b64url(os.urandom(40))
     challenge = _b64url(hashlib.sha256(verifier.encode("ascii")).digest())
     state = _b64url(os.urandom(16))
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _RedirectHandler)
     srv.auth_result = None
     redirect = f"http://localhost:{srv.server_port}/"
-    url = f"{cfg['authority']}/{cfg['tenant_id']}/oauth2/v2.0/authorize?" + urllib.parse.urlencode({
-        "client_id": cfg["client_id"], "response_type": "code", "response_mode": "query",
-        "redirect_uri": redirect, "scope": cfg["scopes"], "state": state,
-        "code_challenge": challenge, "code_challenge_method": "S256",
-        "prompt": "select_account"})
+    params = {"client_id": cfg["client_id"], "response_type": "code",
+              "response_mode": "query", "redirect_uri": redirect,
+              "scope": cfg["scopes"], "state": state,
+              "code_challenge": challenge, "code_challenge_method": "S256",
+              "prompt": "select_account"}
+    hint = remembered_account()["email"]
+    if hint:
+        # continua a mostrar a lista de contas (permite trocar de conta), mas
+        # já com esta escolhida
+        params["login_hint"] = hint
+    url = (f"{cfg['authority']}/{cfg['tenant_id']}/oauth2/v2.0/authorize?"
+           + urllib.parse.urlencode(params))
     _graph_login.clear()
     _graph_login.update({"user_code": "", "url": url, "expires": time.time() + 300,
                          "done": False, "error": ""})
@@ -365,10 +475,16 @@ def _graph_wait_redirect(cfg, srv, verifier, state, redirect):
         _graph_login.update({"done": True, "error": str(detail).replace("\r\n", " ")[:200]})
         log_event("ligação ao OneDrive falhou (troca do código)")
         return
+    # fica a saber-se qual é a conta: aparece nas Definições e pré-preenche o
+    # próximo login. Fora do lock (é um pedido de rede) e sem poder falhar o
+    # login por causa disto
+    account = _graph_account_info(cfg, out.get("access_token", ""))
     with _graph_lock:
-        _graph_save_tokens(out)
+        _graph_save_tokens(out, account)
+    _account_probed.set()      # a conta acabou de ser lida, não é preciso sondar
     _graph_login.update({"done": True, "error": ""})
-    log_event("ligação ao OneDrive estabelecida")
+    log_event("ligação ao OneDrive estabelecida"
+              + (f" (conta {account['email']})" if account.get("email") else ""))
 
 
 def _graph_login_device(cfg):
@@ -398,8 +514,10 @@ def _graph_poll_login(cfg, device):
                                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                                "device_code": device["device_code"]})
         if out.get("access_token"):
+            account = _graph_account_info(cfg, out.get("access_token", ""))
             with _graph_lock:
-                _graph_save_tokens(out)
+                _graph_save_tokens(out, account)
+            _account_probed.set()
             _graph_login.update({"done": True, "error": ""})
             log_event("ligação ao OneDrive estabelecida")
             return
@@ -416,8 +534,14 @@ def _graph_poll_login(cfg, device):
 
 
 def graph_logout():
+    """Termina a sessão. O email da conta fica guardado (não é um segredo) para
+    a religação seguinte já vir com a conta escolhida; a lista de contas da
+    Microsoft continua a permitir mudar de conta."""
     global _graph_item
-    _graph_forget_tokens()
+    # com o lock: uma renovação em curso (_graph_own_token) não pode voltar a
+    # escrever tokens novos por cima do logout (ficaria "religado" sozinho)
+    with _graph_lock:
+        _graph_forget_tokens()
     _graph_login.clear()
     _cli_token.update({"token": "", "expires_at": 0.0})
     _graph_item = None
@@ -442,6 +566,11 @@ def graph_state():
         state["method"] = _graph_source if state["connected"] else ""
     except GraphError as exc:
         state["error"] = str(exc)
+    account = remembered_account()
+    if state["connected"] and not account["email"] and state["method"] != "cli":
+        _probe_account_async(cfg)   # sessão anterior a esta versão: fica para a próxima leitura
+    state["account_email"] = account["email"]
+    state["account_name"] = account["name"]
     login = _graph_login
     if login:
         if not login.get("done") and login.get("expires", 0) > time.time():
@@ -459,11 +588,7 @@ def _graph_expire_access(cfg):
         tokens = _graph_load_tokens()
         if tokens.get("access_token"):
             tokens["expires_at"] = 0
-            try:
-                with open(GRAPH_TOKEN_FILE, "w", encoding="utf-8") as f:
-                    json.dump(tokens, f)
-            except OSError:
-                pass
+            _write_tokens(tokens)
     _cli_token.update({"token": "", "expires_at": 0.0})
 
 

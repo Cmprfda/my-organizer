@@ -33,6 +33,9 @@ MAX_STROKES = 200
 MAX_STROKE_POINTS = 2000
 MAX_SHAPES = 200
 MAX_CONNECTORS = 200
+# nome de uma ligação: cabe ao lado da linha, por isso é bem mais curto que o
+# texto de uma caixa
+MAX_CONN_LABEL = 60
 MAX_FRAMES = 60
 SHAPE_KINDS = ("line", "rect", "ellipse")
 DRAW_COLORS = ("yellow", "blue", "green", "pink", "plain")
@@ -114,7 +117,11 @@ def normalize_stroke(raw):
     color = str(raw.get("color") or "plain").strip().lower()
     if color not in DRAW_COLORS:
         color = "plain"
-    return {"id": stroke_id, "points": points, "color": color}
+    # "box" (opcional) = caixa a que o traço está preso: uma anotação feita por
+    # cima da imagem dessa caixa anda com ela. Vazio = traço solto no quadro,
+    # como sempre foi.
+    return {"id": stroke_id, "points": points, "color": color,
+            "box": _text(raw.get("box"), 40)}
 
 
 def normalize_shape(raw):
@@ -134,6 +141,8 @@ def normalize_shape(raw):
         "x1": _clamp(raw.get("x1"), 0, BOARD_W), "y1": _clamp(raw.get("y1"), 0, BOARD_H),
         "x2": _clamp(raw.get("x2"), 0, BOARD_W), "y2": _clamp(raw.get("y2"), 0, BOARD_H),
         "color": color,
+        # ver normalize_stroke: caixa a que a forma está presa (vazio = solta)
+        "box": _text(raw.get("box"), 40),
     }
 
 
@@ -148,7 +157,9 @@ def normalize_connector(raw):
     color = str(raw.get("color") or "plain").strip().lower()
     if color not in DRAW_COLORS:
         color = "plain"
-    return {"id": conn_id, "from": from_id, "to": to_id, "color": color}
+    # o nome da ligação é opcional: sem nome fica "" e não se desenha nada
+    label = _text(raw.get("label"), MAX_CONN_LABEL)
+    return {"id": conn_id, "from": from_id, "to": to_id, "color": color, "label": label}
 
 
 def normalize_frame(raw):
@@ -214,6 +225,11 @@ def normalize_note(raw):
         if isinstance(shapes_raw, list) else []
     connectors_raw = raw.get("connectors")
     box_ids = {b["id"] for b in boxes}
+    # traço/forma preso a uma caixa que já não existe volta a ser um desenho
+    # solto (nunca se deita fora o desenho por causa disso)
+    for drawn in strokes + shapes:
+        if drawn["box"] and drawn["box"] not in box_ids:
+            drawn["box"] = ""
     connectors = [c for c in (normalize_connector(c) for c in connectors_raw)
                   if c and c["from"] in box_ids and c["to"] in box_ids][:MAX_CONNECTORS] \
         if isinstance(connectors_raw, list) else []
@@ -384,6 +400,34 @@ def _stamp(note):
     note["updated"] = datetime.now().strftime("%d/%m %H:%M")
 
 
+def _bound_draw(note, box_ids):
+    """Traços e formas presos a uma destas caixas (anotações por cima da imagem).
+
+    Devolve (traços, formas) — as próprias entradas do estado, para quem chama
+    lhes poder mexer nas coordenadas.
+    """
+    wanted = {b for b in box_ids if b}
+    if not wanted:
+        return [], []
+    strokes = [s for s in note.get("strokes") or [] if s.get("box") in wanted]
+    shapes = [s for s in note.get("shapes") or [] if s.get("box") in wanted]
+    return strokes, shapes
+
+
+def _shift_draw(strokes, shapes, dx, dy):
+    """Desvia traços e formas o mesmo que a caixa a que estão presos andou."""
+    if not dx and not dy:
+        return
+    for s in strokes:
+        s["points"] = [{"x": _clamp(p["x"] + dx, 0, BOARD_W),
+                        "y": _clamp(p["y"] + dy, 0, BOARD_H)} for p in s["points"]]
+    for s in shapes:
+        s["x1"] = _clamp(s["x1"] + dx, 0, BOARD_W)
+        s["y1"] = _clamp(s["y1"] + dy, 0, BOARD_H)
+        s["x2"] = _clamp(s["x2"] + dx, 0, BOARD_W)
+        s["y2"] = _clamp(s["y2"] + dy, 0, BOARD_H)
+
+
 def _ref_same(a, b):
     if a["kind"] != b["kind"]:
         return False
@@ -510,6 +554,60 @@ def _apply_action(payload):
         note["folder"] = folder if (folder and _find(folders, folder)) else ""
         _stamp(note)
 
+    elif action == "duplicate_note":
+        # copiar uma nota inteira: caixas, desenhos, ligações e grupos. Cada
+        # imagem é duplicada no disco (como em paste_boxes), para a cópia e a
+        # original ficarem completamente independentes uma da outra.
+        note = _find(notes, _text(payload.get("id"), 40))
+        if note is None:
+            raise ValueError("nota não encontrada")
+        if len(notes) >= MAX_NOTES:
+            raise ValueError("demasiadas notas")
+        now = datetime.now().strftime("%d/%m %H:%M")
+        box_map = {}
+        boxes = []
+        for b in note["boxes"]:
+            copy = dict(b)
+            copy["id"] = new_id("b")
+            copy["image"] = copy_image(b.get("image")) if b.get("image") else ""
+            box_map[b["id"]] = copy["id"]
+            boxes.append(copy)
+        strokes = []
+        for s in note["strokes"]:
+            copy = dict(s)
+            copy["id"] = new_id("s")
+            copy["points"] = [dict(p) for p in s["points"]]
+            copy["box"] = box_map.get(s.get("box"), "")
+            strokes.append(copy)
+        shapes = []
+        for s in note["shapes"]:
+            copy = dict(s)
+            copy["id"] = new_id("sh")
+            copy["box"] = box_map.get(s.get("box"), "")
+            shapes.append(copy)
+        connectors = []
+        for c in note["connectors"]:
+            if c["from"] not in box_map or c["to"] not in box_map:
+                continue
+            copy = dict(c)
+            copy["id"] = new_id("c")
+            copy["from"] = box_map[c["from"]]
+            copy["to"] = box_map[c["to"]]
+            connectors.append(copy)
+        frames = []
+        for f in note["frames"]:
+            copy = dict(f)
+            copy["id"] = new_id("fr")
+            frames.append(copy)
+        title = _text(payload.get("title"), MAX_TITLE) or f"{note['title']} (cópia)"
+        twin = {"id": new_id("n"), "title": title, "folder": note["folder"],
+                "refs": [dict(r) for r in note["refs"]],
+                "created": now, "updated": now, "boxes": boxes, "strokes": strokes,
+                "shapes": shapes, "connectors": connectors, "frames": frames}
+        # a cópia fica logo a seguir à original na lista (é onde se espera vê-la)
+        notes.insert(notes.index(note) + 1, twin)
+        data["new_note"] = twin["id"]
+
     elif action == "delete_note":
         note = _find(notes, _text(payload.get("id"), 40))
         if note is None:
@@ -563,9 +661,11 @@ def _apply_action(payload):
         note = _find(notes, _text(payload.get("id"), 40))
         if note is None:
             raise ValueError("nota não encontrada")
-        box = _find(note["boxes"], _text(payload.get("box_id"), 40))
+        box_id = _text(payload.get("box_id"), 40)
+        box = _find(note["boxes"], box_id)
         if box is None:
             raise ValueError("caixa não encontrada")
+        was_x, was_y = box["x"], box["y"]
         for key in ("x", "y", "w", "h"):
             if payload.get(key) is not None:
                 box[key] = payload[key]
@@ -574,6 +674,33 @@ def _apply_action(payload):
         if payload.get("color") is not None:
             box["color"] = payload["color"]
         note["boxes"] = [b for b in (normalize_box(b) for b in note["boxes"]) if b]
+        # a caixa mudou de sítio: as anotações presas a ela andam o mesmo
+        # (redimensionar não mexe nos desenhos)
+        moved = _find(note["boxes"], box_id)
+        if moved is not None:
+            strokes, shapes = _bound_draw(note, [box_id])
+            _shift_draw(strokes, shapes, moved["x"] - was_x, moved["y"] - was_y)
+        _stamp(note)
+
+    elif action == "move_boxes":
+        # arrastar uma caixa que faz parte de uma seleção múltipla: todas as
+        # caixas escolhidas andam exatamente o mesmo desvio (como em move_frame)
+        note = _find(notes, _note_id(payload))
+        if note is None:
+            raise ValueError("nota não encontrada")
+        ids_raw = payload.get("box_ids")
+        wanted = {_text(x, 40) for x in ids_raw if _text(x, 40)} if isinstance(ids_raw, list) else set()
+        members = [b for b in note["boxes"] if b["id"] in wanted]
+        if not members:
+            raise ValueError("caixa não encontrada")
+        dx = _clamp(payload.get("dx"), -BOARD_W, BOARD_W, 0)
+        dy = _clamp(payload.get("dy"), -BOARD_H, BOARD_H, 0)
+        for box in members:
+            box["x"] = _clamp(box["x"] + dx, 0, BOARD_W)
+            box["y"] = _clamp(box["y"] + dy, 0, BOARD_H)
+        # anotações presas a estas caixas vão com elas
+        strokes, shapes = _bound_draw(note, [b["id"] for b in members])
+        _shift_draw(strokes, shapes, dx, dy)
         _stamp(note)
 
     elif action == "delete_box":
@@ -587,6 +714,10 @@ def _apply_action(payload):
         drop_images(gone)
         note["boxes"] = [b for b in note["boxes"] if b["id"] != box_id]
         note["connectors"] = [c for c in note["connectors"] if c["from"] != box_id and c["to"] != box_id]
+        # as anotações feitas por cima desta caixa desaparecem com ela (o ↺
+        # devolve tudo, caixa e anotações)
+        note["strokes"] = [s for s in note["strokes"] if s.get("box") != box_id]
+        note["shapes"] = [s for s in note["shapes"] if s.get("box") != box_id]
         _stamp(note)
 
     elif action == "delete_boxes":
@@ -602,6 +733,9 @@ def _apply_action(payload):
         note["boxes"] = [b for b in note["boxes"] if b["id"] not in wanted]
         note["connectors"] = [c for c in note["connectors"]
                               if c["from"] not in wanted and c["to"] not in wanted]
+        # ver delete_box: as anotações presas a estas caixas vão com elas
+        note["strokes"] = [s for s in note["strokes"] if s.get("box") not in wanted]
+        note["shapes"] = [s for s in note["shapes"] if s.get("box") not in wanted]
         drop_unused_images(data, gone)
         _stamp(note)
 
@@ -679,7 +813,12 @@ def _apply_action(payload):
         points_raw = payload.get("points")
         if isinstance(points_raw, list) and len(points_raw) > MAX_STROKE_POINTS:
             raise ValueError("traço demasiado longo")
-        stroke = normalize_stroke({"id": new_id("s"), "points": points_raw, "color": payload.get("color")})
+        # desenhado por cima de uma caixa (imagem): fica preso a ela
+        bind = _text(payload.get("box"), 40)
+        if bind and not _find(note["boxes"], bind):
+            bind = ""
+        stroke = normalize_stroke({"id": new_id("s"), "points": points_raw,
+                                   "color": payload.get("color"), "box": bind})
         if stroke is None:
             raise ValueError("traço inválido")
         note["strokes"].append(stroke)
@@ -701,10 +840,14 @@ def _apply_action(payload):
             raise ValueError("nota não encontrada")
         if len(note["shapes"]) >= MAX_SHAPES:
             raise ValueError("demasiadas formas")
+        # ver add_stroke: forma desenhada por cima de uma caixa fica presa a ela
+        bind = _text(payload.get("box"), 40)
+        if bind and not _find(note["boxes"], bind):
+            bind = ""
         shape = normalize_shape({"id": new_id("sh"), "kind": payload.get("kind"),
                                  "x1": payload.get("x1"), "y1": payload.get("y1"),
                                  "x2": payload.get("x2"), "y2": payload.get("y2"),
-                                 "color": payload.get("color")})
+                                 "color": payload.get("color"), "box": bind})
         if shape is None:
             raise ValueError("forma inválida")
         note["shapes"].append(shape)
@@ -737,8 +880,26 @@ def _apply_action(payload):
             color = str(payload.get("color") or "plain").strip().lower()
             if color not in DRAW_COLORS:
                 color = "plain"
-            note["connectors"].append({"id": new_id("c"), "from": from_id, "to": to_id, "color": color})
+            note["connectors"].append({"id": new_id("c"), "from": from_id, "to": to_id,
+                                       "color": color,
+                                       "label": _text(payload.get("label"), MAX_CONN_LABEL)})
             _stamp(note)
+
+    elif action == "update_connector":
+        # dar (ou tirar) um nome a uma ligação — e mudar-lhe a cor, se um dia
+        # for preciso; o nome vazio simplesmente deixa a linha sem legenda
+        note = _find(notes, _text(payload.get("id"), 40))
+        if note is None:
+            raise ValueError("nota não encontrada")
+        connector = _find(note["connectors"], _text(payload.get("connector_id"), 40))
+        if connector is None:
+            raise ValueError("ligação não encontrada")
+        if payload.get("label") is not None:
+            connector["label"] = _text(payload.get("label"), MAX_CONN_LABEL)
+        if payload.get("color") is not None:
+            color = str(payload.get("color") or "plain").strip().lower()
+            connector["color"] = color if color in DRAW_COLORS else "plain"
+        _stamp(note)
 
     elif action == "delete_connector":
         note = _find(notes, _text(payload.get("id"), 40))
@@ -818,6 +979,13 @@ def _apply_action(payload):
             h = abs(s["y2"] - s["y1"])
             if _inside(x, y, w, h):
                 shape_members.append(s)
+        # anotações presas a uma caixa do grupo andam com ela mesmo que a
+        # moldura não as contenha por inteiro (e nunca andam duas vezes)
+        bound_strokes, bound_shapes = _bound_draw(note, [b["id"] for b in members])
+        seen = {s["id"] for s in stroke_members}
+        stroke_members += [s for s in bound_strokes if s["id"] not in seen]
+        seen = {s["id"] for s in shape_members}
+        shape_members += [s for s in bound_shapes if s["id"] not in seen]
 
         frame["x"] = _clamp(frame["x"] + dx, 0, BOARD_W)
         frame["y"] = _clamp(frame["y"] + dy, 0, BOARD_H)
@@ -849,10 +1017,13 @@ def _apply_action(payload):
 
     new_box = data.pop("new_box", "")
     new_boxes = data.pop("new_boxes", [])
+    new_note = data.pop("new_note", "")
     clean = normalize_notepad(data)
     save_notepad(clean)
     if new_box:
         clean["new_box"] = new_box
     if new_boxes:
         clean["new_boxes"] = new_boxes
+    if new_note:
+        clean["new_note"] = new_note
     return clean

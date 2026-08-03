@@ -9,6 +9,67 @@ $('fbName').addEventListener('change', () => {
   if (v) localStorage.setItem('bsp-tracker-fb-name', v);
 });
 
+// ---------- página onde o utilizador estava (opcional) ----------
+// Vem preenchida sozinha com o separador de onde se veio para o feedback; quem
+// não quiser indicá-la limpa o campo (✕) e ela deixa de seguir no reporte.
+let fbLastView = null;      // vista anterior à do feedback
+let fbPageTouched = false;  // o utilizador escreveu/limpou: não voltar a preencher
+
+// textos deste campo (o resto da página é traduzido em settings.js/applyLang)
+const FB_PAGE_TR = {
+  lbl: ["Página (opcional)", "Page (optional)"],
+  ph: ["Onde estavas na app…", "Where you were in the app…"],
+  clear: ["Não indicar a página", "Don't include the page"],
+};
+const fbPageT = key => FB_PAGE_TR[key][LANG === "en" ? 1 : 0];
+
+function applyFbPageLang() {
+  const lbl = document.querySelector('label[for="fbPage"]');
+  if (lbl) lbl.textContent = fbPageT("lbl");
+  $("fbPage").placeholder = fbPageT("ph");
+  $("fbPageClear").title = fbPageT("clear");
+}
+
+// vista a propor: a que está no ecrã (no ecrã dividido o feedback pode estar
+// ao lado da vista real) ou, se só o feedback estiver visível, a anterior
+function fbDetectedView() {
+  if (currentView && currentView !== "feedback") return currentView;
+  return fbLastView;
+}
+
+function fbSyncPage() {
+  if (fbPageTouched) return;
+  const view = fbDetectedView();
+  const label = view ? (tabLabel(view) || "").trim() : "";
+  $("fbPage").value = view ? (label || view) : "";
+}
+
+// showView() é a única porta de entrada das vistas: guarda-se aqui a vista
+// anterior, porque quando o formulário é preenchido a vista já é "feedback"
+(function hookFbPageDetection() {
+  const base = window.showView;
+  if (typeof base !== "function") return;
+  window.showView = function (name) {
+    const prev = currentView;
+    base(name);
+    if (name === "feedback" && prev && prev !== "feedback") fbLastView = prev;
+    if (name === "feedback" || sideView === "feedback") fbSyncPage();
+  };
+})();
+
+$("fbPage").addEventListener("input", () => { fbPageTouched = true; });
+
+$("fbPageClear").addEventListener("click", () => {
+  $("fbPage").value = "";
+  fbPageTouched = true;
+  $("fbPage").focus();
+});
+
+applyFbPageLang();
+fbSyncPage();
+// a mudança de idioma corre em settings.js; o setTimeout deixa o LANG já novo
+$("langSel").addEventListener("change", () => setTimeout(applyFbPageLang, 0));
+
 function renderFbList() {
   $("fbList").innerHTML = fbImages.length
     ? `${t("imgs")} ` + fbImages.map((it, i) =>
@@ -69,13 +130,18 @@ $("fbSend").addEventListener("click", async () => {
     const res = await fetch("/api/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: $('fbName').value.trim() || PERSON, text, images }),
+      body: JSON.stringify({
+        name: $('fbName').value.trim() || PERSON, text, images,
+        page: $("fbPage").value.trim(),
+      }),
     });
     const out = await res.json();
     if (out.ok) {
       $("fbText").value = "";
       fbImages = [];
       renderFbList();
+      fbPageTouched = false;    // o próximo reporte volta a propor a página
+      fbSyncPage();
       $("fbStatus").textContent = out.pending
         ? t("fb_pending")
         : `${t("fb_sent")} feedback\\${out.folder}.`;

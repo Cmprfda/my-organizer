@@ -184,13 +184,29 @@ applyTheme();
 
 // fonte dos dados: ficheiro local ou o livro no OneDrive lido pela API do
 // Excel (Microsoft Graph). O bloco só aparece se o servidor estiver configurado.
-let graphInfo = { configured: false, connected: false, code: "", url: "", pending: false, error: "" };
+let graphInfo = { configured: false, connected: false, code: "", url: "", pending: false, error: "",
+                  account_email: "", account_name: "" };
 let graphPoll = null;
 // prova ao vivo (não só o prazo do token em cache) de que o pedido de 20 em 20
 // segundos ao OneDrive falhou por falta de rede — ver checkForChanges() em main.js
 let liveOffline = false;
 // motivo dessa falha, para o distintivo o poder explicar em vez de só ficar vermelho
 let liveError = "";
+
+// conta Microsoft memorizada no servidor (só email/nome — o token nunca sai de
+// lá). Mostra-se para se saber qual é a identidade que vai ser reutilizada: o
+// servidor renova a sessão sozinho e, se algum dia tiver de pedir autenticação
+// outra vez, a lista de contas da Microsoft já vem com esta escolhida.
+function graphAccountLine() {
+  const mail = graphInfo.account_email || "";
+  if (!mail) return "";
+  const en = LANG === "en";
+  const lbl = graphInfo.connected
+    ? (en ? "Signed in as" : "Sessão de")
+    : (en ? "Reconnects as" : "Religa como");
+  const quem = graphInfo.account_name ? `${graphInfo.account_name} · ${mail}` : mail;
+  return `<br><span class="graphAcct" style="opacity:.75">${esc(lbl)}: ${esc(quem)}</span>`;
+}
 
 function renderGraphState() {
   $("sourceSel").value = SOURCE;
@@ -210,7 +226,9 @@ function renderGraphState() {
   if (falhaViva) txt = `${t("conn_web_err")}${liveError ? ` — ${liveError}` : ""}`;
   const cor = graphInfo.connected && !falhaViva ? "ok" : (graphInfo.pending ? "" : "err");
   $("graphState").innerHTML = `<span class="stateDot ${cor}"></span>` +
-    esc(graphInfo.error && !graphInfo.pending ? `${txt} — ${graphInfo.error}` : txt);
+    esc(graphInfo.error && !graphInfo.pending ? `${txt} — ${graphInfo.error}` : txt) +
+    graphAccountLine();
+  $("graphState").title = graphInfo.account_email || "";
   $("graphBtn").textContent = graphInfo.connected ? t("graph_disconnect") : t("graph_connect");
   // sem client_id só há a via da Azure CLI, que se gere fora da app
   const usable = graphInfo.connected ? graphInfo.method !== "cli" : graphInfo.can_login;

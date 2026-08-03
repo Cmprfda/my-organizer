@@ -18,13 +18,26 @@ let noteStrokeColor = "yellow";
 let noteDrawSel = [];         // [{ type: "stroke"|"shape"|"connector", id }] selecionados
 let noteConnectFrom = null;   // { id } da caixa já escolhida ao ligar duas caixas
 let noteClip = [];            // caixas copiadas com Ctrl+C (só nesta janela)
+let noteEditBox = "";         // caixa cujo texto está a ser escrito (mostra o textarea)
 const NOTE_MIN_W = 120, NOTE_MIN_H = 80;
 const NOTE_BOARD = 4000;
+const NOTE_CONN_LABEL_MAX = 60;   // igual ao limite do servidor (MAX_CONN_LABEL)
+const NOTE_CONN_LABEL_DY = 9;     // nome da ligação: por cima do meio da linha
+const NOTE_CONN_DEL_DY = 18;      // ✕ de apagar: por baixo, longe do nome e da linha
 const NOTE_PASTE_OFFSET = 24;   // desvio da cópia colada em relação à original
+// texto das caixas: marcadores leves (à maneira do Markdown) para negrito e
+// riscado, três espaços por nível na árvore e o tamanho da tabela que o botão
+// da barra de ferramentas escreve
+const NOTE_BOLD = "**", NOTE_STRIKE = "~~";
+const NOTE_OUTLINE_STEP = "   ";
+const NOTE_TABLE_COLS = 3, NOTE_TABLE_ROWS = 3;
 const NOTE_ZOOM_MIN = 0.25, NOTE_ZOOM_MAX = 2, NOTE_ZOOM_STEP = 0.1;
 let noteZoom = Math.min(NOTE_ZOOM_MAX, Math.max(NOTE_ZOOM_MIN,
   parseFloat(localStorage.getItem("bsp-tracker-note-zoom")) || 1));
 let noteFull = false;  // quadro em ecrã inteiro
+// em ecrã inteiro: coluna das notas recolhida numa faixa estreita (por omissão
+// sim — é o que dá mais espaço ao quadro)
+let noteRail = localStorage.getItem("bsp-tracker-note-rail") !== "0";
 const NOTE_SIDE_MIN = 200, NOTE_SIDE_MAX = 480;
 let noteSideW = Math.min(NOTE_SIDE_MAX, Math.max(NOTE_SIDE_MIN,
   parseInt(localStorage.getItem("bsp-tracker-note-side-w"), 10) || 250));
@@ -113,6 +126,7 @@ function noteRowHtml(n, depth) {
       <span class="noteRowTitle">${esc(n.title)}</span>
       <span class="noteRowMeta">${esc(bits.join(" · "))}</span>
     </button>
+    <button type="button" class="noteMini" data-ndup="${esc(n.id)}" title="${esc(t("t_note_dup"))}">⧉</button>
     <button type="button" class="noteMini" data-ndel="${esc(n.id)}" title="${esc(t("t_note_del"))}">✕</button>
   </div>`;
 }
@@ -236,20 +250,262 @@ async function commitNotePath(raw) {
   await postNotepad({ action: "rename_note", id: note.id, title });
 }
 
+// ---------- texto das caixas: negrito, riscado e tabelas ----------
+// O que se guarda continua a ser texto simples (o servidor só lhe corta o
+// tamanho): **negrito**, ~~riscado~~ e tabelas escritas em "| coluna |".
+// Enquanto não se está a escrever nessa caixa mostra-se a vista formatada
+// (.noteBoxTextView); ao clicar aparece o texto com os marcadores à vista, no
+// mesmo <textarea> de sempre.
+
+// as linhas do texto, cada uma com o índice onde começa no texto original
+function noteTextLines(text) {
+  const out = [];
+  let at = 0;
+  for (const line of String(text).split("\n")) {
+    out.push({ text: line, at });
+    at += line.length + 1;
+  }
+  return out;
+}
+
+const NOTE_ROW_RE = /^\s*\|.*\|\s*$/;                    // "| a | b |"
+const NOTE_SEP_RE = /^\s*\|[\s|:-]*-[\s|:-]*\|\s*$/;     // "| --- | --- |"
+
+// bloco de tabela a começar na linha `i`: cabeçalho, linha de separação e as
+// linhas de dados que vierem a seguir
+function noteTableBlock(lines, i) {
+  if (!NOTE_ROW_RE.test(lines[i].text) || NOTE_SEP_RE.test(lines[i].text)) return null;
+  if (!lines[i + 1] || !NOTE_SEP_RE.test(lines[i + 1].text)) return null;
+  let end = i + 2;
+  while (end < lines.length && NOTE_ROW_RE.test(lines[end].text) && !NOTE_SEP_RE.test(lines[end].text)) end++;
+  return { head: lines[i], body: lines.slice(i + 2, end), count: end - i };
+}
+
+// células de uma linha "| a | b |", cada uma com o índice do seu texto no
+// texto original (é o que põe o cursor na célula onde se clicou)
+function noteTableCells(line) {
+  const first = line.text.indexOf("|"), last = line.text.lastIndexOf("|");
+  const cells = [];
+  let at = line.at + first + 1;
+  for (const part of line.text.slice(first + 1, last).split("|")) {
+    const lead = part.length - part.trimStart().length;
+    cells.push({ text: part.trim(), at: at + lead });
+    at += part.length + 1;
+  }
+  return cells;
+}
+
+// **negrito** e ~~riscado~~ dentro de uma linha; um marcador sem par fica
+// texto normal. `out.map` recebe, por cada caractere visível, o índice dele no
+// texto original (os marcadores não são visíveis, por isso não entram)
+function noteRichInline(text, at, out) {
+  const open = [];
+  let i = 0;
+  while (i < text.length) {
+    const mark = text.startsWith(NOTE_BOLD, i) ? NOTE_BOLD
+      : text.startsWith(NOTE_STRIKE, i) ? NOTE_STRIKE : "";
+    if (mark) {
+      const tag = mark === NOTE_BOLD ? "strong" : "s";
+      if (open[open.length - 1] === tag) {
+        open.pop();
+        out.html += `</${tag}>`;
+        i += mark.length;
+        continue;
+      }
+      if (text.indexOf(mark, i + mark.length) >= 0) {
+        open.push(tag);
+        out.html += `<${tag}>`;
+        i += mark.length;
+        continue;
+      }
+    }
+    out.map.push(at + i);
+    out.html += esc(text[i]);
+    i += 1;
+  }
+  while (open.length) out.html += `</${open.pop()}>`;
+}
+
+// IMPORTANTE: nada de espaços nem mudanças de linha entre as etiquetas da
+// tabela — só o texto das células é que pode ser texto, senão o mapa deixava
+// de casar com o que o browser vê (ver noteViewRawIndex)
+function noteTableHtml(table, out) {
+  out.html += `<table class="noteBoxTable"><thead><tr>`;
+  for (const cell of noteTableCells(table.head)) {
+    out.html += `<th data-at="${cell.at}">`;
+    noteRichInline(cell.text, cell.at, out);
+    out.html += `</th>`;
+  }
+  out.html += `</tr></thead>`;
+  if (table.body.length) {
+    out.html += `<tbody>`;
+    for (const row of table.body) {
+      out.html += `<tr>`;
+      for (const cell of noteTableCells(row)) {
+        out.html += `<td data-at="${cell.at}">`;
+        noteRichInline(cell.text, cell.at, out);
+        out.html += `</td>`;
+      }
+      out.html += `</tr>`;
+    }
+    out.html += `</tbody>`;
+  }
+  out.html += `</table>`;
+}
+
+// HTML da vista de uma caixa + o mapa "caractere visível -> índice no texto"
+function noteRichRender(text) {
+  const out = { html: "", map: [] };
+  const lines = noteTextLines(text);
+  let i = 0;
+  let prevText = false;   // a linha anterior é texto normal: precisa do \n
+  while (i < lines.length) {
+    const table = noteTableBlock(lines, i);
+    if (table) {
+      noteTableHtml(table, out);
+      i += table.count;
+      prevText = false;    // a tabela é um bloco: já muda de linha sozinha
+      continue;
+    }
+    if (prevText) {
+      out.map.push(lines[i].at - 1);
+      out.html += "\n";    // a vista usa white-space: pre-wrap
+    }
+    noteRichInline(lines[i].text, lines[i].at, out);
+    prevText = true;
+    i += 1;
+  }
+  return out;
+}
+
+function noteBoxViewHtml(text) {
+  return String(text || "").trim()
+    ? noteRichRender(text).html
+    : `<span class="noteBoxPh">${esc(t("ph_box"))}</span>`;
+}
+
+// ---------- copiar o texto de uma caixa ----------
+// O que vai para a área de transferência é o texto como se lê na caixa, não os
+// marcadores: **negrito** e ~~riscado~~ perdem os marcadores (o par sem
+// fecho fica texto, como na vista) e cada linha de tabela passa a células
+// separadas por tabulação — assim cola-se direto no Excel, no Outlook ou no chat.
+function noteMarkPlain(text) {
+  const open = [];
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const mark = text.startsWith(NOTE_BOLD, i) ? NOTE_BOLD
+      : text.startsWith(NOTE_STRIKE, i) ? NOTE_STRIKE : "";
+    if (mark) {
+      if (open[open.length - 1] === mark) { open.pop(); i += mark.length; continue; }
+      if (text.indexOf(mark, i + mark.length) >= 0) { open.push(mark); i += mark.length; continue; }
+    }
+    out += text[i];
+    i += 1;
+  }
+  return out;
+}
+
+function noteTableRowPlain(line) {
+  return noteTableCells(line).map(cell => noteMarkPlain(cell.text)).join("\t");
+}
+
+function noteBoxPlainText(text) {
+  const lines = noteTextLines(String(text || ""));
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const table = noteTableBlock(lines, i);
+    if (table) {
+      // a linha de separação ("| --- |") é só grelha: não se copia
+      out.push(noteTableRowPlain(table.head));
+      for (const row of table.body) out.push(noteTableRowPlain(row));
+      i += table.count;
+      continue;
+    }
+    out.push(noteMarkPlain(lines[i].text));
+    i += 1;
+  }
+  return out.join("\n").trim();
+}
+
+// ✓ por um instante no botão: confirma a cópia mesmo com o toast já cheio
+function flashNoteCopied(btn) {
+  if (!btn) return;
+  btn.classList.add("copied");
+  setTimeout(() => btn.classList.remove("copied"), 1200);
+}
+
+// o texto que a caixa tem NESTE momento: se está a ser escrita, o do campo
+// (ainda pode não ter sido gravado); se não, o do modelo
+function noteBoxText(note, boxId) {
+  const area = $("noteCanvas").querySelector(`[data-btext="${CSS.escape(boxId)}"]`);
+  if (area) return area.value;
+  const model = (note.boxes || []).find(b => b.id === boxId);
+  return model ? model.text || "" : "";
+}
+
+function copyNoteBox(note, boxId, btn) {
+  const plain = noteBoxPlainText(noteBoxText(note, boxId));
+  if (!plain) { toast(t("note_box_copy_empty")); return; }
+  if (typeof copyToClipboard !== "function") { toast(t("copy_err"), "err"); return; }
+  // copyToClipboard (copymenu.js) já trata da falta de permissões (volta ao
+  // método antigo) e avisa com um toast em qualquer dos casos
+  copyToClipboard(plain);
+  flashNoteCopied(btn);
+}
+
+// onde é que um clique na vista caiu, em índice do texto original (-1 = fora
+// do texto, e aí o cursor vai para o fim)
+function noteViewRawIndex(view, text, clientX, clientY) {
+  let node = null, offset = 0;
+  if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(clientX, clientY);
+    if (range) { node = range.startContainer; offset = range.startOffset; }
+  } else if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(clientX, clientY);
+    if (pos) { node = pos.offsetNode; offset = pos.offset; }
+  }
+  if (!node || !view.contains(node)) return -1;
+  if (node.nodeType !== Node.TEXT_NODE) {
+    // célula de tabela vazia (não tem texto onde pousar o cursor)
+    const cell = node.closest ? node.closest("[data-at]") : null;
+    return cell ? +cell.dataset.at : -1;
+  }
+  const map = noteRichRender(text).map;
+  const walker = document.createTreeWalker(view, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  while (walker.nextNode()) {
+    if (walker.currentNode === node) {
+      const plain = seen + Math.min(offset, walker.currentNode.nodeValue.length);
+      if (map[plain] != null) return map[plain];
+      return map.length ? map[map.length - 1] + 1 : -1;
+    }
+    seen += walker.currentNode.nodeValue.length;
+  }
+  return -1;
+}
+
 // ---------- quadro ----------
 function noteBoxHtml(b) {
   const img = b.image
     ? `<img class="noteBoxImg" src="/api/notepad/img/${encodeURIComponent(b.image)}" alt=""
         draggable="false" title="${esc(t("t_box_img"))}">`
     : "";
-  return `<div class="noteBox c-${esc(b.color)}${noteSelBoxes.includes(b.id) ? " sel" : ""}" data-bid="${esc(b.id)}"
+  const cls = `noteBox c-${esc(b.color)}${noteSelBoxes.includes(b.id) ? " sel" : ""}` +
+    (noteEditBox === b.id ? " editing" : "");
+  return `<div class="${cls}" data-bid="${esc(b.id)}"
     style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px">
     <div class="noteBoxBar" title="${esc(t("t_box_drag"))}">
       <span class="noteBoxGrip">⠿</span>
+      <button type="button" class="noteBoxFmt" data-bfmt="bold" title="${esc(t("t_box_bold"))}"><b>B</b></button>
+      <button type="button" class="noteBoxFmt" data-bfmt="strike" title="${esc(t("t_box_strike"))}"><s>S</s></button>
+      <button type="button" class="noteBoxCopy" data-bcopy="${esc(b.id)}" title="${esc(t("t_box_copy"))}">⧉</button>
       <button type="button" class="noteBoxColor" data-bcolor="${esc(b.id)}" title="${esc(t("t_box_color"))}"></button>
       <button type="button" data-bdel="${esc(b.id)}" title="${esc(t("t_box_del"))}">✕</button>
     </div>
-    <div class="noteBoxBody">${img}<textarea class="noteBoxText" data-btext="${esc(b.id)}"
+    <div class="noteBoxBody">${img}<div class="noteBoxTextView" data-bview="${esc(b.id)}"
+      title="${esc(t("t_box_text"))}">${noteBoxViewHtml(b.text)}</div><textarea class="noteBoxText" data-btext="${esc(b.id)}"
       placeholder="${esc(t("ph_box"))}">${esc(b.text)}</textarea></div>
     <div class="noteBoxSize" data-bsize="${esc(b.id)}" title="${esc(t("t_box_size"))}"></div>
   </div>`;
@@ -275,8 +531,100 @@ function noteFrameHtml(f) {
 }
 
 // ---------- camada de desenho: traços à mão e formas ----------
+// Há DUAS camadas: a de baixo (#noteDrawLayer) fica por baixo das caixas, como
+// sempre, e a de cima (#noteDrawTop) fica por cima delas — é lá que vivem as
+// anotações presas a uma caixa (`box`), para se poder desenhar por cima de uma
+// imagem e ver o traço. Um traço solto (sem `box`) continua na camada de baixo.
+function noteDrawLayers() {
+  return [$("noteDrawLayer"), $("noteDrawTop")].filter(Boolean);
+}
+
+// procura um traço/forma/ligação nas duas camadas
+function noteDrawFind(attr, id) {
+  const sel = `[${attr}="${CSS.escape(id)}"]`;
+  for (const layer of noteDrawLayers()) {
+    const el = layer.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
+
+// camada onde se desenha o que está a ser feito com o rato: sempre a de cima,
+// senão a pré-visualização desaparecia por baixo da caixa
+function noteDrawFrontLayer() {
+  return $("noteDrawTop") || $("noteDrawLayer");
+}
+
 function svgPoints(points) {
   return points.map(p => `${p.x},${p.y}`).join(" ");
+}
+
+// caixa com imagem debaixo deste ponto do quadro (a de cima, se estiverem
+// empilhadas): é a ela que fica preso um traço/forma desenhado ali
+function noteImageBoxAt(note, pt) {
+  const hits = (note.boxes || []).filter(b => b.image &&
+    pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h);
+  return hits.length ? hits[hits.length - 1].id : "";
+}
+
+// anotações presas a estas caixas, com a geometria de partida guardada (o
+// modelo pode mudar debaixo dos pés durante um arrasto)
+function noteBoundDraw(note, boxIds) {
+  const set = new Set((boxIds || []).filter(Boolean));
+  const strokes = set.size ? (note.strokes || []).filter(s => s.box && set.has(s.box)) : [];
+  const shapes = set.size ? (note.shapes || []).filter(s => s.box && set.has(s.box)) : [];
+  return {
+    strokes, shapes,
+    strokeBase: strokes.map(s => (s.points || []).map(p => ({ x: p.x, y: p.y }))),
+    shapeBase: shapes.map(s => ({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 })),
+  };
+}
+
+// escreve a geometria de uma forma num elemento SVG que já existe
+function noteShapeAttrs(el, kind, x1, y1, x2, y2) {
+  if (kind === "line") {
+    el.setAttribute("x1", x1); el.setAttribute("y1", y1);
+    el.setAttribute("x2", x2); el.setAttribute("y2", y2);
+    return;
+  }
+  const x = Math.min(x1, x2), y = Math.min(y1, y2);
+  const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+  if (kind === "rect") {
+    el.setAttribute("x", x); el.setAttribute("y", y);
+    el.setAttribute("width", w); el.setAttribute("height", h);
+    return;
+  }
+  el.setAttribute("cx", x + w / 2); el.setAttribute("cy", y + h / 2);
+  el.setAttribute("rx", w / 2); el.setAttribute("ry", h / 2);
+}
+
+// durante um arrasto: põe no ecrã (sem gravar) as anotações das caixas que
+// estão a andar — o mesmo papel que updateLiveConnectors faz às ligações
+function paintBoundDraw(bound, dx, dy) {
+  bound.strokes.forEach((s, i) => {
+    const el = noteDrawFind("data-sid", s.id);
+    if (el) el.setAttribute("points", svgPoints(bound.strokeBase[i].map(p => ({ x: p.x + dx, y: p.y + dy }))));
+  });
+  bound.shapes.forEach((s, i) => {
+    const el = noteDrawFind("data-shid", s.id);
+    if (!el) return;
+    const b = bound.shapeBase[i];
+    noteShapeAttrs(el, s.kind, b.x1 + dx, b.y1 + dy, b.x2 + dx, b.y2 + dy);
+  });
+}
+
+// fim do arrasto: o modelo local acompanha o desvio (o servidor faz o mesmo do
+// seu lado, ao gravar o movimento das caixas)
+function shiftBoundDraw(bound, dx, dy) {
+  if (!dx && !dy) return;
+  bound.strokes.forEach((s, i) => {
+    s.points = bound.strokeBase[i].map(p => ({ x: p.x + dx, y: p.y + dy }));
+  });
+  bound.shapes.forEach((s, i) => {
+    const b = bound.shapeBase[i];
+    s.x1 = b.x1 + dx; s.y1 = b.y1 + dy;
+    s.x2 = b.x2 + dx; s.y2 = b.y2 + dy;
+  });
 }
 
 function noteStrokeSvg(s) {
@@ -317,16 +665,35 @@ function noteConnectorEndpoints(fromRect, toRect) {
   };
 }
 
+function noteConnectorMid(pts) {
+  return { x: (pts.a.x + pts.b.x) / 2, y: (pts.a.y + pts.b.y) / 2 };
+}
+
 // ligação entre duas caixas: linha de borda a borda, refeita sempre que as
-// caixas mudam de sítio
+// caixas mudam de sítio. No meio da linha pode estar o nome da ligação (duplo
+// clique para o escrever) e, quando a ligação está selecionada, o ✕ que a
+// desfaz — o nome fica por cima da linha e o ✕ por baixo, nunca em cima um do
+// outro
 function noteConnectorSvg(note, c) {
   const a = note.boxes.find(b => b.id === c.from);
   const b = note.boxes.find(b => b.id === c.to);
   if (!a || !b) return "";
-  const sel = drawSelHas("connector", c.id) ? " sel" : "";
+  const sel = drawSelHas("connector", c.id);
   const pts = noteConnectorEndpoints(a, b);
-  return `<line class="noteConnector c-${esc(c.color)}${sel}" data-cid="${esc(c.id)}"
-    x1="${pts.a.x}" y1="${pts.a.y}" x2="${pts.b.x}" y2="${pts.b.y}" stroke-width="2"/>`;
+  const mid = noteConnectorMid(pts);
+  const label = c.label
+    ? `<text class="noteConnLabel" data-clabel="${esc(c.id)}"
+        x="${mid.x}" y="${mid.y - NOTE_CONN_LABEL_DY}">${esc(c.label)}<title>${esc(t("t_conn_label"))}</title></text>`
+    : "";
+  return `<line class="noteConnector c-${esc(c.color)}${sel ? " sel" : ""}" data-cid="${esc(c.id)}"
+    x1="${pts.a.x}" y1="${pts.a.y}" x2="${pts.b.x}" y2="${pts.b.y}" stroke-width="2"><title>${esc(t("t_connector"))}</title></line>` +
+    label +
+    `<g class="noteConnDel${sel ? " on" : ""}" data-cdel="${esc(c.id)}"
+      transform="translate(${mid.x},${mid.y + NOTE_CONN_DEL_DY})">
+      <circle class="noteConnDelBg" cx="0" cy="0" r="9"/>
+      <text class="noteConnDelX" x="0" y="0">✕</text>
+      <title>${esc(t("t_conn_del"))}</title>
+    </g>`;
 }
 
 // durante um arrasto: reposiciona no ecrã (sem gravar) as ligações que tocam
@@ -345,13 +712,30 @@ function updateLiveConnectors(note, overrides) {
     const pts = noteConnectorEndpoints(fromRect, toRect);
     el.setAttribute("x1", pts.a.x); el.setAttribute("y1", pts.a.y);
     el.setAttribute("x2", pts.b.x); el.setAttribute("y2", pts.b.y);
+    // o nome e o ✕ vivem no meio da linha: acompanham-na no mesmo instante
+    const mid = noteConnectorMid(pts);
+    const labelEl = layer.querySelector(`[data-clabel="${CSS.escape(c.id)}"]`);
+    if (labelEl) {
+      labelEl.setAttribute("x", mid.x);
+      labelEl.setAttribute("y", mid.y - NOTE_CONN_LABEL_DY);
+    }
+    const delEl = layer.querySelector(`[data-cdel="${CSS.escape(c.id)}"]`);
+    if (delEl) delEl.setAttribute("transform", `translate(${mid.x},${mid.y + NOTE_CONN_DEL_DY})`);
   }
 }
 
-function noteDrawSvgInner(note) {
+// camada de baixo: ligações e desenhos soltos (sem caixa) — como sempre
+function noteDrawSvgBack(note) {
   return (note.connectors || []).map(c => noteConnectorSvg(note, c)).join("") +
-    (note.strokes || []).map(noteStrokeSvg).join("") +
-    (note.shapes || []).map(noteShapeSvg).join("");
+    (note.strokes || []).filter(s => !s.box).map(noteStrokeSvg).join("") +
+    (note.shapes || []).filter(s => !s.box).map(noteShapeSvg).join("");
+}
+
+// camada de cima: só as anotações presas a uma caixa (ficam à vista por cima da
+// imagem que anotam)
+function noteDrawSvgFront(note) {
+  return (note.strokes || []).filter(s => s.box).map(noteStrokeSvg).join("") +
+    (note.shapes || []).filter(s => s.box).map(noteShapeSvg).join("");
 }
 
 // O quadro fica com a altura que sobra até ao fundo da página: a barra de
@@ -387,22 +771,54 @@ function renderNoteBoard(focusBoxId) {
   renderNoteLink(note);
   fitNoteCanvas();
   if (noteTyping && !focusBoxId) return;   // a escrever: não mexer nas caixas
+  // o quadro vai ser refeito: a caixa que estava a ser escrita (se não for a
+  // que vai ficar com o cursor) volta ao texto formatado — a gravação que
+  // estiver pendente lê o campo antigo, que continua a ter o texto
+  if (noteEditBox && noteEditBox !== focusBoxId) noteEditBox = "";
   const canvas = $("noteCanvas");
   const scroll = { left: canvas.scrollLeft, top: canvas.scrollTop };
   canvas.innerHTML = `<div class="noteZoomSizer" id="noteZoomSizer"><div class="noteSurface" id="noteSurface"
       style="width:${NOTE_BOARD}px;height:${NOTE_BOARD}px">` +
-    `<svg class="noteDrawLayer" id="noteDrawLayer" width="${NOTE_BOARD}" height="${NOTE_BOARD}">${noteDrawSvgInner(note)}</svg>` +
+    `<svg class="noteDrawLayer" id="noteDrawLayer" width="${NOTE_BOARD}" height="${NOTE_BOARD}">${noteDrawSvgBack(note)}</svg>` +
     (note.frames || []).map(noteFrameHtml).join("") +
     `<div class="noteCanvasHint" id="noteCanvasHint">${note.boxes.length ? "" : esc(t("note_canvas_hint"))}</div>` +
     note.boxes.map(noteBoxHtml).join("") +
+    // depois das caixas: as anotações presas a uma caixa (e o que se está a
+    // desenhar agora) ficam por cima delas
+    `<svg class="noteDrawLayer noteDrawTop" id="noteDrawTop" width="${NOTE_BOARD}" height="${NOTE_BOARD}">${noteDrawSvgFront(note)}</svg>` +
     `</div></div>`;
   applyNoteZoom();
   canvas.scrollLeft = scroll.left;
   canvas.scrollTop = scroll.top;
-  if (focusBoxId) {
-    const area = canvas.querySelector(`[data-btext="${CSS.escape(focusBoxId)}"]`);
-    if (area) area.focus();
+  if (focusBoxId) startNoteEdit(focusBoxId);
+}
+
+// ---------- escrever numa caixa: vista formatada <-> texto com marcadores ----------
+// `caretAt` é um índice no texto original (o que noteViewRawIndex devolve);
+// sem ele o cursor vai para o fim
+function startNoteEdit(boxId, caretAt) {
+  const boxEl = $("noteCanvas").querySelector(`[data-bid="${CSS.escape(boxId)}"]`);
+  if (!boxEl) return null;
+  const area = boxEl.querySelector("[data-btext]");
+  if (!area) return null;
+  noteEditBox = boxId;
+  boxEl.classList.add("editing");
+  area.focus();
+  const at = caretAt == null || caretAt < 0 ? area.value.length : Math.min(caretAt, area.value.length);
+  area.setSelectionRange(at, at);
+  return area;
+}
+
+// sair da escrita: a caixa volta a mostrar o texto formatado (sem refazer o
+// quadro todo — o resto pode estar a ser arrastado ou escrito)
+function endNoteEdit(area) {
+  const boxEl = area.closest(".noteBox");
+  if (boxEl) {
+    boxEl.classList.remove("editing");
+    const view = boxEl.querySelector("[data-bview]");
+    if (view) view.innerHTML = noteBoxViewHtml(area.value);
   }
+  if (noteEditBox === area.dataset.btext) noteEditBox = "";
 }
 
 function noteRefLabel(ref) {
@@ -525,6 +941,11 @@ $("noteTree").addEventListener("click", async e => {
     await postNotepad({ action: "rename_folder", id: folder.id, name: name.trim() });
     return;
   }
+  const ndup = e.target.closest("[data-ndup]");
+  if (ndup) {
+    await duplicateNoteById(notepad.notes.find(n => n.id === ndup.dataset.ndup));
+    return;
+  }
   const ndel = e.target.closest("[data-ndel]");
   if (ndel) {
     deleteNoteById(notepad.notes.find(n => n.id === ndel.dataset.ndel));
@@ -559,7 +980,7 @@ function noteDropTarget(el) {
 $("noteTree").addEventListener("dragstart", e => {
   const noteEl = e.target.closest("[data-nid]");
   if (noteEl) {
-    if (e.target.closest("[data-ndel]")) { e.preventDefault(); return; }   // ✕ : não arrastar
+    if (e.target.closest(".noteMini")) { e.preventDefault(); return; }   // ⧉ e ✕ : não arrastar
     noteDrag = { type: "note", id: noteEl.dataset.nid };
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", noteEl.dataset.nid);
@@ -616,6 +1037,21 @@ $("notePathInput").addEventListener("keydown", e => {
 });
 
 $("notePathInput").addEventListener("change", () => commitNotePath($("notePathInput").value));
+
+// copiar a nota inteira: caixas, desenhos, ligações, grupos e printscreens (o
+// servidor duplica os ficheiros das imagens, para as duas notas ficarem
+// independentes). A cópia fica logo a seguir à original e passa a ser a nota
+// aberta.
+async function duplicateNoteById(note) {
+  if (!note) return;
+  const out = await postNotepad({
+    action: "duplicate_note", id: note.id, title: tf("note_copy_title", note.title),
+  });
+  if (!out) return;
+  const twin = out.notepad.new_note;
+  toast(tf("note_duplicated", (noteById(twin) || {}).title || note.title), "ok");
+  if (twin) setCurrentNote(twin);
+}
 
 async function deleteNoteById(note) {
   if (!note || !confirm(tf("cfm_del_note", note.title))) return;
@@ -761,6 +1197,25 @@ $("noteZoomInBtn").addEventListener("click", () => setNoteZoom(noteZoom + NOTE_Z
 $("noteZoomOutBtn").addEventListener("click", () => setNoteZoom(noteZoom - NOTE_ZOOM_STEP));
 $("noteZoomLabel").addEventListener("click", () => setNoteZoom(1));
 
+// Em ecr\u00e3 inteiro a coluna das notas fica recolhida numa faixa estreita (e a
+// barra de ferramentas s\u00f3 com \u00edcones) para o quadro ficar com quase toda a
+// janela; pousar o rato na faixa abre a coluna por cima do quadro e o bot\u00e3o
+// \u00ab/\u00bb prende-a aberta. A escolha fica guardada para a pr\u00f3xima vez.
+function applyNoteRail() {
+  document.body.classList.toggle("notes-rail", noteFull && noteRail);
+  const btn = $("noteSideToggle");
+  if (!btn) return;
+  btn.textContent = noteRail ? "\u00bb" : "\u00ab";
+  btn.title = t(noteRail ? "t_note_side_open" : "t_note_side_close");
+}
+
+function setNoteRail(on) {
+  noteRail = !!on;
+  localStorage.setItem("bsp-tracker-note-rail", noteRail ? "1" : "0");
+  applyNoteRail();
+  fitNoteCanvas();
+}
+
 function toggleNoteFullscreen() {
   noteFull = !noteFull;
   document.body.classList.toggle("notes-full", noteFull);
@@ -768,9 +1223,12 @@ function toggleNoteFullscreen() {
   btn.querySelector(".noteToolIcon").textContent = noteFull ? "\u229F" : "\u26F6";
   btn.querySelector(".noteToolLabel").textContent = noteFull ? "Sair" : "Ecr\u00e3 inteiro";
   btn.title = noteFull ? "Sair do ecr\u00e3 inteiro (Esc)" : "Ecr\u00e3 inteiro";
+  applyNoteRail();
   fitNoteCanvas();
 }
 $("noteFullscreenBtn").addEventListener("click", toggleNoteFullscreen);
+$("noteSideToggle").addEventListener("click", () => setNoteRail(!noteRail));
+applyNoteRail();
 
 // Escape em ecr\u00e3 inteiro: sai (captura antes do split.js fechar o ecr\u00e3 dividido)
 document.addEventListener("keydown", e => {
@@ -824,13 +1282,16 @@ function paintNoteSel() {
   const canvas = $("noteCanvas");
   canvas.querySelectorAll(".noteBox").forEach(el =>
     el.classList.toggle("sel", noteSelBoxes.includes(el.dataset.bid)));
-  const layer = $("noteDrawLayer");
-  if (!layer) return;
-  layer.querySelectorAll(".sel").forEach(el => el.classList.remove("sel"));
+  const layers = noteDrawLayers();
+  if (!layers.length) return;
+  layers.forEach(layer => layer.querySelectorAll(".sel").forEach(el => el.classList.remove("sel")));
   for (const s of noteDrawSel) {
-    const el = layer.querySelector(`[${drawSelAttr(s.type)}="${CSS.escape(s.id)}"]`);
+    const el = noteDrawFind(drawSelAttr(s.type), s.id);
     if (el) el.classList.add("sel");
   }
+  // o ✕ que desfaz uma ligação só aparece na ligação escolhida
+  layers.forEach(layer => layer.querySelectorAll("[data-cdel]").forEach(el =>
+    el.classList.toggle("on", drawSelHas("connector", el.dataset.cdel))));
 }
 
 // clique simples numa caixa: passa a ser a única coisa selecionada
@@ -983,14 +1444,18 @@ function startCanvasBand(e) {
 function startPenDraw(e) {
   const note = currentNote();
   if (!note) return;
-  const pts = [canvasPoint(e)];
+  const start = canvasPoint(e);
+  const pts = [start];
+  // começou por cima de uma imagem: o traço fica preso a essa caixa e passa a
+  // andar com ela
+  const bind = noteImageBoxAt(note, start);
   const el = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
   el.setAttribute("class", `noteStroke c-${noteStrokeColor}`);
   el.setAttribute("fill", "none");
   el.setAttribute("stroke-width", "3");
   el.setAttribute("stroke-linecap", "round");
   el.setAttribute("stroke-linejoin", "round");
-  $("noteDrawLayer").appendChild(el);
+  noteDrawFrontLayer().appendChild(el);
   const paint = () => el.setAttribute("points", svgPoints(pts));
   paint();
   const move = ev => { pts.push(canvasPoint(ev)); paint(); };
@@ -1000,7 +1465,7 @@ function startPenDraw(e) {
     el.remove();
     if (pts.length < 2) return;   // clique simples: não cria nada
     pushNoteUndo(note);
-    postNotepad({ action: "add_stroke", id: note.id, points: pts, color: noteStrokeColor });
+    postNotepad({ action: "add_stroke", id: note.id, points: pts, color: noteStrokeColor, box: bind });
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
@@ -1011,29 +1476,17 @@ function startShapeDraw(e, kind) {
   if (!note) return;
   const start = canvasPoint(e);
   let last = start;
+  // ver startPenDraw: a começar por cima de uma imagem, a forma fica presa a
+  // essa caixa
+  const bind = noteImageBoxAt(note, start);
   const ns = "http://www.w3.org/2000/svg";
   const el = document.createElementNS(ns, kind === "line" ? "line" : kind === "rect" ? "rect" : "ellipse");
   el.setAttribute("class", `noteShape c-${noteStrokeColor}`);
   el.setAttribute("fill", "none");
   el.setAttribute("stroke-width", "3");
-  $("noteDrawLayer").appendChild(el);
+  noteDrawFrontLayer().appendChild(el);
 
-  const paint = () => {
-    if (kind === "line") {
-      el.setAttribute("x1", start.x); el.setAttribute("y1", start.y);
-      el.setAttribute("x2", last.x); el.setAttribute("y2", last.y);
-      return;
-    }
-    const x = Math.min(start.x, last.x), y = Math.min(start.y, last.y);
-    const w = Math.abs(last.x - start.x), h = Math.abs(last.y - start.y);
-    if (kind === "rect") {
-      el.setAttribute("x", x); el.setAttribute("y", y);
-      el.setAttribute("width", w); el.setAttribute("height", h);
-    } else {
-      el.setAttribute("cx", x + w / 2); el.setAttribute("cy", y + h / 2);
-      el.setAttribute("rx", w / 2); el.setAttribute("ry", h / 2);
-    }
-  };
+  const paint = () => noteShapeAttrs(el, kind, start.x, start.y, last.x, last.y);
   paint();
   const move = ev => { last = canvasPoint(ev); paint(); };
   const up = () => {
@@ -1042,7 +1495,11 @@ function startShapeDraw(e, kind) {
     el.remove();
     if (Math.abs(last.x - start.x) < 4 && Math.abs(last.y - start.y) < 4) return;   // clique simples: não cria nada
     pushNoteUndo(note);
-    postNotepad({ action: "add_shape", id: note.id, kind, x1: start.x, y1: start.y, x2: last.x, y2: last.y, color: noteStrokeColor });
+    postNotepad({
+      action: "add_shape", id: note.id, kind,
+      x1: start.x, y1: start.y, x2: last.x, y2: last.y,
+      color: noteStrokeColor, box: bind,
+    });
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
@@ -1063,11 +1520,15 @@ function startEraseDraw(e) {
     if (!el) return;
     const strokeEl = el.closest("[data-sid]");
     const shapeEl = el.closest("[data-shid]");
-    const connEl = el.closest("[data-cid]");
+    // o nome de uma ligação conta como parte dela: a borracha por cima do nome
+    // apaga a ligação, como se tivesse passado pela linha
+    const connEl = el.closest("[data-cid]") || el.closest("[data-clabel]");
     const hit = strokeEl ? { type: "stroke", id: strokeEl.dataset.sid, action: "delete_stroke", key: "stroke_id" }
       : shapeEl ? { type: "shape", id: shapeEl.dataset.shid, action: "delete_shape", key: "shape_id" }
-        : connEl ? { type: "connector", id: connEl.dataset.cid, action: "delete_connector", key: "connector_id" }
-          : null;
+        : connEl ? {
+          type: "connector", id: connEl.dataset.cid || connEl.dataset.clabel,
+          action: "delete_connector", key: "connector_id",
+        } : null;
     if (!hit) return;
     const key = `${hit.type}:${hit.id}`;
     if (erased.has(key)) return;
@@ -1164,14 +1625,20 @@ function startFrameDrag(e, frameEl, mode, corner = "se") {
     x >= base.x && y >= base.y && x + w <= base.x + base.w && y + h <= base.y + base.h;
   const members = mode === "move" ? note.boxes.filter(b => contains(b.x, b.y, b.w, b.h)) : [];
   const memberEls = members.map(b => $("noteCanvas").querySelector(`[data-bid="${CSS.escape(b.id)}"]`));
+  // desenhos que andam com o grupo: os que estão inteiros dentro da moldura e,
+  // além desses, as anotações presas a uma caixa do grupo (mesmo que o traço
+  // saia um pouco da moldura)
+  const memberIds = new Set(members.map(b => b.id));
   const strokeMembers = mode === "move"
-    ? (note.strokes || []).filter(s => (s.points || []).length && s.points.every(p => contains(p.x, p.y, 0, 0)))
+    ? (note.strokes || []).filter(s => (s.points || []).length &&
+      (s.points.every(p => contains(p.x, p.y, 0, 0)) || memberIds.has(s.box)))
     : [];
-  const strokeEls = strokeMembers.map(s => $("noteDrawLayer").querySelector(`[data-sid="${CSS.escape(s.id)}"]`));
+  const strokeEls = strokeMembers.map(s => noteDrawFind("data-sid", s.id));
   const shapeMembers = mode === "move"
-    ? (note.shapes || []).filter(s => contains(Math.min(s.x1, s.x2), Math.min(s.y1, s.y2), Math.abs(s.x2 - s.x1), Math.abs(s.y2 - s.y1)))
+    ? (note.shapes || []).filter(s => memberIds.has(s.box) ||
+      contains(Math.min(s.x1, s.x2), Math.min(s.y1, s.y2), Math.abs(s.x2 - s.x1), Math.abs(s.y2 - s.y1)))
     : [];
-  const shapeEls = shapeMembers.map(s => $("noteDrawLayer").querySelector(`[data-shid="${CSS.escape(s.id)}"]`));
+  const shapeEls = shapeMembers.map(s => noteDrawFind("data-shid", s.id));
 
   const move = ev => {
     const p = canvasPoint(ev);
@@ -1242,7 +1709,10 @@ function startFrameDrag(e, frameEl, mode, corner = "se") {
   window.addEventListener("pointerup", up);
 }
 
-// arrastar a barra move a caixa; o canto de baixo redimensiona-a
+// arrastar a barra move a caixa; o canto de baixo redimensiona-a. Se a caixa
+// agarrada fizer parte de uma seleção de várias caixas, mover uma move todas
+// (como acontece na moldura de grupo) — redimensionar continua a ser sempre só
+// da caixa agarrada
 function startBoxDrag(e, box, mode) {
   const note = currentNote();
   if (!note) return;
@@ -1255,21 +1725,56 @@ function startBoxDrag(e, box, mode) {
   const start = canvasPoint(e);
   const base = { x: model.x, y: model.y, w: model.w, h: model.h };
   const next = { ...base };
+  // as outras caixas da seleção (fora a agarrada), com a posição de partida
+  // guardada — o modelo pode mudar debaixo dos pés durante o arrasto
+  const mates = mode === "move" && noteSelBoxes.length > 1 && noteSelBoxes.includes(model.id)
+    ? noteSelBoxes.filter(id => id !== model.id)
+      .map(id => note.boxes.find(b => b.id === id))
+      .filter(Boolean)
+    : [];
+  const mateBase = mates.map(b => ({ x: b.x, y: b.y, w: b.w, h: b.h }));
+  const mateEls = mates.map(b => $("noteCanvas").querySelector(`[data-bid="${CSS.escape(b.id)}"]`));
+  // anotações desenhadas por cima das imagens destas caixas: andam com elas,
+  // como as ligações (redimensionar não mexe nos desenhos)
+  const bound = mode === "move"
+    ? noteBoundDraw(note, [model.id, ...mates.map(b => b.id)])
+    : noteBoundDraw(note, []);
+  // o grupo move-se todo ou não se move: os limites do quadro aplicam-se à
+  // caixa envolvente de tudo o que vai andar (assim a forma da seleção nunca
+  // se desfaz ao bater na borda)
+  const all = [base, ...mateBase];
+  const bounds = {
+    minX: Math.min(...all.map(b => b.x)),
+    minY: Math.min(...all.map(b => b.y)),
+    maxX: Math.max(...all.map(b => b.x + b.w)),
+    maxY: Math.max(...all.map(b => b.y + b.h)),
+  };
 
   const move = ev => {
     const p = canvasPoint(ev);
+    const overrides = {};
     if (mode === "move") {
-      next.x = Math.max(0, Math.min(NOTE_BOARD - base.w, base.x + p.x - start.x));
-      next.y = Math.max(0, Math.min(NOTE_BOARD - base.h, base.y + p.y - start.y));
+      const dx = Math.max(-bounds.minX, Math.min(NOTE_BOARD - bounds.maxX, p.x - start.x));
+      const dy = Math.max(-bounds.minY, Math.min(NOTE_BOARD - bounds.maxY, p.y - start.y));
+      next.x = base.x + dx;
+      next.y = base.y + dy;
       box.style.left = next.x + "px";
       box.style.top = next.y + "px";
+      mates.forEach((b, i) => {
+        const at = { x: mateBase[i].x + dx, y: mateBase[i].y + dy, w: mateBase[i].w, h: mateBase[i].h };
+        const el = mateEls[i];
+        if (el) { el.style.left = at.x + "px"; el.style.top = at.y + "px"; }
+        overrides[b.id] = at;
+      });
+      paintBoundDraw(bound, dx, dy);
     } else {
       next.w = Math.max(NOTE_MIN_W, Math.min(NOTE_BOARD, base.w + p.x - start.x));
       next.h = Math.max(NOTE_MIN_H, Math.min(NOTE_BOARD, base.h + p.y - start.y));
       box.style.width = next.w + "px";
       box.style.height = next.h + "px";
     }
-    updateLiveConnectors(note, { [model.id]: next });
+    overrides[model.id] = next;
+    updateLiveConnectors(note, overrides);
   };
   const up = () => {
     window.removeEventListener("pointermove", move);
@@ -1277,6 +1782,18 @@ function startBoxDrag(e, box, mode) {
     if (next.x === base.x && next.y === base.y && next.w === base.w && next.h === base.h) return;
     pushNoteUndo(note);   // antes de mexer no modelo local: guarda a posição antiga
     Object.assign(model, next);
+    // o servidor faz o mesmo desvio às anotações presas (ver update_box /
+    // move_boxes no notepad.py): aqui é só para o modelo local não ficar atrás
+    shiftBoundDraw(bound, next.x - base.x, next.y - base.y);
+    if (mates.length) {
+      const dx = next.x - base.x, dy = next.y - base.y;
+      mates.forEach((b, i) => { b.x = mateBase[i].x + dx; b.y = mateBase[i].y + dy; });
+      postNotepad({
+        action: "move_boxes", id: note.id,
+        box_ids: [model.id, ...mates.map(b => b.id)], dx, dy,
+      }, true);
+      return;
+    }
     postNotepad({ action: "update_box", id: note.id, box_id: model.id, ...next }, true);
   };
   window.addEventListener("pointermove", move);
@@ -1285,6 +1802,10 @@ function startBoxDrag(e, box, mode) {
 
 $("noteCanvas").addEventListener("pointerdown", e => {
   if (e.button !== 0) return;
+  // ✕ da ligação escolhida: quem o apaga é o tratador do `click`, mas aqui não
+  // pode nascer o retângulo de seleção — ele limpava a seleção e escondia o
+  // próprio ✕ antes de o clique lhe chegar
+  if (e.target.closest("[data-cdel]")) return;
   if (noteTool === "pen" || noteTool === "line" || noteTool === "rect" || noteTool === "ellipse" || noteTool === "eraser") {
     // com uma ferramenta de desenho (ou a borracha) ativa o clique é para
     // desenhar/apagar: não dar o foco (nem selecionar texto) à caixa que
@@ -1322,6 +1843,21 @@ $("noteCanvas").addEventListener("pointerdown", e => {
     toggleBoxSel(box.dataset.bid);
     return;
   }
+  // B / S / ⧉ : quem age é o tratador do clique — aqui não se pode tocar no
+  // foco, senão perdia-se a marcação do texto (ver o mousedown mais abaixo)
+  if (e.target.closest("[data-bfmt]") || e.target.closest("[data-bcopy]")) return;
+  // clicar no texto formatado passa a caixa para modo de escrita, com o cursor
+  // no sítio onde se clicou
+  const view = e.target.closest("[data-bview]");
+  if (view) {
+    e.preventDefault();
+    const note = currentNote();
+    const model = note ? note.boxes.find(b => b.id === view.dataset.bview) : null;
+    const at = model && model.text
+      ? noteViewRawIndex(view, model.text, e.clientX, e.clientY) : 0;
+    startNoteEdit(view.dataset.bview, at);
+    return;
+  }
   if (e.target.closest(".noteBoxBar") && !e.target.closest("button")) {
     startBoxDrag(e, box, "move");
     return;
@@ -1330,15 +1866,42 @@ $("noteCanvas").addEventListener("pointerdown", e => {
   notePoint = { x: +box.style.left.replace("px", "") || 0, y: +box.style.top.replace("px", "") || 0 };
 });
 
+// os botões B / S / ⧉ da caixa não podem tirar o foco (nem a marcação) ao texto
+// que está a ser escrito: o clique em si é tratado no `click`
+$("noteCanvas").addEventListener("mousedown", e => {
+  if (e.target.closest("[data-bfmt]") || e.target.closest("[data-bcopy]")) e.preventDefault();
+});
+
 const NOTE_COLORS = ["yellow", "blue", "green", "pink", "plain"];
 
 $("noteCanvas").addEventListener("click", e => {
   const note = currentNote();
   if (!note) return;
+  // B / S: marca a negrito ou riscado o que estiver escolhido no texto (sem
+  // nada escolhido, a palavra debaixo do cursor)
+  const fmt = e.target.closest("[data-bfmt]");
+  if (fmt) {
+    const boxEl = fmt.closest(".noteBox");
+    if (!boxEl) return;
+    const area = noteEditBox === boxEl.dataset.bid
+      ? boxEl.querySelector("[data-btext]")
+      : startNoteEdit(boxEl.dataset.bid);
+    if (area) toggleNoteMark(area, fmt.dataset.bfmt === "strike" ? NOTE_STRIKE : NOTE_BOLD);
+    return;
+  }
+  // ⧉ : todo o texto da caixa para a área de transferência
+  const cp = e.target.closest("[data-bcopy]");
+  if (cp) { copyNoteBox(note, cp.dataset.bcopy, cp); return; }
   const del = e.target.closest("[data-bdel]");
   if (del) {
     pushNoteUndo(note);
     postNotepad({ action: "delete_box", id: note.id, box_id: del.dataset.bdel });
+    return;
+  }
+  // ✕ da ligação selecionada: desfaz só essa ligação (mesmo caminho do Delete)
+  const cdel = e.target.closest("[data-cdel]");
+  if (cdel) {
+    deleteNoteSel(note, [], [{ type: "connector", id: cdel.dataset.cdel }]);
     return;
   }
   const frmren = e.target.closest("[data-frmrename]");
@@ -1366,6 +1929,9 @@ $("noteCanvas").addEventListener("click", e => {
     if (shapeEl) { selectDrawn({ type: "shape", id: shapeEl.dataset.shid }, add); return; }
     const connEl = e.target.closest("[data-cid]");
     if (connEl) { selectDrawn({ type: "connector", id: connEl.dataset.cid }, add); return; }
+    // clicar no nome da ligação é o mesmo que clicar na linha
+    const labelEl = e.target.closest("[data-clabel]");
+    if (labelEl) { selectDrawn({ type: "connector", id: labelEl.dataset.clabel }, add); return; }
   }
   const color = e.target.closest("[data-bcolor]");
   if (color) {
@@ -1478,6 +2044,89 @@ document.addEventListener("keydown", e => {
   closeNoteColorPop();
 }, true);
 
+// ---------- dar um nome a uma ligação: campo de texto junto à linha ----------
+// (nada de prompt() do browser: aqui o painel segue o mesmo padrão do painel
+// de cores, com Enter/✓ a confirmar e Esc a desistir)
+let noteLabelPop = null;   // { el, input, onDone } do painel aberto
+
+function closeNoteLabelPop(commit) {
+  if (!noteLabelPop) return;
+  const { el, input, onDone } = noteLabelPop;
+  const value = input.value.trim().slice(0, NOTE_CONN_LABEL_MAX);
+  noteLabelPop = null;
+  el.remove();
+  if (commit) onDone(value);
+}
+
+function openNoteLabelPop(clientX, clientY, current, onDone) {
+  closeNoteLabelPop(false);
+  const el = document.createElement("div");
+  el.className = "noteLabelPop";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "noteLabelInput";
+  input.maxLength = NOTE_CONN_LABEL_MAX;
+  input.placeholder = t("ph_conn_label");
+  input.value = current || "";
+  const ok = document.createElement("button");
+  ok.type = "button";
+  ok.className = "noteLabelOk";
+  ok.title = t("t_conn_label_ok");
+  ok.textContent = "✓";
+  el.appendChild(input);
+  el.appendChild(ok);
+  document.body.appendChild(el);
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = `${Math.max(6, Math.min(window.innerWidth - w - 6, clientX - w / 2))}px`;
+  el.style.top = `${Math.max(6, Math.min(window.innerHeight - h - 6, clientY + 12))}px`;
+  noteLabelPop = { el, input, onDone };
+  input.focus();
+  input.select();
+  input.addEventListener("keydown", ev => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    closeNoteLabelPop(true);
+  });
+  ok.addEventListener("click", () => closeNoteLabelPop(true));
+}
+
+// clicar fora guarda o que estiver escrito (é um campo de edição, não um menu)
+document.addEventListener("pointerdown", e => {
+  if (!noteLabelPop || e.target.closest(".noteLabelPop")) return;
+  closeNoteLabelPop(true);
+}, true);
+
+// em captura na janela (antes de qualquer tratador do document, incluindo o do
+// ecrã inteiro e o do ecrã dividido): com o painel aberto o Esc só desiste dele
+window.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !noteLabelPop) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  closeNoteLabelPop(false);
+}, true);
+
+// duplo clique numa ligação (na linha ou no nome dela) abre o campo do nome
+$("noteCanvas").addEventListener("dblclick", e => {
+  if (noteTool !== "select") return;
+  const note = currentNote();
+  if (!note) return;
+  const hit = e.target.closest("[data-cid]") || e.target.closest("[data-clabel]");
+  if (!hit) return;
+  const cid = hit.dataset.cid || hit.dataset.clabel;
+  const conn = (note.connectors || []).find(c => c.id === cid);
+  if (!conn) return;
+  e.preventDefault();
+  selectDrawn({ type: "connector", id: cid });
+  openNoteLabelPop(e.clientX, e.clientY, conn.label || "", value => {
+    const live = currentNote();   // a escolha chega depois: reler o estado
+    if (!live) return;
+    const cur = (live.connectors || []).find(c => c.id === cid);
+    if (!cur || (cur.label || "") === value) return;
+    pushNoteUndo(live);
+    postNotepad({ action: "update_connector", id: live.id, connector_id: cid, label: value });
+  });
+});
+
 // ---------- barra de ferramentas de desenho ----------
 // `add` = Ctrl/Shift+clique: junta (ou tira) o traço/forma/ligação à seleção
 function selectDrawn(sel, add) {
@@ -1503,9 +2152,16 @@ function setNoteTool(tool) {
   highlightConnectFrom(null);
 }
 
+// o botão da tabela escreve dentro da caixa que está a ser escrita: não lhe
+// pode tirar o foco (o mesmo que se faz com o B / S da caixa)
+$("noteToolbar").addEventListener("mousedown", e => {
+  if (e.target.closest("#noteTableBtn")) e.preventDefault();
+});
+
 $("noteToolbar").addEventListener("click", e => {
   const toolBtn = e.target.closest("[data-tool]");
   if (toolBtn) { setNoteTool(toolBtn.dataset.tool); return; }
+  if (e.target.closest("#noteTableBtn")) { insertNoteTable(); return; }
   if (e.target.closest("#noteToolColor")) {
     // a cor do traço é só do lado do browser: não há nada para gravar
     openNoteColorPop($("noteToolColor"), noteStrokeColor, next => {
@@ -1600,6 +2256,234 @@ function flushNoteText() {
   noteTextTimer = null;
 }
 
+// escrever no textarea como se tivesse sido escrito à mão: o `insertText` do
+// browser mantém o Ctrl+Z do campo a funcionar e dispara o `input` (que é quem
+// grava). Sem ele (ou a apagar texto sem pôr nada) faz-se à mão.
+function replaceNoteRange(area, from, to, text, selFrom, selTo) {
+  area.focus();
+  area.setSelectionRange(from, to);
+  let done = false;
+  if (text) {
+    try { done = document.execCommand("insertText", false, text); } catch (err) { done = false; }
+  }
+  if (!done) {
+    area.value = area.value.slice(0, from) + text + area.value.slice(to);
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  area.setSelectionRange(selFrom, selTo);
+}
+
+// põe (ou tira) **negrito** / ~~riscado~~ ao que estiver escolhido; sem nada
+// escolhido pega a palavra debaixo do cursor e, sem palavra, deixa os
+// marcadores prontos para se escrever lá dentro
+function toggleNoteMark(area, mark) {
+  const value = area.value;
+  const len = mark.length;
+  let from = area.selectionStart, to = area.selectionEnd;
+  if (from === to) {
+    let a = from, b = to;
+    while (a > 0 && !/[\s|]/.test(value[a - 1])) a--;
+    while (b < value.length && !/[\s|]/.test(value[b])) b++;
+    if (b > a) { from = a; to = b; }
+  }
+  const inner = value.slice(from, to);
+  // já marcado, com os marcadores de fora: tira-os
+  if (from >= len && value.slice(from - len, from) === mark && value.slice(to, to + len) === mark) {
+    replaceNoteRange(area, from - len, to + len, inner, from - len, to - len);
+    return;
+  }
+  // marcadores dentro do que está escolhido: tira-os também
+  if (inner.length >= 2 * len && inner.startsWith(mark) && inner.endsWith(mark)) {
+    replaceNoteRange(area, from, to, inner.slice(len, -len), from, to - 2 * len);
+    return;
+  }
+  replaceNoteRange(area, from, to, mark + inner + mark, from + len, to + len);
+}
+
+// ---------- árvores de texto (Tab / Shift+Tab / Enter) ----------
+// A convenção é a do papel: "-> raiz", "   |-> filho", "      |-> neto",
+// três espaços por nível. É só texto — não há modelo de árvore nenhum por baixo.
+function noteOutlineParse(line) {
+  const lead = (/^[ \t]*/.exec(line) || [""])[0];
+  const rest = line.slice(lead.length);
+  const mark = rest.startsWith("|->") ? "|->" : rest.startsWith("->") ? "->" : "";
+  if (!mark) return { level: -1, lead, body: rest };
+  const width = lead.replace(/\t/g, NOTE_OUTLINE_STEP).length;
+  return {
+    level: Math.floor(width / NOTE_OUTLINE_STEP.length),
+    lead,
+    body: rest.slice(mark.length).replace(/^ /, ""),
+  };
+}
+
+function noteOutlineBuild(level, body) {
+  if (level < 0) return body;
+  if (level === 0) return `-> ${body}`;
+  return `${NOTE_OUTLINE_STEP.repeat(level)}|-> ${body}`;
+}
+
+function noteOutlineShift(line, dir) {
+  const p = noteOutlineParse(line);
+  if (dir > 0) return noteOutlineBuild(p.level + 1, p.body);
+  if (p.level > 0) return noteOutlineBuild(p.level - 1, p.body);
+  if (p.level === 0) return p.body;
+  // linha sem árvore: Shift+Tab tira-lhe um nível de espaços à esquerda
+  return p.lead.replace(/(?: {1,3}|\t)$/, "") + p.body;
+}
+
+// Tab / Shift+Tab: desce ou sobe um nível todas as linhas que o cursor (ou o
+// que está escolhido) toca
+function noteOutlineTab(area, dir) {
+  const value = area.value;
+  const s = area.selectionStart, e = area.selectionEnd;
+  const from = s > 0 ? value.lastIndexOf("\n", s - 1) + 1 : 0;
+  // escolha a acabar exatamente numa mudança de linha: a linha seguinte não conta
+  const endRef = e > s && value[e - 1] === "\n" ? e - 1 : e;
+  let to = value.indexOf("\n", endRef);
+  if (to < 0) to = value.length;
+  const block = value.slice(from, to);
+  const next = block.split("\n").map(l => noteOutlineShift(l, dir)).join("\n");
+  if (next === block) return;
+  if (s === e) {
+    const at = Math.max(from, Math.min(from + next.length, s + next.length - block.length));
+    replaceNoteRange(area, from, to, next, at, at);
+    return;
+  }
+  replaceNoteRange(area, from, to, next, from, from + next.length);
+}
+
+// linha de tabela vazia com as mesmas colunas (e a mesma largura) de outra
+function noteTableEmptyRow(line) {
+  const first = line.indexOf("|"), last = line.lastIndexOf("|");
+  const cells = line.slice(first + 1, last).split("|")
+    .map(part => " ".repeat(Math.max(1, part.length)));
+  return line.slice(0, first + 1) + cells.join("|") + line.slice(last);
+}
+
+// Enter continua o que estava: outra linha no mesmo nível da árvore, ou outra
+// linha da tabela. Numa linha (ou linha de tabela) que ficou vazia, o Enter
+// limpa-a — é a maneira de sair da árvore/tabela. Shift+Enter é sempre o Enter
+// normal do campo.
+function noteOutlineEnter(area) {
+  const value = area.value;
+  const s = area.selectionStart, e = area.selectionEnd;
+  const from = s > 0 ? value.lastIndexOf("\n", s - 1) + 1 : 0;
+  let lineEnd = value.indexOf("\n", s);
+  if (lineEnd < 0) lineEnd = value.length;
+  const line = value.slice(from, lineEnd);
+  const atEnd = s === e && s === lineEnd;
+
+  if (NOTE_ROW_RE.test(line)) {
+    if (!atEnd) return false;
+    // só a ÚLTIMA linha de uma tabela reconhecida (cabeçalho + separador logo
+    // a seguir) é que acrescenta linha nova — sem esta confirmação, o Enter no
+    // cabeçalho ou no separador inseria a linha ali no meio e partia a tabela
+    // (deixava de ter o separador logo a seguir ao cabeçalho)
+    const lines = noteTextLines(value);
+    const k = lines.findIndex(l => l.at === from);
+    let j = k;
+    while (j > 0 && NOTE_ROW_RE.test(lines[j - 1].text)) j--;
+    const block = k >= 0 ? noteTableBlock(lines, j) : null;
+    if (!block || k !== j + block.count - 1) return false;
+    if (!NOTE_SEP_RE.test(line) && !line.replace(/\|/g, "").trim()) {
+      replaceNoteRange(area, from, lineEnd, "", from, from);   // linha vazia: sai da tabela
+      return true;
+    }
+    const row = noteTableEmptyRow(line);
+    // cursor logo dentro da primeira célula (depois do "| ")
+    const first = row.indexOf("|");
+    const at = s + 1 + first + (row[first + 1] === " " ? 2 : 1);
+    replaceNoteRange(area, s, e, `\n${row}`, at, at);
+    return true;
+  }
+
+  const p = noteOutlineParse(line);
+  if (p.level < 0) return false;   // linha normal: o Enter é o do campo
+  if (atEnd && !p.body.trim()) {
+    replaceNoteRange(area, from, lineEnd, "", from, from);   // só o prefixo: sai da árvore
+    return true;
+  }
+  const prefix = noteOutlineBuild(p.level, "");
+  const at = s + 1 + prefix.length;
+  replaceNoteRange(area, s, e, `\n${prefix}`, at, at);
+  return true;
+}
+
+// ---------- tabelas ----------
+// Uma tabela é texto simples em "| coluna |" dentro de uma caixa normal (não é
+// um tipo novo de caixa): quem lhe desenha a grelha é a vista (noteTableHtml).
+function noteTableSkeleton(cols, rows) {
+  const heads = [];
+  for (let c = 1; c <= cols; c++) heads.push(`${t("note_table_col")} ${c}`);
+  const width = heads.map(h => Math.max(3, h.length));
+  const line = cells => `| ${cells.map((v, i) => String(v).padEnd(width[i])).join(" | ")} |`;
+  const out = [line(heads), line(width.map(w => "-".repeat(w)))];
+  for (let r = 0; r < rows; r++) out.push(line(heads.map(() => "")));
+  return out.join("\n");
+}
+
+// a tabela entra onde está o cursor, se alguma caixa estiver a ser escrita; se
+// não, no fim da caixa escolhida; e sem nada escolhido nasce uma caixa nova
+async function insertNoteTable() {
+  const note = currentNote();
+  if (!note) return;
+  const table = noteTableSkeleton(NOTE_TABLE_COLS, NOTE_TABLE_ROWS);
+  const area = noteEditBox
+    ? $("noteCanvas").querySelector(`[data-btext="${CSS.escape(noteEditBox)}"]`) : null;
+  if (area) {
+    // a tabela tem de ficar em linhas só dela
+    const at = area.selectionStart;
+    const before = area.value.slice(0, at);
+    const after = area.value.slice(area.selectionEnd);
+    const lead = before && !before.endsWith("\n") ? "\n" : "";
+    const tail = after && !after.startsWith("\n") ? "\n" : "";
+    // deixa escolhido o nome da primeira coluna: escrever já o substitui
+    const head = at + lead.length + 2;
+    replaceNoteRange(area, at, area.selectionEnd, lead + table + tail,
+      head, head + `${t("note_table_col")} 1`.length);
+    return;
+  }
+  const model = noteSelBoxes.length === 1
+    ? note.boxes.find(b => b.id === noteSelBoxes[0]) : null;
+  if (model) {
+    const base = model.text || "";
+    const text = (base && !base.endsWith("\n") ? `${base}\n` : base) + table;
+    pushNoteUndo(note);
+    model.text = text;
+    await postNotepad({ action: "update_box", id: note.id, box_id: model.id, text });
+    return;
+  }
+  const w = 30 + NOTE_TABLE_COLS * 90, h = 40 + (NOTE_TABLE_ROWS + 1) * 24;
+  pushNoteUndo(note);
+  await postNotepad({
+    action: "add_box", id: note.id,
+    x: Math.max(0, Math.min(NOTE_BOARD - w, notePoint.x)),
+    y: Math.max(0, Math.min(NOTE_BOARD - h, notePoint.y)),
+    w, h, text: table,
+  });
+}
+
+// teclado dentro do texto de uma caixa (e só aí: o Tab continua a mudar de
+// campo em todo o resto da aplicação)
+$("noteCanvas").addEventListener("keydown", e => {
+  const area = e.target.closest ? e.target.closest("[data-btext]") : null;
+  if (!area) return;
+  if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    noteOutlineTab(area, e.shiftKey ? -1 : 1);
+    return;
+  }
+  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (noteOutlineEnter(area)) e.preventDefault();
+    return;
+  }
+  if (!e.ctrlKey && !e.metaKey) return;
+  if (e.altKey) return;
+  const key = String(e.key || "").toLowerCase();
+  if (key === "b" && !e.shiftKey) { e.preventDefault(); toggleNoteMark(area, NOTE_BOLD); return; }
+  if (key === "x" && e.shiftKey) { e.preventDefault(); toggleNoteMark(area, NOTE_STRIKE); }
+});
+
 $("noteCanvas").addEventListener("input", e => {
   const area = e.target.closest("[data-btext]");
   const note = currentNote();
@@ -1632,7 +2516,9 @@ $("noteCanvas").addEventListener("focusout", e => {
   const note = currentNote();
   noteTyping = false;
   noteTextSnap = false;
-  if (!area || !note) return;
+  if (!area) return;
+  endNoteEdit(area);   // volta a mostrar o texto formatado
+  if (!note) return;
   const model = note.boxes.find(b => b.id === area.dataset.btext);
   if (!model || model.text === area.value && !noteTextTimer) return;
   flushNoteText();
