@@ -6,6 +6,8 @@ let SHEET = localStorage.getItem("bsp-tracker-sheet") || "PRJ_CFG1_reworks_julho
 // fonte dos dados: auto | onedrive (API do Excel, sem download) | local
 let SOURCE = localStorage.getItem("bsp-tracker-source") || "auto";
 if (!["auto", "onedrive", "local"].includes(SOURCE)) SOURCE = "auto";
+// funcionalidades em teste, desligadas por omissão até o utilizador as ativar em Definições → Beta
+let BETA_ENABLED = localStorage.getItem("bsp-tracker-beta") === "1";
 let showAll = false;
 let compactView = true;            // vista resumida por omissão
 // disposição da vista de tarefas: "list" (tabela) ou "cards" (caixas)

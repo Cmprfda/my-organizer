@@ -212,6 +212,28 @@ td .todoText[data-editing] {
   color: var(--accent-text);
 }
 
+/* vista mapeada à medida: identifica de que coluna do Excel veio um valor,
+   quando o mesmo campo (Autor/Estado/O que fazer) junta várias colunas —
+   cores fora da paleta de estado acima, para nunca se confundirem */
+.colTag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.colTag-0 { background: var(--coltag-purple-bg); color: var(--coltag-purple-fg); }
+.colTag-1 { background: var(--coltag-teal-bg); color: var(--coltag-teal-fg); }
+.colTag-2 { background: var(--coltag-indigo-bg); color: var(--coltag-indigo-fg); }
+.colTag-3 { background: var(--coltag-sand-bg); color: var(--coltag-sand-fg); }
+.colTag-4 { background: var(--coltag-slate-bg); color: var(--coltag-slate-fg); }
+
 .role {
   font-weight: 600;
   white-space: nowrap;

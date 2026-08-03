@@ -439,7 +439,55 @@ body.topShrunk .ios-top #helpBtn {
   cursor: not-allowed;
 }
 
-#viewMapSave {
+.viewMapActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+}
+
+/* janela "Lados: Autor/Reviewer": mapa estado -> lado (ver sidemap.js) */
+#sideMapBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+#sideMapHint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.sideMapSelects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sideMapSelects label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sideMapSelects select {
+  font: inherit;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  padding: 6px 8px;
+}
+
+#sideMapSave {
   align-self: flex-start;
 }
 

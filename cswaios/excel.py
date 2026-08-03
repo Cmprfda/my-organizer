@@ -174,12 +174,16 @@ def locate_row(path, sheet_wanted, fn, todo):
     header_index = detect_header_row(rows)
     if header_index is None:
         return None
-    headers = [cell_to_text(h) or "" for h in rows[header_index]]
+    # mesmo fallback "Coluna N" que tasks.read_sheet/known_headers expõem ao
+    # cliente para cabeçalhos vazios — sem isto, colunas sem texto no cabeçalho
+    # colidiam todas na mesma chave "" e nunca se encontrava a coluna certa
+    headers = [cell_to_text(h) or f"Coluna {i + 1}" for i, h in enumerate(rows[header_index])]
+    # todas as colunas reais (normalizadas), não só as 5 do tracker — para a
+    # vista mapeada à medida (viewmap.js) poder escrever numa coluna qualquer
+    # no Push, identificada pelo nome (ver tasks.push_overrides)
     hidx = {}
     for j, h in enumerate(headers):
-        hn = normalize(h)
-        if hn in ("function/tc", "to do", "status tc", "status tp", "obs"):
-            hidx[hn] = j
+        hidx[normalize(h)] = j
     if "function/tc" not in hidx:
         return None
     for i, row in enumerate(rows[header_index + 1:]):

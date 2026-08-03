@@ -4,11 +4,10 @@ let viewMapDraft = null;   // edições em curso; só vão para o localStorage n
 
 function updateViewMapButton(data) {
   const btn = $("viewMapBtn");
-  const mostra = !!(data && !data.error && (data.headers || []).length);
+  const mostra = BETA_ENABLED && !!(data && !data.error && (data.headers || []).length);
   btn.classList.toggle("hidden", !mostra);
   if (!mostra) return;
-  const map = loadViewMap(data) || {};
-  const hasView = hasCanonicalCompact(data) || Object.keys(map).length > 0;
+  const hasView = hasResumedView(data);
   btn.textContent = hasView ? t("viewmap_btn_edit") : t("viewmap_btn_create");
   btn.title = hasCanonicalCompact(data) ? t("viewmap_hint_canonical") : t("viewmap_hint");
 }
@@ -45,6 +44,13 @@ function setViewMapOpen(open) {
     $("viewMapTitle").textContent = t("viewmap_title");
     $("viewMapHint").textContent = hasCanonicalCompact(lastData) ? t("viewmap_hint_canonical") : t("viewmap_hint");
     $("viewMapSave").textContent = t("viewmap_save");
+    // só a seta: a legenda completa fica no tooltip/aria-label
+    $("viewMapNext").textContent = "→";
+    $("viewMapNext").title = t("viewmap_next");
+    $("viewMapNext").setAttribute("aria-label", t("viewmap_next"));
+    // aparece em qualquer folha com vista resumida (a do tracker ou uma
+    // personalizada gravada) — ver hasResumedView
+    $("viewMapNext").classList.toggle("hidden", !hasResumedView(lastData));
     renderViewMapRows();
   }
   $("viewMapOverlay").classList.toggle("hidden", !open);
@@ -67,6 +73,15 @@ $("viewMapSave").addEventListener("click", () => {
   clearFilters();
   render();
   toast(t("viewmap_saved"), "ok");
+});
+
+$("viewMapNext").addEventListener("click", () => {
+  if (!lastData) return;
+  saveViewMap(lastData, viewMapDraft);
+  setViewMapOpen(false);
+  clearFilters();
+  render();
+  setSideMapOpen(true, true);
 });
 
 $("viewMapBtn").addEventListener("click", () => setViewMapOpen(true));

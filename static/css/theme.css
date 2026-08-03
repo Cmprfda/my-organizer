@@ -75,6 +75,12 @@
   --amber-50: #fbf1de;
   --blue-600: #1f5fa8;
   --blue-50: #e7eff7;
+  --purple-600: #6c4a9c;
+  --purple-50: #f1eaf8;
+  --teal-600: #147d74;
+  --teal-50: #e1f3f1;
+  --indigo-600: #46529f;
+  --indigo-50: #ebecf8;
 
   /* — Tipografia — */
   --font-sans: "Aptos", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
@@ -139,6 +145,19 @@
   --status-blocked-fg: var(--csw-red-700);
   --status-info-bg: var(--blue-50);
   --status-info-fg: #17477e;
+
+  /* — Vista mapeada à medida: tag por coluna de origem, cores fora da paleta
+     de estado (done/doing/blocked/info acima), para nunca se confundirem — */
+  --coltag-purple-bg: var(--purple-50);
+  --coltag-purple-fg: #57407d;
+  --coltag-teal-bg: var(--teal-50);
+  --coltag-teal-fg: #106861;
+  --coltag-indigo-bg: var(--indigo-50);
+  --coltag-indigo-fg: #3b4585;
+  --coltag-sand-bg: var(--csw-sand-50);
+  --coltag-sand-fg: #8a4f2c;
+  --coltag-slate-bg: var(--ink-100);
+  --coltag-slate-fg: var(--ink-600);
 }
 
 html[data-theme="light"] {
@@ -178,6 +197,17 @@ html[data-theme="dark"] {
   --status-blocked-fg: #f0a3a3;
   --status-info-bg: rgba(31, 95, 168, 0.26);
   --status-info-fg: #9fc2f3;
+
+  --coltag-purple-bg: rgba(150, 110, 200, 0.24);
+  --coltag-purple-fg: #d3b8ee;
+  --coltag-teal-bg: rgba(30, 160, 145, 0.22);
+  --coltag-teal-fg: #7fe0d2;
+  --coltag-indigo-bg: rgba(90, 105, 190, 0.26);
+  --coltag-indigo-fg: #aab4ec;
+  --coltag-sand-bg: rgba(236, 166, 130, 0.18);
+  --coltag-sand-fg: #f0c4a8;
+  --coltag-slate-bg: rgba(255, 255, 255, 0.10);
+  --coltag-slate-fg: var(--ink-300);
 }
 
 * {

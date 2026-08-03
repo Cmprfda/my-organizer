@@ -8,6 +8,33 @@ function norm(s) {
   return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 }
 
+// escapa "text" e envolve em <strong> qualquer troço que corresponda a um dos
+// "terms" (já normalizados — sem acentos, minúsculas). A comparação corre em
+// norm(text): como norm() só troca/remove caracteres um-a-um (nunca junta ou
+// separa), os índices encontrados aí continuam válidos na string original.
+function boldTerms(text, terms) {
+  const str = String(text == null ? "" : text);
+  const list = (terms || []).filter(Boolean);
+  if (!list.length || !str) return esc(str);
+  const normStr = norm(str);
+  const bold = new Array(str.length).fill(false);
+  list.forEach(term => {
+    let from = 0, i;
+    while ((i = normStr.indexOf(term, from)) !== -1) {
+      for (let k = i; k < i + term.length; k++) bold[k] = true;
+      from = i + term.length;
+    }
+  });
+  let out = "", i = 0;
+  while (i < str.length) {
+    let j = i;
+    while (j < str.length && bold[j] === bold[i]) j++;
+    out += bold[i] ? `<strong>${esc(str.slice(i, j))}</strong>` : esc(str.slice(i, j));
+    i = j;
+  }
+  return out;
+}
+
 function statusClass(text) {
   const t = norm(text);
   if (/(conclu|done|closed|fechad|complet|finaliz|\bok\b)/.test(t)) return "done";
@@ -51,7 +78,7 @@ function statusLines(value) {
    Autor:    a trabalhar → meu lado; em review → do outro lado.
    Reviewer: em review → meu lado; a trabalhar → do outro lado.
    Removidas/canceladas não estão do lado de ninguém. */
-function sideOf(role, status) {
+function autoSideOf(role, status) {
   const t = norm(status);
   if (!t || t === "n/a") return null;
   if (/(remov|cancel)/.test(t)) return "Removed";
@@ -59,4 +86,46 @@ function sideOf(role, status) {
   const reviewing = /review/.test(t);
   if (role === "Reviewer") return reviewing ? "On my side" : "On the other side";
   return reviewing ? "On the other side" : "On my side";
+}
+
+/* Overrides do lado por estado, escolhidos em Definições → Lados (ver sidemap.js).
+   Mapa: { [estado normalizado]: { author?: "my"|"other"|"done", reviewer?: ... } }
+   Sem overrides gravados, sideOf() devolve exatamente o mesmo que autoSideOf(). */
+const SIDE_OVERRIDE_KEY = "bsp-tracker-side-map";
+// "na": mesmo sentinel que autoSideOf() devolve para removidas/canceladas —
+// não conta para nenhum lado
+const SIDE_OVERRIDE_RESULT = { my: "On my side", other: "On the other side", done: "Done", na: "Removed" };
+
+function loadSideOverrides() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SIDE_OVERRIDE_KEY) || "null");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+let SIDE_OVERRIDES = loadSideOverrides();
+
+// grava só as entradas não vazias, como loadViewMap/saveViewMap (tasks.js)
+function saveSideOverrides(map) {
+  const limpo = {};
+  Object.entries(map || {}).forEach(([status, roles]) => {
+    const entry = {};
+    if (roles && SIDE_OVERRIDE_RESULT[roles.author]) entry.author = roles.author;
+    if (roles && SIDE_OVERRIDE_RESULT[roles.reviewer]) entry.reviewer = roles.reviewer;
+    if (Object.keys(entry).length) limpo[status] = entry;
+  });
+  if (Object.keys(limpo).length) localStorage.setItem(SIDE_OVERRIDE_KEY, JSON.stringify(limpo));
+  else localStorage.removeItem(SIDE_OVERRIDE_KEY);
+  SIDE_OVERRIDES = limpo;
+}
+
+function sideOf(role, status) {
+  const t = norm(status);
+  if (!t || t === "n/a") return null;
+  const entry = SIDE_OVERRIDES[t];
+  const forced = entry && entry[role === "Reviewer" ? "reviewer" : "author"];
+  if (forced && SIDE_OVERRIDE_RESULT[forced]) return SIDE_OVERRIDE_RESULT[forced];
+  return autoSideOf(role, status);
 }

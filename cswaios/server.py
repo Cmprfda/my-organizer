@@ -30,8 +30,8 @@ from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
 from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
                     save_overrides)
-from .tasks import (build_payload, current_stamp, forget_web_cache, push_overrides,
-                    warm_cache)
+from .tasks import (build_payload, current_stamp, forget_web_cache, known_headers,
+                    push_overrides, warm_cache)
 from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
                     normalize_ref, normalize_todo_item, save_todo, sort_todos_by_priority,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
@@ -791,7 +791,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             column = payload["column"]
             if column not in ("Status TC", "Status TP", "OBS", "Function/TC", "To Do"):
-                raise ValueError(f"coluna inválida: {column}")
+                headers = known_headers(payload.get("file", ""), payload.get("sheet", ""))
+                if not headers or column not in headers:
+                    raise ValueError(f"coluna inválida: {column}")
             key = f'{payload["sheet"]}||{payload.get("fn", "")}||{payload.get("todo", "")}'
 
             # a alteração fica só local (✎) até o utilizador carregar em Push;

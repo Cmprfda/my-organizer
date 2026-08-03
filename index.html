@@ -100,6 +100,7 @@
       <div class="setRow setRowUpdate">
         <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
         <button type="button" class="mini" id="changelogBtn">Novidades</button>
+        <button type="button" class="mini" id="betaBtn">Beta</button>
         <button type="button" class="mini" id="shareAppBtn">↗</button>
       </div>
     </div>
@@ -417,6 +418,27 @@
     </div>
   </div>
 
+  <div id="betaOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Programa Beta">
+    <div class="helpCard">
+      <div class="helpHead">
+        <strong id="betaTitle">Programa Beta</strong>
+        <button type="button" class="ccr-x" id="betaClose" title="Fechar">✕</button>
+      </div>
+      <div id="betaBody" class="helpBody">
+        <p id="betaIntro"></p>
+        <p class="setHint" id="betaListTitle"></p>
+        <ul id="betaFeatureList"></ul>
+        <label class="setRow" id="betaChkRow">
+          <span id="betaChkLabel"></span>
+          <input type="checkbox" id="betaChk">
+        </label>
+        <div class="viewMapActions">
+          <button type="button" id="betaSave"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="itemOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Detalhe">
     <div class="helpCard itemCard">
       <div class="helpHead">
@@ -470,7 +492,28 @@
       <div id="viewMapBody">
         <p class="setHint" id="viewMapHint"></p>
         <div class="viewMapRows" id="viewMapRows"></div>
-        <button type="button" id="viewMapSave"></button>
+        <div class="viewMapActions">
+          <button type="button" id="viewMapSave"></button>
+          <button type="button" class="secondary hidden" id="viewMapNext"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="sideMapOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Lados: Autor / Reviewer">
+    <div class="helpCard jiraLogCard">
+      <div class="helpHead">
+        <strong id="sideMapTitle">Lados: Autor / Reviewer</strong>
+        <button type="button" class="ccr-x" id="sideMapClose" title="Fechar">✕</button>
+      </div>
+      <div id="sideMapBody">
+        <p class="setHint" id="sideMapHint"></p>
+        <div class="viewMapRows" id="sideMapRows"></div>
+        <div class="viewMapActions">
+          <button type="button" class="secondary hidden" id="sideMapBack"></button>
+          <button type="button" id="sideMapSave"></button>
+        </div>
       </div>
     </div>
   </div>
@@ -518,6 +561,7 @@
   <script src="/static/js/feedback.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/viewmap.js"></script>
+  <script src="/static/js/sidemap.js"></script>
   <script src="/static/js/picker.js"></script>
   <script src="/static/js/jira.js"></script>
   <script src="/static/js/help.js"></script>

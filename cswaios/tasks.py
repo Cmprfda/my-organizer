@@ -162,6 +162,15 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
         hn = normalize(h)
         if hn in ("author tc", "reviewer tc", "author tp", "reviewer tp"):
             hidx[hn] = j
+    # nome real (verbatim) de cada coluna -> índice — para a vista mapeada à
+    # medida (viewmap.js), onde a coluna editada é identificada pelo próprio
+    # texto do cabeçalho, não por um nome fixo do tracker. Os nomes fixos têm
+    # prioridade quando coincidem com o texto real de outra coluna.
+    col_by_name = {h: j for j, h in enumerate(headers)}
+    for want, col_name in (("status tc", "Status TC"), ("status tp", "Status TP"),
+                           ("obs", "OBS"), ("function/tc", "Function/TC"), ("to do", "To Do")):
+        if want in hidx:
+            col_by_name[col_name] = hidx[want]
     overrides = load_overrides()
     notes = load_notes()
 
@@ -203,22 +212,16 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
 
         fn_key = cells[hidx["function/tc"]] if "function/tc" in hidx else ""
         todo_key = cells[hidx["to do"]] if "to do" in hidx else ""
-        orig, over = {}, {}
-        for want, col_name in (("status tc", "Status TC"), ("status tp", "Status TP")):
-            if want in hidx:
-                orig[col_name] = cells[hidx[want]]
-                if cells[hidx[want]]:
-                    statuses.add(cells[hidx[want]])
-        # a OBS também se edita e se envia para o Excel, mas não alimenta a
-        # lista de estados
-        if "obs" in hidx:
-            orig["OBS"] = cells[hidx["obs"]]
-        # o Function/TC e o "To Do" também se editam e se enviam para o Excel
-        # (guarda-se o valor cru da folha, que serve de base ao override)
-        if "function/tc" in hidx:
-            orig["Function/TC"] = fn_key
-        if "to do" in hidx:
-            orig["To Do"] = todo_key
+        # valor cru de qualquer coluna real desta linha — serve de "base" a
+        # qualquer alteração local, seja de uma coluna fixa do tracker (Status
+        # TC/TP, OBS, Function/TC, To Do) seja de uma coluna mapeada na vista
+        # personalizada (viewmap.js), identificada pelo seu próprio texto
+        orig = {name: (cells[j] if j < len(cells) else "") for name, j in col_by_name.items()}
+        over = {}
+        if orig.get("Status TC"):
+            statuses.add(orig["Status TC"])
+        if orig.get("Status TP"):
+            statuses.add(orig["Status TP"])
 
         # papel por vertente (usado para sincronizar TODO por regras de autoria/review)
         role_sync = {"author": [], "reviewer": []}
@@ -238,11 +241,11 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
         entry = overrides.get(okey)
         if entry:
             for col_name, o in list(entry.items()):
-                want = normalize(col_name)
-                if want not in hidx or not isinstance(o, dict):
+                j = col_by_name.get(col_name)
+                if j is None or not isinstance(o, dict):
                     continue
-                if cells[hidx[want]] == o.get("base", ""):
-                    cells[hidx[want]] = str(o.get("value", ""))
+                if cells[j] == o.get("base", ""):
+                    cells[j] = str(o.get("value", ""))
                     over[col_name] = True
                 else:
                     # a folha mudou desde o override: a folha ganha, e o override
@@ -303,6 +306,30 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
         "total_rows": total_rows,
         "person": person,
     }
+
+
+def known_headers(path, sheet):
+    """Cabeçalhos (texto verbatim, com o mesmo fallback "Coluna N" que read_sheet
+    expõe ao cliente) da última leitura em cache desta folha, ou None se ainda
+    não foi lida nesta sessão. Usado só para validar nomes de coluna vindos do
+    cliente em /api/update, sem reler o livro."""
+    want = normalize(sheet)
+    cached = _RAW_CACHE.get((path, want))
+    if not cached:
+        # a chave do _RAW_CACHE é a aba *pedida* à read_sheet, que pode não ser
+        # a que ficou resolvida (aba vazia = a habitual, ou a primeira do livro);
+        # o cliente manda sempre a resolvida, por isso procura-se também por essa
+        for (cpath, _), entry in _RAW_CACHE.items():
+            if cpath == path and normalize(entry[1]) == want:
+                cached = entry
+                break
+    if not cached:
+        return None
+    _, _, _, rows = cached
+    header_index = detect_header_row(rows)
+    if header_index is None:
+        return None
+    return [cell_to_text(h) or f"Coluna {i + 1}" for i, h in enumerate(rows[header_index])]
 
 
 def _relink_row(sheet, fn, todo, new_fn, new_todo):
