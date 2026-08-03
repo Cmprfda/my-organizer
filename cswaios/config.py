@@ -20,9 +20,12 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
-APP_VERSION = "108"  # release-ponte (numeração antiga) para desbloquear quem
-# ficou preso na v107 (ver cswaios/updates.py: _parse_version); a próxima
-# release volta ao formato semântico X.Y.Z
+APP_VERSION = "1.2.0"  # semantic versioning (X.Y.Z): incrementado a cada release
+# nota: a release publicada como "v108" (ponte para desbloquear quem ficou preso
+# na v107 — ver cswaios/updates.py: _parse_version) tem exatamente este conteúdo;
+# o próximo bump parte daqui, não de "108", senão o make_release.py voltava a
+# tratar "108" como versão inteira antiga e sugeria bumps errados (ex.: "1.1.0",
+# que ficaria abaixo do que já foi publicado)
 
 DEFAULT_SHEET = "PRJ_CFG1_reworks_julho"
 DEFAULT_PERSON = "Carlos Andrade"
