@@ -5,7 +5,6 @@ let pickerBusy = false;
 
 function setPickerOpen(open) {
     $("pickerOverlay").classList.toggle("hidden", !open);
-    $("bookBtn").setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
         $("pickerSearch").value = "";
         browsePicker("", "");
@@ -84,15 +83,16 @@ $("pickerBody").addEventListener("click", async e => {
     const out = await pickerCall({ action: "pick", drive_id: drive, item_id: item });
     if (out.error || !out.ok) { toast(out.error || t("err_server"), "err"); return; }
     graphInfo = { ...graphInfo, ...out };
-    // livro novo: a aba anterior pode não existir — o servidor abre a primeira
-    SHEET = "";
-    localStorage.setItem("bsp-tracker-sheet", "");
-    SOURCE = "onedrive";
-    localStorage.setItem("bsp-tracker-source", SOURCE);
     setPickerOpen(false);
     renderGraphState();
-    toast(tf("pick_done", row.dataset.name || ""), "ok");
-    load();
+    // o livro escolhido passa a ser um separador próprio (ver workbooks.js) —
+    // não substitui o que já estivesse aberto. Os identificadores vêm da
+    // listagem (data-drive/data-item), que já segue os atalhos do OneDrive e dá
+    // exatamente o mesmo par que o servidor guardou no pick (ver _item_ref).
+    openWorkbookTab({
+        kind: "onedrive", driveId: drive, itemId: item,
+        name: row.dataset.name || out.book || "",
+    });
 });
 
 let pickerSearchTimer = null;
@@ -105,17 +105,11 @@ $("pickerSearch").addEventListener("input", () => {
     }, 400);
 });
 
-$("bookBtn").addEventListener("click", e => {
-    e.stopPropagation();
-    if (!graphInfo.connected) { toast(t("pick_need_login"), "err"); return; }
-    setPickerOpen(true);
-});
-
-// atalho na barra das tarefas, ao lado da aba
+// atalho na barra das tarefas, ao lado da aba: abre a janela de escolher o que
+// abrir (OneDrive ou ficheiro local), a mesma do "+" nos separadores
 $("bookQuick").addEventListener("click", e => {
     e.stopPropagation();
-    if (!graphInfo.connected) { toast(t("pick_need_login"), "err"); return; }
-    setPickerOpen(true);
+    setAddWorkbookOpen(true);
 });
 
 $("pickerClose").addEventListener("click", () => setPickerOpen(false));

@@ -16,7 +16,8 @@ from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbo
                     detect_header_row, find_named_file, find_tracker_files, locate_row,
                     pick_sheet, write_status_to_excel)
 from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_forget_item,
-                    graph_load_rows, graph_modified, graph_state, has_book)
+                    graph_ids_from_path, graph_load_rows, graph_modified, graph_path_for,
+                    graph_state, has_book, is_graph_path)
 from .i18n import msg
 from .logs import log_event
 from .store import (load_ccrs, load_notes, load_overrides, save_notes,
@@ -45,28 +46,35 @@ def forget_cache(path=None):
 
 def forget_web_cache():
     """Esquece tudo o que foi lido da fonte web (usado ao trocar de livro no
-    OneDrive: os dados em cache eram do livro anterior)."""
-    forget_cache(GRAPH_PATH)
+    OneDrive: os dados em cache eram do livro anterior). Apanha todos os livros
+    lidos nesta sessão, não só o GRAPH_PATH sem livro indicado."""
+    paths = {GRAPH_PATH}
+    for cache in (_RAW_CACHE, _LAST_GOOD):
+        paths |= {k[0] for k in cache if k and is_graph_path(k[0])}
+    paths |= {p for p in _ADMIN_CACHE if is_graph_path(p)}
+    for path in paths:
+        forget_cache(path)
 
 
-def local_twin(files):
+def local_twin(files, book=None):
     """Cópia sincronizada do livro do OneDrive (o mesmo ficheiro numa pasta
     local do OneDrive), ou None. Vale a pena preferi-la: as alterações feitas
     no Excel aparecem no disco assim que são gravadas, enquanto a cópia na
     nuvem só as recebe quando o OneDrive acaba de sincronizar (pode demorar
-    minutos)."""
-    name = (current_book() or {}).get("name") or ""
+    minutos). Sem `book` procura a cópia do livro escolhido na app."""
+    name = ((book if book is not None else current_book()) or {}).get("name") or ""
     for p in files:
         if os.path.basename(p).lower() == name.lower():
             return p
     return None
 
 
-def known_files():
+def known_files(book=None):
     """Ficheiros que a app aceita abrir: os candidatos habituais mais a cópia
-    sincronizada do livro escolhido no OneDrive (que pode ter outro nome)."""
+    sincronizada do livro do OneDrive (que pode ter outro nome). Sem `book` é o
+    livro escolhido na app."""
     files = find_tracker_files()
-    name = (current_book() or {}).get("name") or ""
+    name = ((book if book is not None else current_book()) or {}).get("name") or ""
     if name and not any(os.path.basename(p).lower() == name.lower() for p in files):
         files += find_named_file(name)
         files.sort(key=os.path.getmtime, reverse=True)
@@ -92,18 +100,18 @@ def rows_digest(rows):
 _SYNC_CHECK = {}
 
 
-def sync_gap(path, sheet, local_rows, mtime):
+def sync_gap(path, sheet, local_rows, mtime, drive_id="", item_id=""):
     """True quando a cópia na nuvem tem conteúdo diferente do ficheiro local,
     ou seja, o OneDrive ainda não acabou de sincronizar (numa direção ou na
     outra). As datas não servem para isto: o OneDrive atualiza a data do item
     na nuvem antes de o conteúdo novo lá estar. Só se compara de facto quando
     uma das cópias mudou, para não ler o livro da nuvem a cada pedido."""
     key = (path, normalize(sheet))
-    _, tag = graph_modified()
+    _, tag = graph_modified(drive_id, item_id)
     antes = _SYNC_CHECK.get(key)
     if antes and antes[0] == tag and antes[1] == mtime:
         return antes[2]
-    _, _, cloud_rows = graph_load_rows(sheet)
+    _, _, cloud_rows = graph_load_rows(drive_id, item_id, sheet)
     diferentes = rows_digest(cloud_rows) != rows_digest(local_rows)
     _SYNC_CHECK[key] = (tag, mtime, diferentes)
     if diferentes:
@@ -112,12 +120,48 @@ def sync_gap(path, sheet, local_rows, mtime):
     return diferentes
 
 
+def _wb_key(workbook_id, sheet, fn, todo):
+    """Identidade de uma linha nos overrides/notas: livro||aba||função||to do.
+    O livro faz parte da chave para que a mesma linha em livros diferentes não
+    partilhe estados nem notas."""
+    return f"{workbook_id}||{sheet}||{fn}||{todo}"
+
+
+def _legacy_key(sheet, fn, todo):
+    """Formato antigo (aba||função||to do), de quando só havia um livro."""
+    return f"{sheet}||{fn}||{todo}"
+
+
+def _override_entry(overrides, workbook_id, sheet, fn, todo):
+    """(chave, valor) desta linha em `overrides`/`notes`: a chave com livro ou,
+    se ainda não existir, a antiga sem livro — os ficheiros gravados antes
+    desta versão continuam a valer, sem serem reescritos."""
+    key = _wb_key(workbook_id, sheet, fn, todo)
+    if key in overrides:
+        return key, overrides[key]
+    antiga = _legacy_key(sheet, fn, todo)
+    if antiga in overrides:
+        return antiga, overrides[antiga]
+    return key, None
+
+
+def _split_key(key):
+    """(livro, aba, função, to do) de uma chave de override. Nas chaves antigas
+    (três partes) não há livro: fica None."""
+    parts = str(key).split("||")
+    if len(parts) >= 4:
+        return parts[0], parts[1], parts[2], "||".join(parts[3:])
+    parts += [""] * (3 - len(parts))
+    return None, parts[0], parts[1], "||".join(parts[2:])
+
+
 def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     raw_key = (path, normalize(sheet_name))
     warning_ts = None
     try:
-        if path == GRAPH_PATH:
-            real_sheet, all_sheets, rows = graph_load_rows(sheet_name)
+        if is_graph_path(path):
+            drive_id, item_id = graph_ids_from_path(path)
+            real_sheet, all_sheets, rows = graph_load_rows(drive_id, item_id, sheet_name)
             if real_sheet is None:
                 return {"error": msg("err_nosheet", lang, s=sheet_name),
                         "sheets": all_sheets}
@@ -237,8 +281,7 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
                 role_sync["author"].append(st_tp)
             if is_me(cells, "reviewer tp"):
                 role_sync["reviewer"].append(st_tp)
-        okey = f"{real_sheet}||{fn_key}||{todo_key}"
-        entry = overrides.get(okey)
+        okey, entry = _override_entry(overrides, path, real_sheet, fn_key, todo_key)
         if entry:
             for col_name, o in list(entry.items()):
                 j = col_by_name.get(col_name)
@@ -264,9 +307,10 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
             people[key] = cells[hidx[want]].strip() if want in hidx else ""
 
         if show_all or not person_norm or any(mentions_person(c) for c in cells if c):
+            _, note = _override_entry(notes, path, real_sheet, fn_key, todo_key)
             data_rows.append(cells[:len(headers)])
             row_meta.append({"fn": fn_key, "todo": todo_key, "orig": orig, "over": over,
-                             "note": notes.get(okey), "xlrow": xlrow,
+                             "note": note, "xlrow": xlrow,
                              "people": people,
                              "todo_sync_role": role_sync})
 
@@ -293,7 +337,7 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
         if want in hidx:
             xlcols[name] = hidx[want] + 1
 
-    warn_key = "warning_web" if path == GRAPH_PATH else "warning_locked"
+    warn_key = "warning_web" if is_graph_path(path) else "warning_locked"
     return {
         "warning": msg(warn_key, lang, t=f"{warning_ts:%H:%M}") if warning_ts else None,
         "sheet": real_sheet,
@@ -332,15 +376,16 @@ def known_headers(path, sheet):
     return [cell_to_text(h) or f"Coluna {i + 1}" for i, h in enumerate(rows[header_index])]
 
 
-def _relink_row(sheet, fn, todo, new_fn, new_todo):
+def _relink_row(workbook_id, sheet, fn, todo, new_fn, new_todo):
     """Depois de o Function/TC ou o "To Do" mudarem mesmo na folha, refaz as
-    ligações que usam a identidade da linha (aba||função||to do): a nota fixada
-    na tarefa e os itens do TODO que apontam para ela. Sem isto, as ligações
-    partiam-se em silêncio no Push."""
-    old_key = f"{sheet}||{fn}||{todo}"
-    new_key = f"{sheet}||{new_fn}||{new_todo}"
+    ligações que usam a identidade da linha (livro||aba||função||to do): a nota
+    fixada na tarefa e os itens do TODO que apontam para ela. Sem isto, as
+    ligações partiam-se em silêncio no Push."""
+    new_key = _wb_key(workbook_id, sheet, new_fn, new_todo)
 
     notes = load_notes()
+    # a nota pode ainda estar na chave antiga (sem livro), de antes desta versão
+    old_key, _ = _override_entry(notes, workbook_id, sheet, fn, todo)
     if old_key in notes:
         notes[new_key] = notes.pop(old_key)
         save_notes(notes)
@@ -370,16 +415,17 @@ def _relink_row(sheet, fn, todo, new_fn, new_todo):
         save_todo(todos)
 
 
-def push_overrides(target=None):
+def push_overrides(target):
     """Escreve no Excel/OneDrive as alterações de estado guardadas localmente.
+    O livro de destino é sempre explícito — a app não escolhe nenhum por si.
     Devolve (ficheiro, enviadas, falhadas). Usado pelo /api/push e pela linha
     de comandos."""
-    files = known_files()
-    target = target or (files[0] if files else None)
-    known = {os.path.normcase(p) for p in files}
-    if graph_config():
-        known.add(GRAPH_PATH)
-    if not target or os.path.normcase(target) not in known:
+    if not target:
+        raise ValueError("ficheiro desconhecido")
+    if is_graph_path(target):
+        if not graph_config():
+            raise ValueError("ficheiro desconhecido")
+    elif os.path.normcase(target) not in {os.path.normcase(p) for p in known_files()}:
         raise ValueError("ficheiro desconhecido")
     overrides = load_overrides()
     pushed, failed = 0, []
@@ -388,8 +434,11 @@ def push_overrides(target=None):
     # Push, fundam por engano as suas colunas pendentes numa só
     renamed_this_call = set()
     for key in list(overrides.keys()):
-        sheet, _, rest = key.partition("||")
-        fn, _, todo = rest.partition("||")
+        wb_id, sheet, fn, todo = _split_key(key)
+        # chave antiga (sem livro): é do tempo em que só havia um, vai para o
+        # destino pedido; com livro, só se for mesmo este
+        if wb_id is not None and os.path.normcase(wb_id) != os.path.normcase(target):
+            continue
         entry = overrides.get(key)
         if not isinstance(entry, dict):
             continue
@@ -424,6 +473,9 @@ def push_overrides(target=None):
             else:
                 failed.append({"fn": guard_fn, "error": msg_text})
         if (new_fn, new_todo) != (fn, todo):
+            # a identidade nova passa a incluir o livro, mesmo que a antiga
+            # ainda não o tivesse (chave anterior a esta versão)
+            wb_key = wb_id if wb_id is not None else target
             if entry:
                 # ainda sobram colunas por enviar nesta linha: passam para a
                 # chave nova, senão ficavam órfãs (a leitura seguinte calcula a
@@ -432,7 +484,7 @@ def push_overrides(target=None):
                 # mesma identidade nova, caso em que fundir destruiria as
                 # colunas de uma das duas linhas: fica por enviar e falha, em
                 # vez de contaminar a linha errada
-                new_key = f"{sheet}||{new_fn}||{new_todo}"
+                new_key = _wb_key(wb_key, sheet, new_fn, new_todo)
                 if new_key in renamed_this_call:
                     for col_name in list(entry.keys()):
                         failed.append({"fn": guard_fn, "error":
@@ -450,8 +502,8 @@ def push_overrides(target=None):
                     entry = destino
                     renamed_this_call.add(new_key)
             else:
-                renamed_this_call.add(f"{sheet}||{new_fn}||{new_todo}")
-            _relink_row(sheet, fn, todo, new_fn, new_todo)
+                renamed_this_call.add(_wb_key(wb_key, sheet, new_fn, new_todo))
+            _relink_row(wb_key, sheet, fn, todo, new_fn, new_todo)
         if not entry:
             overrides.pop(key, None)
     save_overrides(overrides)
@@ -493,7 +545,20 @@ def build_payload(query):
     if source not in ("auto", "onedrive", "local"):
         source = "auto"
 
-    files = known_files()
+    # o livro pedido por esta chamada: se `file` já é um caminho da nuvem (uma
+    # aba concreta, aberta explicitamente), é esse — nunca o "atual" singular,
+    # senão duas abas OneDrive diferentes abertas ao mesmo tempo mostrariam
+    # sempre os dados da última escolhida em qualquer uma delas
+    if wanted_file and is_graph_path(wanted_file):
+        _wanted_drive_id, _wanted_item_id = graph_ids_from_path(wanted_file)
+        # o nome é opcional (só serve para achar a cópia sincronizada local —
+        # local_twin/known_files); quem abriu esta aba já o conhecia, do pick
+        book = {"drive_id": _wanted_drive_id, "item_id": _wanted_item_id,
+                "name": query.get("book_name", [""])[0]} \
+            if _wanted_drive_id and _wanted_item_id else current_book()
+    else:
+        book = current_book()
+    files = known_files(book)
     files_info = [{
         "path": p,
         "label": f"{os.path.basename(p)} ({os.path.basename(os.path.dirname(p))})",
@@ -505,39 +570,44 @@ def build_payload(query):
     # servidor está exposto na LAN) — a conta ligada não sai daqui, só do
     # /api/graph, que é localhost-only
     graph_public = {k: v for k, v in graph.items() if k not in ("account_email", "account_name")}
+    # "caminho" do livro na nuvem: o do próprio livro escolhido (identidade que
+    # não se confunde com a de outro livro) ou, quando o livro só está indicado
+    # na configuração, o caminho geral da fonte web
+    web_path = graph_path_for(book["drive_id"], book["item_id"]) if book else GRAPH_PATH
     if graph["configured"]:
-        files_info.insert(0, {"path": GRAPH_PATH,
+        files_info.insert(0, {"path": web_path,
                               "label": graph.get("book") or "OneDrive (web)",
                               "modified": ""})
 
     path = None
-    web_ready = graph["configured"] and graph["connected"] and has_book()
+    web_ready = graph["configured"] and graph["connected"] and has_book(book)
     # em automático prefere-se a nuvem (Graph): a cópia sincronizada no disco
     # (twin) só entra como recurso, se a leitura da nuvem falhar mais abaixo —
     # ver o "a fonte web falhou" perto do fim desta função.
-    twin = local_twin(files) if web_ready else None
+    twin = local_twin(files, book) if web_ready else None
     if source != "local" and web_ready:
-        path = GRAPH_PATH
+        path = web_path
     elif source == "onedrive" and graph["configured"]:
         return _with_app_state({"error": msg("err_graph_login", lang),
                 "hint": msg("hint_graph_login", lang),
                 "files": files_info, "graph": graph_public, "source": "onedrive"})
-    if path is None and wanted_file and wanted_file != GRAPH_PATH:
+    if path is None and wanted_file and not is_graph_path(wanted_file):
         for p in files:
             if os.path.normcase(p) == os.path.normcase(wanted_file):
                 path = p
                 break
-    if path is None and files:
-        path = files[0]  # o mais recente
     if path is None:
+        # nenhum livro pedido (nem nuvem ligada): não é um erro, é o estado
+        # normal de quem ainda não escolheu nenhum — a app nunca escolhe por si
         return _with_app_state({
+            "no_workbook": True,
             "error": msg("err_nofile", lang),
             "hint": msg("hint_nofile", lang),
             "searched": CANDIDATE_DIRS,
             "files": files_info,
             "graph": graph_public,
         })
-    cycle = cycle and path != GRAPH_PATH   # não há Excel local para fechar
+    cycle = cycle and not is_graph_path(path)   # não há Excel local para fechar
     if fresh:
         # "Atualizar" limpa tudo o que está em memória, não só do ficheiro
         # atual: qualquer outro livro aberto nesta sessão também relê de raiz
@@ -597,29 +667,28 @@ def build_payload(query):
             ts, good = cached
             result = dict(good)
             result["warning"] = msg(
-                "warning_web" if path == GRAPH_PATH else "warning_locked",
+                "warning_web" if is_graph_path(path) else "warning_locked",
                 lang, t=f"{ts:%H:%M}")
             log_event(f"leitura falhou ({exc!r}) - a servir cache das {ts:%H:%M}")
         else:
             result = {"error": msg("err_read", lang, e=exc),
-                      "hint": msg("hint_web_read" if path == GRAPH_PATH else "hint_excel", lang)}
+                      "hint": msg("hint_web_read" if is_graph_path(path) else "hint_excel", lang)}
 
     result["file"] = path
-    if path == GRAPH_PATH:
-        if "error" in result and source == "auto" and files:
-            # a fonte web falhou: continua com o ficheiro local (de preferência
-            # a cópia sincronizada do livro escolhido, se existir uma)
+    if is_graph_path(path):
+        if "error" in result and source == "auto" and twin:
+            # a fonte web falhou: continua com a cópia sincronizada do livro
+            # escolhido (o único ficheiro local que se sabe ser o mesmo livro)
             log_event(f"leitura web falhou ({result['error']}) - a usar o ficheiro local")
             fallback = dict(query)
             fallback["source"] = ["local"]
-            if twin:
-                fallback["file"] = [twin]
+            fallback["file"] = [twin]
             result = build_payload(fallback)
             result["notice"] = msg("notice_graph_fallback", lang)
             result["graph"] = graph_public
             return result
         try:
-            result["modified"], result["stamp"] = graph_modified()
+            result["modified"], result["stamp"] = graph_modified(*graph_ids_from_path(path))
         except GraphError:
             result["modified"] = result["stamp"] = ""
     else:
@@ -631,7 +700,8 @@ def build_payload(query):
         cached = _RAW_CACHE.get((path, normalize(sheet_read)))
         if twin and path == twin and cached and not result.get("error"):
             try:
-                if sync_gap(path, result["sheet"], cached[3], mtime):
+                if sync_gap(path, result["sheet"], cached[3], mtime,
+                            *graph_ids_from_path(web_path)):
                     aviso = msg("notice_syncing", lang)
                     result["notice"] = f"{result['notice']} · {aviso}" \
                         if result.get("notice") else aviso
@@ -639,7 +709,7 @@ def build_payload(query):
                 log_event(f"não consegui comparar com a cópia do OneDrive ({exc})")
     result["files"] = files_info
     result["graph"] = graph_public
-    result["source"] = "onedrive" if path == GRAPH_PATH else "local"
+    result["source"] = "onedrive" if is_graph_path(path) else "local"
     result["synced_copy"] = bool(twin) and path == twin
     result = _with_app_state(result)
     # impressão digital do conteúdo servido: se o Excel mudou e isto não muda,
@@ -655,8 +725,8 @@ def current_stamp(query):
     a interface repete para saber quando alguém gravou o livro."""
     path = query.get("file", [""])[0]
     try:
-        if path == GRAPH_PATH:
-            modified, stamp = graph_modified()
+        if is_graph_path(path):
+            modified, stamp = graph_modified(*graph_ids_from_path(path))
             return {"modified": modified, "stamp": stamp}
         # só ficheiros que a app conhece: evita transformar isto num "stat" livre
         if any(os.path.normcase(p) == os.path.normcase(path) for p in known_files()):
@@ -666,23 +736,3 @@ def current_stamp(query):
     except Exception as exc:
         return {"modified": "", "stamp": "", "error": str(exc)}
     return {"modified": "", "stamp": ""}
-
-
-def warm_cache():
-    """No arranque, tenta a primeira leitura até conseguir (ex.: à espera de o
-    Excel fechar), para que nenhum dispositivo apanhe o servidor sem dados."""
-    for _ in range(120):
-        files = find_tracker_files()
-        if files:
-            key = (files[0], DEFAULT_SHEET, DEFAULT_PERSON, False, "pt")
-            if key in _LAST_GOOD:      # um pedido normal já preencheu a cache
-                return
-            try:
-                result = read_sheet(files[0], DEFAULT_SHEET, DEFAULT_PERSON, False)
-                if "error" not in result:
-                    _LAST_GOOD[key] = (datetime.now(), result)
-                    log_event("cache inicial pronta")
-                    return
-            except Exception:
-                pass  # ficheiro bloqueado — tentar outra vez daqui a pouco
-        time.sleep(15)

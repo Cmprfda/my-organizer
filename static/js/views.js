@@ -1,45 +1,186 @@
 // My Organizer — navegação entre vistas e painel de definições
 
-const VIEWS = { excel: "excelView", ccrs: "ccrView", todo: "todoView", notes: "notesView", feedback: "fbView", jira: "jiraView" };
+// vistas fixas. "workbooks" é o painel que aparece quando não há nenhum livro
+// aberto — não tem separador próprio, é o que se mostra no lugar deles.
+const VIEWS = {
+  workbooks: "wbEmptyView", ccrs: "ccrView", todo: "todoView",
+  notes: "notesView", feedback: "fbView", jira: "jiraView",
+};
 // vista que está no painel lateral do ecrã dividido (null = sem divisão)
 let sideView = null;
 
+/* ---------- separadores dos livros abertos ----------
+   Cada livro aberto tem o seu separador ("wb:<id>") e os seus próprios dados.
+   O painel #excelView é um só e mostra sempre o livro do separador ativo: é o
+   activeTabId que manda, e trocar de separador troca o lastData pelo do livro
+   novo (ver setActiveTab). "excel" continua a ser aceite como nome de vista —
+   é o que as origens dos itens do TODO/notas guardam — e quer dizer "o livro
+   que estiver ativo". */
+const isWorkbookView = name => name === "excel" || String(name || "").startsWith("wb:");
+const workbookViewId = name => String(name || "").startsWith("wb:") ? String(name).slice(3) : "";
+// vista do livro ativo (ou o painel de boas-vindas, sem livros abertos)
+const workbookView = () => activeTabId ? `wb:${activeTabId}` : "workbooks";
+
+// "excel" (origem guardada) -> o separador do livro ativo
+function normalizeView(name) {
+  if (!isWorkbookView(name)) return name;
+  const id = workbookViewId(name);
+  if (id && tabById(id)) return name;
+  return workbookView();
+}
+
+// elemento da vista: os livros partilham todos o mesmo painel
+function viewEl(name) {
+  if (isWorkbookView(name)) return $("excelView");
+  return VIEWS[name] ? $(VIEWS[name]) : null;
+}
+
+// troca o livro em foco: o lastData passa a ser o desse separador (o do
+// anterior fica guardado na sua própria entrada, intacto)
+function setActiveTab(id) {
+  if (activeTabId === id) return;
+  // um editor de nota/estado aberto pertence ao livro anterior: a caixa de
+  // texto grava com sheet/file do livro novo (lidos ao vivo) mas fn/todo do
+  // antigo (fechados no clique) — teria de escrever no livro errado. Fechar
+  // antes de trocar descarta a edição a meio, tal como o editor de estado já
+  // faz sozinho ao perder o foco.
+  editorOpen = false;
+  activeTabId = id || "";
+  saveWorkbookTabs();
+  const tab = activeTab();
+  lastData = tab ? (tab.lastData || null) : null;
+  // filtros e seletores são do livro anterior: os estados/abas não são os mesmos
+  lastSelectorsSig = "";
+  clearFilters();
+  searchTerms = [];
+  const searchInput = $("search");
+  if (searchInput) searchInput.value = "";
+  markActiveWorkbookTab();
+}
+
+function markActiveWorkbookTab() {
+  document.querySelectorAll('.tabs button[data-view^="wb:"]').forEach(b => {
+    b.classList.toggle("wbActive", workbookViewId(b.dataset.view) === activeTabId);
+  });
+}
+
 function showView(name) {
+  name = normalizeView(name);
+  // o painel do livro é um só: não pode estar ao lado e no principal ao mesmo
+  // tempo com livros diferentes
+  if (isWorkbookView(name) && isWorkbookView(sideView)) exitSplit();
+  if (isWorkbookView(name)) setActiveTab(workbookViewId(name));
   currentView = name;
   document.querySelectorAll(".tabs button[data-view]").forEach(x => {
     x.classList.toggle("active", x.dataset.view === name);
     // a vista do painel lateral também está no ecrã: marca-se como aberta
     x.classList.toggle("side", x.dataset.view === sideView && x.dataset.view !== name);
   });
+  const wbOnScreen = isWorkbookView(name) || isWorkbookView(sideView);
   for (const [view, elId] of Object.entries(VIEWS)) {
     // a vista do painel lateral fica sempre visível, seja qual for o separador ativo
     if (view === sideView) $(elId).classList.remove("hidden");
     else $(elId).classList.toggle("hidden", name !== view);
   }
-  $("excelSub").classList.toggle("hidden", !(name === "excel" || sideView === "excel"));
+  $("excelView").classList.toggle("hidden", !wbOnScreen);
+  $("excelSub").classList.toggle("hidden", !wbOnScreen);
+  if (wbOnScreen) render();
   if (name === "ccrs" || sideView === "ccrs") renderCCRs();
   if (name === "todo" || sideView === "todo") renderTodo();
   if (name === "notes" || sideView === "notes") renderNotes();
   if (name === "jira" || sideView === "jira") renderJiraPage();
 }
 
-// O separador das Tarefas (Excel) só faz sentido quando há livro para abrir:
-// nada escolhido no OneDrive e nenhum ficheiro local encontrado = esconder.
-// Só se decide depois da primeira resposta do /api/tasks (ver hasWorkbookConfigured).
-function updateExcelTabVisibility() {
-  const has = hasWorkbookConfigured();
-  const tab = document.querySelector('.tabs button[data-view="excel"]');
-  if (tab) tab.classList.toggle("hidden", !has);
-  if (has) return;
-  if (sideView === "excel") exitSplit();
-  if (currentView === "excel") showView("todo");
+// vista para onde ir quando a atual deixa de existir (fechar o último livro)
+const fallbackView = () => workbookTabs.length ? workbookView() : "workbooks";
+
+// (Re)constrói os separadores dos livros abertos: um botão por entrada de
+// workbookTabs, à esquerda dos separadores fixos (o lugar onde as "Tarefas
+// (Excel)" sempre estiveram). A ordem guardada, se houver, manda depois disto.
+function renderWorkbookTabs() {
+  const nav = document.querySelector(".tabs");
+  if (!nav) return;
+  const existentes = new Map([...nav.querySelectorAll('button[data-view^="wb:"]')]
+    .map(b => [workbookViewId(b.dataset.view), b]));
+  workbookTabs.forEach(tab => {
+    let b = existentes.get(tab.id);
+    if (b) existentes.delete(tab.id);
+    else {
+      b = document.createElement("button");
+      b.dataset.view = `wb:${tab.id}`;
+      b.dataset.icon = "▤";
+      b.draggable = true;
+      b.type = "button";
+      const primeiroFixo = nav.querySelector('button[data-view]:not([data-view^="wb:"])');
+      nav.insertBefore(b, primeiroFixo || $("addWorkbookBtn"));
+      wireTabButton(b);
+      wireTabDrag(b);
+    }
+    b.dataset.label = tab.name || tabFile(tab);
+    b.title = tab.kind === "onedrive" ? `${tab.name} — OneDrive` : (tab.path || tab.name);
+    b.innerHTML = `<span class="wbTabName">${esc(tab.name || tabFile(tab))}</span>` +
+      `<span class="wbTabClose" data-wbclose="${esc(tab.id)}" title="${esc(t("wb_close"))}" ` +
+      `role="button" aria-label="${esc(t("wb_close"))}">✕</span>`;
+  });
+  // separadores de livros que já não estão abertos
+  existentes.forEach(b => b.remove());
+  applyStoredTabOrder();
+  markActiveWorkbookTab();
+  renderWorkbookEmptyState();
 }
 
-document.querySelectorAll(".tabs button[data-view]").forEach(b => b.addEventListener("click", () => {
-  // clicar no separador da vista que está ao lado devolve-a ao ecrã inteiro
-  if (sideView === b.dataset.view) exitSplit();
-  showView(b.dataset.view);
-}));
+// painel de boas-vindas (sem livros abertos)
+function renderWorkbookEmptyState() {
+  const box = $("wbEmptyView");
+  if (!box) return;
+  $("wbEmptyTitle").textContent = t("wb_empty_t");
+  $("wbEmptyText").textContent = t("wb_empty_p");
+  $("wbEmptyAdd").textContent = t("wb_add_btn");
+  // sem livros abertos não há nada que a vista do livro possa mostrar
+  if (!workbookTabs.length && isWorkbookView(currentView)) showView("workbooks");
+}
+
+// fechar um separador: é só deixar de o mostrar. Nada é apagado no servidor —
+// as alterações locais (✎), notas e itens do TODO desse livro continuam lá e
+// voltam a aparecer se o livro for aberto outra vez.
+function closeWorkbookTab(id) {
+  const i = workbookTabs.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const vista = `wb:${id}`;
+  const eraAtivo = activeTabId === id;
+  const estavaNoEcra = currentView === vista;
+  // sair do ecrã dividido antes de o separador desaparecer (o painel ainda
+  // tem de ser encontrado para voltar ao sítio)
+  if (sideView === vista) exitSplit();
+  workbookTabs.splice(i, 1);
+  const seguinte = workbookTabs[Math.min(i, workbookTabs.length - 1)] || null;
+  if (eraAtivo) {
+    activeTabId = "";
+    lastData = null;
+    lastSelectorsSig = "";
+    clearFilters();
+    searchTerms = [];
+    if (seguinte) setActiveTab(seguinte.id);
+  }
+  saveWorkbookTabs();
+  renderWorkbookTabs();
+  // só se muda de vista se era este livro que estava no ecrã: fechar um
+  // separador que está atrás não tira ninguém de onde está
+  if (estavaNoEcra) showView(seguinte ? `wb:${seguinte.id}` : "workbooks");
+  else render();
+}
+
+function wireTabButton(b) {
+  b.addEventListener("click", e => {
+    const x = e.target.closest("[data-wbclose]");
+    if (x) { e.preventDefault(); e.stopPropagation(); closeWorkbookTab(x.dataset.wbclose); return; }
+    // clicar no separador da vista que está ao lado devolve-a ao ecrã inteiro
+    if (sideView === b.dataset.view) exitSplit();
+    showView(b.dataset.view);
+  });
+}
+
+document.querySelectorAll(".tabs button[data-view]").forEach(wireTabButton);
 
 // ---------- ordem dos separadores (arrastar um para cima de outro) ----------
 // A ordem é a ordem real dos <button> dentro do .tabs (mexer no DOM, não em
@@ -74,8 +215,8 @@ function applyStoredTabOrder() {
     if (b) { ordered.push(b); left.delete(view); }
   });
   left.forEach(b => ordered.push(b));
-  // inserir antes do botão das Definições mantém-no sempre no fim
-  const anchor = $("settingsBtn");
+  // inserir antes do "+" mantém-no (e às Definições) sempre no fim
+  const anchor = $("addWorkbookBtn") || $("settingsBtn");
   ordered.forEach(b => nav.insertBefore(b, anchor));
 }
 applyStoredTabOrder();

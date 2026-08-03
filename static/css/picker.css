@@ -90,3 +90,111 @@
     font-size: 13px;
     color: var(--muted);
 }
+
+/* ---------- abrir livros: "+", janela de escolha e separadores ---------- */
+
+#wbAddBody {
+    overflow: auto;
+    padding: 10px;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* as duas opções (OneDrive / ficheiro local) reaproveitam a .pickRow do
+   explorador do OneDrive, só com o subtítulo por baixo do nome */
+#wbAddBody .pickRow {
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 10px;
+}
+
+#wbAddBody .pickRow .pickName {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#wbAddBody .pickRow small {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+#wbAddBody .pickRow[disabled] {
+    opacity: .5;
+    cursor: default;
+}
+
+/* botão "+" na barra dos separadores: mesmo peso visual da roda dentada */
+.tabs .addWbBtn {
+    font-size: 17px;
+    line-height: 1;
+    padding: 8px 12px;
+    color: var(--muted);
+}
+
+.tabs .addWbBtn:hover,
+.tabs .addWbBtn[aria-expanded="true"] {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+}
+
+/* separador de um livro: o nome e o ✕ só aparecem quando o separador está
+   aberto ou com o rato em cima (o resto da barra funciona da mesma maneira) */
+.tabs button[data-view^="wb:"] .wbTabName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 22ch;
+}
+
+.tabs button[data-view^="wb:"] .wbTabClose {
+    margin-left: 6px;
+    padding: 0 2px;
+    border-radius: 4px;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity var(--dur-fast), color var(--dur-fast), background-color var(--dur-fast);
+}
+
+.tabs button[data-view^="wb:"]:hover .wbTabClose,
+.tabs button[data-view^="wb:"].active .wbTabClose,
+.tabs button[data-view^="wb:"].side .wbTabClose {
+    opacity: 1;
+}
+
+.tabs button[data-view^="wb:"] .wbTabClose:hover {
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+/* livro em foco sem ser o separador à frente (está no painel do lado) */
+.tabs button[data-view^="wb:"].wbActive:not(.active):not(.side) {
+    color: var(--text);
+}
+
+/* ---------- painel de boas-vindas (nenhum livro aberto) ---------- */
+.wbEmpty p {
+    max-width: 46ch;
+    margin: 0 auto;
+}
+
+.wbEmptyAdd {
+    margin-top: 18px;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--surface);
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--ios-radius-btn);
+    padding: 10px 18px;
+    transition: background-color var(--dur-base), transform var(--dur-fast) var(--ease-standard);
+}
+
+.wbEmptyAdd:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.wbEmptyAdd:active {
+    transform: scale(0.97);
+}

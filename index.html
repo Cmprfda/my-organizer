@@ -49,12 +49,13 @@
     </div>
 
     <nav class="tabs">
-      <button data-view="excel" data-icon="&#9636;" class="active" draggable="true">Tarefas (Excel)</button>
       <button data-view="ccrs" data-icon="&#9873;" draggable="true">CCRs</button>
       <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
       <button data-view="notes" data-icon="&#9998;" draggable="true">Notas</button>
       <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
       <button data-view="jira" data-icon="" draggable="true" class="hidden"><img src="/static/img/jira.svg" alt="" width="17" height="17" style="flex-shrink:0">Jira</button>
+      <button id="addWorkbookBtn" type="button" class="addWbBtn" title="Abrir um livro de Excel"
+        aria-label="Abrir um livro de Excel" aria-expanded="false">&#43;</button>
       <button id="settingsBtn" type="button" title="Definições" aria-label="Definições"
         aria-expanded="false">&#9881;</button>
     </nav>
@@ -75,21 +76,9 @@
           <option value="en">EN</option>
         </select>
       </div>
-      <div class="setRow" id="sourceRow">
-        <label for="sourceSel">Dados</label>
-        <select id="sourceSel">
-          <option value="auto">Automático</option>
-          <option value="onedrive">OneDrive (web)</option>
-          <option value="local">Ficheiro local</option>
-        </select>
-      </div>
       <div class="setNote hidden" id="graphBox">
         <span id="graphState"></span>
         <button type="button" class="mini" id="graphBtn"></button>
-      </div>
-      <div class="setNote hidden" id="bookBox">
-        <span id="bookState"></span>
-        <button type="button" class="mini" id="bookBtn">Escolher</button>
       </div>
       <div class="setNote" id="jiraBox">
         <input type="url" id="jiraUrl" placeholder="https://jira.empresa.pt">
@@ -106,7 +95,15 @@
 
     <div id="panes">
       <div id="paneMain">
-        <div id="excelView">
+        <div id="wbEmptyView" class="hidden">
+          <div class="state wbEmpty">
+            <h2 id="wbEmptyTitle">Nenhum livro aberto.</h2>
+            <p id="wbEmptyText">Abre um livro de Excel para veres as tarefas aqui.</p>
+            <button type="button" id="wbEmptyAdd" class="wbEmptyAdd">&#43; Abrir livro</button>
+          </div>
+        </div>
+
+        <div id="excelView" class="hidden">
           <div class="bar">
             <div class="controls">
               <div class="field">
@@ -475,6 +472,28 @@
     </div>
   </div>
 
+  <div id="wbAddOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Abrir um livro de Excel">
+    <div class="helpCard pickerCard">
+      <div class="helpHead">
+        <strong id="wbAddTitle">Abrir um livro de Excel</strong>
+        <button type="button" class="ccr-x" id="wbAddClose" title="Fechar">✕</button>
+      </div>
+      <div id="wbAddBody">
+        <button type="button" class="pickRow" id="wbAddOneDrive">
+          <span class="pickIcon">☁️</span>
+          <span class="pickName"><strong id="wbAddOneDriveTxt">Excel do OneDrive</strong>
+            <small id="wbAddOneDriveSub">Procurar no OneDrive/SharePoint</small></span>
+        </button>
+        <button type="button" class="pickRow" id="wbAddLocal">
+          <span class="pickIcon">📁</span>
+          <span class="pickName"><strong id="wbAddLocalTxt">Excel de um ficheiro local</strong>
+            <small id="wbAddLocalSub">Escolher um .xlsx neste computador</small></span>
+        </button>
+        <div class="pickNote hidden" id="wbAddNote"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="viewMapOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
     aria-label="Vista resumida desta aba">
     <div class="helpCard jiraLogCard">
@@ -556,6 +575,7 @@
   <script src="/static/js/viewmap.js"></script>
   <script src="/static/js/sidemap.js"></script>
   <script src="/static/js/picker.js"></script>
+  <script src="/static/js/workbooks.js"></script>
   <script src="/static/js/jira.js"></script>
   <script src="/static/js/help.js"></script>
   <script src="/static/js/notify.js"></script>

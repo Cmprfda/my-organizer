@@ -51,6 +51,16 @@
   color: var(--accent-text);
 }
 
+/* nome do livro de onde veio a alteração (com vários abertos é preciso) */
+.notifyBook {
+  display: block;
+  margin-top: 2px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .notifyTitle {
   margin-top: 2px;
   font-weight: 600;

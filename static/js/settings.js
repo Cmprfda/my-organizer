@@ -9,17 +9,11 @@ function applyLang() {
   $("settingsPanel").setAttribute("aria-label", t("settings_title"));
   document.querySelector('label[for="themeSel"]').textContent = t("theme_title");
   document.querySelector('label[for="langSel"]').textContent = t("lang_title");
-  document.querySelector('label[for="sourceSel"]').textContent = t("source_title");
-  $("sourceSel").title = t("source_title");
-  $("sourceSel").options[0].textContent = t("source_auto");
-  $("sourceSel").options[1].textContent = t("source_web");
-  $("sourceSel").options[2].textContent = t("source_local");
   renderGraphState();
   $("themeSel").title = t("theme_title");
   $("themeSel").options[0].textContent = t("theme_auto");
   $("themeSel").options[1].textContent = t("theme_light");
   $("themeSel").options[2].textContent = t("theme_dark");
-  document.querySelector('.tabs button[data-view="excel"]').textContent = t("tab_tasks");
   document.querySelector('.tabs button[data-view="todo"]').textContent = t("tab_todo");
   document.querySelector('.tabs button[data-view="notes"]').textContent = t("tab_notes");
   document.querySelector('.tabs button[data-view="feedback"]').textContent = t("tab_feedback");
@@ -104,6 +98,17 @@ function applyLang() {
   $("pickerClose").title = t("t_close");
   $("pickerSearch").placeholder = t("pick_search");
   $("pickerOverlay").setAttribute("aria-label", t("pick_title"));
+  // abrir livros: botão "+", janela de escolha e painel de boas-vindas
+  $("addWorkbookBtn").title = t("wb_add_title");
+  $("addWorkbookBtn").setAttribute("aria-label", t("wb_add_title"));
+  $("wbAddTitle").textContent = t("wb_add_title");
+  $("wbAddClose").title = t("t_close");
+  $("wbAddOverlay").setAttribute("aria-label", t("wb_add_title"));
+  $("wbAddOneDriveTxt").textContent = t("wb_from_onedrive");
+  $("wbAddOneDriveSub").textContent = t("wb_from_onedrive_sub");
+  $("wbAddLocalTxt").textContent = t("wb_from_local");
+  $("wbAddLocalSub").textContent = t("wb_from_local_sub");
+  renderWorkbookTabs();   // já trata do painel de boas-vindas
   $("itemClose").title = t("t_close");
   $("itemOverlay").setAttribute("aria-label", t("item_box"));
   // botão/campos do Jira (o estado em si vive em jira.js)
@@ -209,8 +214,6 @@ function graphAccountLine() {
 }
 
 function renderGraphState() {
-  $("sourceSel").value = SOURCE;
-  $("sourceRow").classList.toggle("hidden", !graphInfo.configured);
   $("graphBox").classList.toggle("hidden", !graphInfo.configured);
   renderConnBadge();
   if (!graphInfo.configured) return;
@@ -233,18 +236,6 @@ function renderGraphState() {
   // sem client_id só há a via da Azure CLI, que se gere fora da app
   const usable = graphInfo.connected ? graphInfo.method !== "cli" : graphInfo.can_login;
   $("graphBtn").classList.toggle("hidden", graphInfo.pending || !usable);
-  renderBookState();
-}
-
-// livro do OneDrive em uso (escolhido no seletor de ficheiros)
-function renderBookState() {
-  const ligado = !!graphInfo.connected;
-  $("bookBox").classList.toggle("hidden", !ligado);
-  $("bookBtn").textContent = t("book_change");
-  const nome = graphInfo.book || "";
-  $("bookState").innerHTML = `<span class="stateDot ${nome ? "ok" : ""}"></span>` +
-    `${t("book_title")}: ${esc(nome || t("book_none"))}`;
-  $("bookState").title = graphInfo.book_path || "";
 }
 
 // distintivo no canto superior direito: verde quando os dados vêm do OneDrive,
@@ -270,7 +261,7 @@ function renderConnBadge() {
     texto = lastData.source === "onedrive" ? webErr() : t("conn_offline");
   } else if (lastData && (lastData.source === "onedrive" || lastData.synced_copy)) {
     estado = "ok";
-    texto = graphInfo.book || t("conn_web");
+    texto = activeBookName() || graphInfo.book || t("conn_web");
     if (lastData.synced_copy) extra = ` — ${t("t_synced_copy")}`;
   } else if (semSessao) {
     estado = "err";
@@ -307,7 +298,8 @@ async function graphAction(action) {
 $("graphBtn").addEventListener("click", async () => {
   const connecting = !graphInfo.connected;
   await graphAction(connecting ? "login" : "logout");
-  if (!connecting) { load(); return; }
+  // sair da conta afeta todos os livros do OneDrive abertos, não só o da frente
+  if (!connecting) { loadAllTabs(); return; }
   if (!graphInfo.pending) return;
   // o utilizador autentica-se no browser; aqui só se espera pelo resultado
   window.open(graphInfo.url, "_blank", "noopener");
@@ -317,15 +309,10 @@ $("graphBtn").addEventListener("click", async () => {
     if (graphInfo.connected || !graphInfo.pending) {
       clearInterval(graphPoll);
       graphPoll = null;
-      if (graphInfo.connected) { toast(t("graph_on"), "ok"); load(); }
+      if (graphInfo.connected) { toast(t("graph_on"), "ok"); loadAllTabs(); }
       else toast(graphInfo.error || t("graph_off"), "err");
     }
   }, 4000);
 });
 
-$("sourceSel").addEventListener("change", () => {
-  SOURCE = $("sourceSel").value;
-  localStorage.setItem("bsp-tracker-source", SOURCE);
-  load();
-});
 

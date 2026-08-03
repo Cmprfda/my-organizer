@@ -16,7 +16,7 @@ from .excel import find_tracker_files
 from .graph import GraphError, graph_login_start, graph_logout, graph_state
 from .logs import LOG_FILE, log_event
 from .store import load_overrides
-from .tasks import push_overrides
+from .tasks import _split_key, known_files, push_overrides
 from .updates import GITHUB_REPO, _parse_version, check_update, find_releases_dir, github_latest
 
 def _running_port(args=None):
@@ -121,7 +121,7 @@ def cmd_status(args):
     for key, entry in overrides.items():
         if not isinstance(entry, dict):
             continue
-        fn = key.split("||")[1] if "||" in key else key
+        _, _, fn, _ = _split_key(key)
         for col, o in entry.items():
             print(f"   - {fn} | {col} -> {o.get('value', '')}")
     return 0
@@ -133,6 +133,16 @@ def cmd_push(args):
     if not pending:
         print("Nao ha alteracoes locais para enviar.")
         return 0
+    target = args.file
+    if not target:
+        # sem --file: assume-se o ficheiro mais recente conhecido, tal como
+        # a app fazia antes de haver varios livros — só a CLI ainda escolhe
+        # por omissão, a app em si exige sempre um livro explícito
+        files = known_files()
+        target = files[0] if files else None
+    if not target:
+        print("ERRO: nenhum ficheiro conhecido — indica um com --file")
+        return 1
     port = _running_port(args)
     if port:
         # há um servidor a correr: o push tem de ser feito por ele, senão as
@@ -140,7 +150,7 @@ def cmd_push(args):
         try:
             req = urllib.request.Request(
                 f"http://127.0.0.1:{port}/api/push",
-                data=json.dumps({"file": args.file}).encode("utf-8"),
+                data=json.dumps({"file": target}).encode("utf-8"),
                 headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(req, timeout=180) as resp:
                 out = json.load(resp)
@@ -153,7 +163,7 @@ def cmd_push(args):
         pushed, failed = out.get("pushed", 0), out.get("failed", [])
     else:
         try:
-            _, pushed, failed = push_overrides(args.file)
+            _, pushed, failed = push_overrides(target)
         except Exception as exc:
             print(f"ERRO: {exc}")
             return 1

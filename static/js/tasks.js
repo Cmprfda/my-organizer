@@ -443,28 +443,30 @@ function populateSelectors(data) {
   // servidor antigo (sem listas): esconde os seletores em vez de os mostrar vazios
   $("fileSelect").parentElement.classList.toggle("hidden", web || !files.length);
   $("sheetSelect").parentElement.classList.toggle("hidden", !sheets.length);
-  // fonte web: o nome do livro em uso fica ao lado da aba (clicar troca de livro)
-  const livro = web ? (graphInfo.book || (files[0] || {}).label || "") : "";
+  // fonte web: o nome do livro deste separador fica ao lado da aba
+  // (clicar abre a janela de abrir outro livro)
+  const livro = web ? (activeBookName() || graphInfo.book || (files[0] || {}).label || "") : "";
   $("bookField").classList.toggle("hidden", !livro);
   if (livro) {
     $("bookQuick").textContent = livro;
-    $("bookQuick").title = graphInfo.book_path ? `${graphInfo.book_path} — ${t("t_book_quick")}` : t("t_book_quick");
+    $("bookQuick").title = t("t_book_quick");
   }
 
   // só reconstrói quando algo mudou — senão a atualização automática
   // fechava um dropdown aberto
-  const sig = JSON.stringify([files, sheets, data.file || FILE, data.sheet || SHEET]);
+  const tab = activeTab();
+  const sig = JSON.stringify([files, sheets, data.file || tabFile(tab), data.sheet || (tab && tab.sheet)]);
   if (sig === lastSelectorsSig) return;
   lastSelectorsSig = sig;
 
-  const chosen = data.file || FILE;
+  const chosen = data.file || tabFile(tab);
   $("fileSelect").innerHTML =
     `<option value="">${t("newest")}</option>` +
     files.map(f =>
       `<option value="${esc(f.path)}"${f.path === chosen ? " selected" : ""} title="${esc(f.path)}">${esc(f.label)}${f.modified ? " \u2014 " + esc(f.modified) : ""}</option>`
     ).join("");
 
-  const current = data.sheet || SHEET;
+  const current = data.sheet || (tab && tab.sheet) || "";
   $("sheetSelect").innerHTML =
     sheets.map(s => `<option${s === current ? " selected" : ""}>${esc(s)}</option>`).join("");
 }
@@ -523,9 +525,7 @@ function render() {
   renderSearchChips();
 
   if (!data) return;
-  populateSelectors(data);
   renderVersionBadge(data);
-  updateViewMapButton(data);
   // instância de desenvolvimento: marcar bem, para não se confundir com a estável
   if (data.mode === "dev" && !document.body.classList.contains("devmode")) {
     document.body.classList.add("devmode");
@@ -549,6 +549,24 @@ function render() {
   $("refreshTodo").title = t("t_push_todo");
   $("refreshTodo").classList.toggle("hidden", !pending);
 
+  // sem nenhum livro aberto o painel das tarefas não tem nada que mostrar
+  // (quem está no ecrã é o painel de boas-vindas, ver renderWorkbookEmptyState).
+  // `data.no_workbook` cobre também a corrida em que este `data` é a resposta
+  // tardia de um loadAppState() de quando ainda não havia separador nenhum,
+  // mas entretanto já se abriu um — nunca tem headers/rows, seja qual for o
+  // separador ativo agora; o load() desse separador vai já a caminho e vai
+  // desenhar por cima assim que chegar.
+  if (!activeTab() || data.no_workbook) {
+    tbl.classList.add("hidden");
+    box.classList.add("hidden");
+    $("taskMode").classList.add("hidden");
+    $("fileInfo").textContent = "";
+    refreshItemBox();
+    return;
+  }
+  populateSelectors(data);
+  updateViewMapButton(data);
+
   if (data.error) {
     tbl.classList.add("hidden");
     $("taskMode").classList.add("hidden");
@@ -571,7 +589,7 @@ function render() {
   $("personName").textContent = PERSON;
   $("fileInfo").innerHTML =
     (data.mode === "dev" ? `<span class="devbadge">DEV</span> ` : "") +
-    `${t("info_file")}: <code${data.synced_copy ? ` title="${esc(data.file)} \u2014 ${esc(t("t_synced_copy"))}"` : ""}>${esc(data.source === "onedrive" || data.synced_copy ? (graphInfo.book || t("source_web")) : data.file)}</code> · ${t("info_mod")}: <strong>${esc(data.modified)}</strong>` +
+    `${t("info_file")}: <code${data.synced_copy ? ` title="${esc(data.file)} \u2014 ${esc(t("t_synced_copy"))}"` : ""}>${esc(data.source === "onedrive" || data.synced_copy ? (activeBookName() || graphInfo.book || t("source_web")) : data.file)}</code> · ${t("info_mod")}: <strong>${esc(data.modified)}</strong>` +
     (data.lan_url ? ` · ${t("info_phone")} <a href="${esc(data.lan_url)}"><code>${esc(data.lan_url)}</code></a>` : "") +
     (data.warning ? `<br><span class="warn">⚠ ${esc(data.warning)}</span>` +
       (web ? "" : ` <button class="mini" id="cycleNow">${t("btn_cycle")}</button>`) : "") +
@@ -745,7 +763,10 @@ function render() {
   function todoAddBtn(r, ri) {
     const title = String(r[0] === undefined ? "" : r[0]).split("\n")[0].trim();
     const meta = currentMeta[ri] || {};
-    const ref = { sheet: data.sheet || "", fn: meta.fn || title, todo: meta.todo || "" };
+    const ref = {
+      workbook: activeBookName(), sheet: data.sheet || "",
+      fn: meta.fn || title, todo: meta.todo || "",
+    };
     return todoHas("task", title, ref) ? ""
       : `<button type="button" class="todoActionBtn" data-todoadd="${ri}" title="${t("todo_add_click")}">${t("btn_add_todo")}</button>`;
   }
@@ -801,29 +822,65 @@ function render() {
   refreshItemBox();
 }
 
-// Há algum livro do Excel para mostrar? Livro escolhido no OneDrive ou pelo
-// menos um ficheiro encontrado no disco. Todas as respostas do /api/tasks
-// trazem `graph` e `files`, mesmo as de erro.
-function hasWorkbookConfigured() {
-  return !!(lastData && ((lastData.graph && lastData.graph.has_book) ||
-    (lastData.files && lastData.files.length > 0)));
+// pedido ao /api/tasks para um livro concreto. A fonte vai sempre explícita
+// (local ou onedrive) — a app nunca deixa o servidor escolher por si.
+function tabQuery(tab, { cycle = false, fresh = false, all = showAll } = {}) {
+  const q = new URLSearchParams();
+  q.set("person", PERSON);
+  q.set("all", all ? "1" : "0");
+  q.set("sheet", (tab && tab.sheet) || "");
+  q.set("file", tabFile(tab));
+  q.set("cycle", cycle ? "1" : "0");
+  q.set("fresh", fresh ? "1" : "0");
+  q.set("lang", LANG);
+  q.set("source", tabSource(tab));
+  // o nome só serve ao servidor para achar a cópia sincronizada no disco
+  if (tab && tab.kind === "onedrive" && tab.name) q.set("book_name", tab.name);
+  return q.toString();
 }
 
-async function load(cycle = false, fresh = false) {
-  // com a fonte web não há Excel local para fechar: nem pedimos o ciclo nem
-  // avisamos que o ficheiro pode fechar
-  if (lastData && lastData.source === "onedrive") cycle = false;
-  // com um editor aberto a leitura é silenciosa: o render fica à espera e a
-  // barra de informação não pode ficar presa no "A carregar…"
-  if (!editorOpen) $("fileInfo").textContent = cycle ? t("loading_cycle") : t("loading");
+// Lê UM livro e guarda o resultado na entrada dele. Nunca mexe no lastData de
+// outro separador — é isso que garante que dois livros abertos ao mesmo tempo
+// não se misturam.
+async function loadTab(tab, cycle = false, fresh = false) {
+  if (!tab) return null;
+  // com a fonte web não há Excel local para fechar
+  if (tab.kind === "onedrive") cycle = false;
+  let data;
   try {
-    const res = await fetch(`/api/tasks?person=${encodeURIComponent(PERSON)}&all=${showAll ? 1 : 0}` +
-      `&sheet=${encodeURIComponent(SHEET)}&file=${encodeURIComponent(FILE)}&cycle=${cycle ? 1 : 0}` +
-      `&fresh=${fresh ? 1 : 0}&lang=${LANG}&source=${SOURCE}`);
-    lastData = await res.json();
+    const res = await fetch(`/api/tasks?${tabQuery(tab, { cycle, fresh })}`);
+    data = await res.json();
   } catch (e) {
-    lastData = { error: t("err_server") };
+    data = { error: t("err_server") };
   }
+  tab.lastData = data;
+  // a aba que o servidor abriu mesmo (a pedida pode não existir neste livro):
+  // fica guardada, para o próximo arranque abrir logo a certa
+  if (data && data.sheet && data.sheet !== tab.sheet) {
+    tab.sheet = data.sheet;
+    saveWorkbookTabs();
+  }
+  if (tab.id === activeTabId) lastData = data;
+  return data;
+}
+
+// Estado global (TODO, CCRs, versão, pendentes) sem nenhum livro aberto: o
+// /api/tasks devolve-o na mesma, com "no_workbook". Isso não é um erro — é o
+// estado normal de quem ainda não abriu nada — por isso a mensagem é retirada.
+async function loadAppState() {
+  try {
+    const res = await fetch(`/api/tasks?person=${encodeURIComponent(PERSON)}` +
+      `&all=0&sheet=&file=&cycle=0&fresh=0&lang=${LANG}&source=local`);
+    const data = await res.json();
+    if (data && data.no_workbook) { delete data.error; delete data.hint; delete data.searched; }
+    return data;
+  } catch (e) {
+    return { error: t("err_server") };
+  }
+}
+
+// tratamento comum a qualquer leitura: estado da ligação, TODO, CCRs e desenho
+function afterLoad() {
   // esta recarga já é uma prova fresca do estado da ligação — o sinal do
   // pedido de 20/20s (ver checkForChanges) fica desatualizado. Tem de ser
   // limpo ANTES de desenhar, senão o estado velho ainda aparece
@@ -838,7 +895,6 @@ async function load(cycle = false, fresh = false) {
   } else {
     renderConnBadge();
   }
-  updateExcelTabVisibility();
   // os todos são atualizados primeiro: as CCRs precisam deles para saber
   // se ainda mostram o "+ TODO"
   if (lastData && lastData.todo) {
@@ -850,6 +906,33 @@ async function load(cycle = false, fresh = false) {
     if (currentView === "ccrs" && !editorOpen) renderCCRs();
   }
   render();
+}
+
+// Recarrega o livro do separador ativo (ou só o estado global, se não houver
+// nenhum livro aberto).
+async function load(cycle = false, fresh = false) {
+  const tab = activeTab();
+  if (!tab) {
+    lastData = await loadAppState();
+    afterLoad();
+    return;
+  }
+  // com um editor aberto a leitura é silenciosa: o render fica à espera e a
+  // barra de informação não pode ficar presa no "A carregar…"
+  if (!editorOpen) $("fileInfo").textContent = cycle ? t("loading_cycle") : t("loading");
+  await loadTab(tab, cycle, fresh);
+  afterLoad();
+}
+
+// Recarrega todos os livros abertos (arranque e ciclo de segurança). O ativo é
+// o último a ser lido, para o ecrã acabar com os dados dele.
+async function loadAllTabs(fresh = false) {
+  if (!workbookTabs.length) { await load(); return; }
+  for (const tab of workbookTabs) {
+    if (tab.id === activeTabId) continue;
+    await loadTab(tab, false, fresh);
+  }
+  await load(false, fresh);
 }
 
 function tbodyTap(e) {
@@ -926,7 +1009,7 @@ function openNoteEditor(cell) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sheet: lastData.sheet, fn: meta.fn, todo: meta.todo,
+          sheet: lastData.sheet, fn: meta.fn, todo: meta.todo, file: lastData.file,
           tag: cell.querySelector(".noteTag").value,
           note: cell.querySelector(".noteText").value,
           checks: Object.fromEntries(
@@ -951,7 +1034,7 @@ function openNoteEditor(cell) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sheet: lastData.sheet, fn: meta.fn, todo: meta.todo,
+          sheet: lastData.sheet, fn: meta.fn, todo: meta.todo, file: lastData.file,
           tag: "", note: "", checks: {}
         }),
       });

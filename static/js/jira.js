@@ -414,7 +414,7 @@ function renderJiraTodoPanel() {
     const titulo = it.title || "";
     return `<div class="jiraTodoItem${todoColOf(it) === "done" ? " isDone" : ""}" draggable="true"
     data-jtodoid="${esc(it.id)}" title="${esc(titulo ? `${titulo}\n${dica}` : dica)}">
-    ${kindChip(it.kind)}${jiraTodoPrioHtml(it)}<span class="jiraTodoItemTitle">${esc(titulo)}</span>
+    ${kindChip(it.kind, it.ref)}${jiraTodoPrioHtml(it)}<span class="jiraTodoItemTitle">${esc(titulo)}</span>
   </div>`;
   }).join("");
 }
@@ -452,7 +452,7 @@ function renderJiraPage() {
   </div>
   ${jiraEpicHtml(jiraEpicOf(e.key, e.epic))}
   <ul class="jiraCardTasks">${e.tasks.map(it => `<li class="jiraCardTask" draggable="true" data-jtid="${esc(it.id)}" data-jtfromkey="${esc(e.key)}" title="${esc(it.title || "")}">
-    ${kindChip(it.kind)}<span class="jiraCardTaskTitle">${esc(it.title || "")}</span>
+    ${kindChip(it.kind, it.ref)}<span class="jiraCardTaskTitle">${esc(it.title || "")}</span>
     ${it.jiraLoggedSeconds ? `<span class="jiraCardTaskEffort" title="${esc(t("jira_task_effort_title"))}">⏱ ${esc(formatJiraEffort(it.jiraLoggedSeconds))}</span>` : ""}
     <button type="button" class="ccr-x" data-jiraunlink="${esc(e.key)}|${esc(it.id)}" title="${esc(t("t_jira_unlink"))}">✕</button>
   </li>`).join("")}</ul>

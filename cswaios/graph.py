@@ -21,7 +21,8 @@ from .config import HERE
 from .logs import log_event
 from .text import normalize
 
-GRAPH_PATH = "onedrive:web"          # "caminho" virtual que identifica a fonte web
+GRAPH_PATH = "onedrive:web"          # "caminho" virtual da fonte web sem livro indicado
+GRAPH_PATH_PREFIX = "onedrive:"      # prefixo de qualquer "caminho" da fonte web
 GRAPH_CONFIG_FILE = os.path.join(HERE, "graph_config.json")
 GRAPH_CONFIG_EXAMPLE = os.path.join(HERE, "graph_config.example.json")
 GRAPH_TOKEN_FILE = os.path.join(HERE, "graph_token.json")
@@ -124,12 +125,37 @@ def save_books(books):
         json.dump(books, f, ensure_ascii=False, indent=2)
 
 
+def graph_path_for(drive_id, item_id):
+    """"Caminho" virtual de um livro concreto do OneDrive. É a identidade que
+    distingue livros diferentes nas caches e nas chaves dos overrides/notas —
+    sem isto, dois livros abertos ao mesmo tempo partilhavam tudo."""
+    return f"{GRAPH_PATH_PREFIX}{drive_id}:{item_id}"
+
+
+def is_graph_path(path):
+    """True se o "caminho" identificar a fonte web (com ou sem livro)."""
+    return bool(path) and str(path).startswith(GRAPH_PATH_PREFIX)
+
+
+def graph_ids_from_path(path):
+    """(drive_id, item_id) contidos num "caminho" da fonte web. Vazios no
+    GRAPH_PATH legado, em que o livro é o que estiver escolhido na app."""
+    if not is_graph_path(path) or path == GRAPH_PATH:
+        return "", ""
+    rest = str(path)[len(GRAPH_PATH_PREFIX):]
+    drive_id, _, item_id = rest.partition(":")
+    return drive_id, item_id
+
+
 def current_book():
     return load_books()["current"]
 
 
-def has_book():
-    """True se houver um livro para ler: escolhido na app ou na configuração."""
+def has_book(book=None):
+    """True se houver um livro para ler: o indicado, o escolhido na app ou o da
+    configuração."""
+    if book is not None:
+        return bool(book.get("drive_id") and book.get("item_id"))
     if current_book():
         return True
     cfg = graph_config()
@@ -926,8 +952,14 @@ def graph_pick(drive_id, item_id):
     return book
 
 
-def graph_workbook(path, method="GET", body=None, session=""):
-    drive, item = graph_item()
+def graph_workbook(path, method="GET", body=None, session="", drive_id="", item_id=""):
+    """Chamada à API do Excel. Sem drive_id/item_id vai ao livro escolhido na
+    app (graph_item); com eles, ao livro indicado — é assim que se lê mais do
+    que um livro ao mesmo tempo."""
+    if drive_id and item_id:
+        drive, item = drive_id, item_id
+    else:
+        drive, item = graph_item()
     # sem sessão explícita a Graph reutiliza uma sessão implícita que pode
     # servir o livro como estava há vários minutos (ver graph_read_session)
     headers = {"workbook-session-id": session} if session else None
@@ -935,33 +967,37 @@ def graph_workbook(path, method="GET", body=None, session=""):
                      method=method, body=body, extra_headers=headers)
 
 
-def graph_read_session():
+def graph_read_session(drive_id="", item_id=""):
     """Sessão nova e não persistente para uma leitura: garante uma fotografia
     do livro tirada AGORA. Sem isto, a sessão implícita da Graph mantinha-se
     viva com os pedidos automáticos da app e as edições feitas no Excel só
     apareciam ao fim de muito tempo (ou depois de voltar a autenticar)."""
     try:
         out = graph_workbook("/createSession", method="POST",
-                             body={"persistChanges": False})
+                             body={"persistChanges": False},
+                             drive_id=drive_id, item_id=item_id)
         return out.get("id", "")
     except GraphError as exc:
         log_event(f"não consegui abrir sessão de leitura no OneDrive ({exc})")
         return ""
 
 
-def graph_close_session(session):
+def graph_close_session(session, drive_id="", item_id=""):
     if not session:
         return
     try:
-        graph_workbook("/closeSession", method="POST", body={}, session=session)
+        graph_workbook("/closeSession", method="POST", body={}, session=session,
+                       drive_id=drive_id, item_id=item_id)
     except GraphError:
         pass
 
 
-def graph_modified():
+def graph_modified(drive_id="", item_id=""):
     """(data para mostrar, marca de versão). A marca muda a cada gravação do
     livro — é o que permite à interface recarregar sozinha sem ler a folha."""
-    drive, item = graph_item()
+    if not (drive_id and item_id):
+        drive_id, item_id = graph_item()
+    drive, item = drive_id, item_id
     info = graph_api(f"/drives/{drive}/items/{item}"
                      "?$select=lastModifiedDateTime,eTag")
     stamp = info.get("lastModifiedDateTime", "")
@@ -995,13 +1031,15 @@ def _range_start(address):
     return int(match.group(2)), col
 
 
-def graph_load_rows(sheet_wanted):
-    """(aba real, todas as abas, linhas) do livro no OneDrive. A aba real é
-    None quando a aba pedida não existe."""
-    session = graph_read_session()
+def graph_load_rows(drive_id, item_id, sheet_wanted):
+    """(aba real, todas as abas, linhas) do livro indicado no OneDrive. Sem
+    drive_id/item_id lê o livro escolhido na app. A aba real é None quando a
+    aba pedida não existe."""
+    session = graph_read_session(drive_id, item_id)
     try:
         sheets = [s.get("name", "") for s in
-                  graph_workbook("/worksheets?$select=name", session=session).get("value", [])]
+                  graph_workbook("/worksheets?$select=name", session=session,
+                                 drive_id=drive_id, item_id=item_id).get("value", [])]
         wanted = normalize(sheet_wanted)
         real = (sheet_wanted if sheet_wanted in sheets else None) \
             or next((n for n in sheets if normalize(n) == wanted), None) \
@@ -1010,9 +1048,10 @@ def graph_load_rows(sheet_wanted):
             return None, sheets, None
         quoted = urllib.parse.quote(real, safe="")
         used = graph_workbook(f"/worksheets('{quoted}')/usedRange(valuesOnly=true)"
-                              "?$select=text,address", session=session)
+                              "?$select=text,address", session=session,
+                              drive_id=drive_id, item_id=item_id)
     finally:
-        graph_close_session(session)
+        graph_close_session(session, drive_id, item_id)
     values = used.get("text") or []
     # o usedRange pode não começar em A1: preenche à esquerda/topo para os
     # índices coincidirem com os do openpyxl
@@ -1022,13 +1061,15 @@ def graph_load_rows(sheet_wanted):
     return real, sheets, rows
 
 
-def graph_write_status(sheet, xlrow, xlcol, fncol, fn, value):
+def graph_write_status(sheet, xlrow, xlcol, fncol, fn, value, drive_id="", item_id=""):
     """Escreve o estado diretamente no livro do OneDrive (a Graph preserva
-    validações, gráficos e formatação). Devolve (ok, mensagem)."""
+    validações, gráficos e formatação). Sem drive_id/item_id escreve no livro
+    escolhido na app. Devolve (ok, mensagem)."""
     try:
         quoted = urllib.parse.quote(sheet, safe="")
         guard = f"{col_letter(fncol)}{int(xlrow)}"
-        cur = graph_workbook(f"/worksheets('{quoted}')/range(address='{guard}')?$select=text")
+        cur = graph_workbook(f"/worksheets('{quoted}')/range(address='{guard}')?$select=text",
+                             drive_id=drive_id, item_id=item_id)
         cells = cur.get("text") or [[""]]
         seen = " ".join(str(cells[0][0] if cells and cells[0] else "").split())
         want = " ".join(str(fn).split())
@@ -1037,7 +1078,8 @@ def graph_write_status(sheet, xlrow, xlcol, fncol, fn, value):
                            f"(esperava {want!r}, encontrei {seen!r}) - atualiza a app e tenta de novo")
         target = f"{col_letter(xlcol)}{int(xlrow)}"
         graph_workbook(f"/worksheets('{quoted}')/range(address='{target}')",
-                       method="PATCH", body={"values": [[str(value)]]})
+                       method="PATCH", body={"values": [[str(value)]]},
+                       drive_id=drive_id, item_id=item_id)
         return True, "OK (OneDrive)"
     except GraphError as exc:
         return False, str(exc)

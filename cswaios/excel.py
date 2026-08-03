@@ -13,7 +13,8 @@ import openpyxl
 
 from . import config
 from .config import CANDIDATE_DIRS, FILE_PATTERN, HERE
-from .graph import GRAPH_PATH, graph_load_rows, graph_write_status
+from .graph import (graph_ids_from_path, graph_load_rows, graph_write_status,
+                    is_graph_path)
 from .text import cell_to_text, normalize
 
 # folha crua por (ficheiro, aba) — independente da pessoa/vista, para que
@@ -27,7 +28,7 @@ _ADMIN_CACHE = {}
 
 
 def admin_statuses(path):
-    if path == GRAPH_PATH:
+    if is_graph_path(path):
         mtime = int(time.time() // 300)   # fonte web: revalida a cada 5 minutos
     else:
         try:
@@ -38,8 +39,9 @@ def admin_statuses(path):
     if cached and cached[0] == mtime:
         return cached[1]
     try:
-        if path == GRAPH_PATH:
-            sheet, _all, rows = graph_load_rows("Admin")
+        if is_graph_path(path):
+            drive_id, item_id = graph_ids_from_path(path)
+            sheet, _all, rows = graph_load_rows(drive_id, item_id, "Admin")
             if sheet is None:
                 return cached[1] if cached else None
         else:
@@ -120,9 +122,11 @@ def write_status_to_excel(path, sheet, xlrow, xlcol, fncol, fn, value):
     preserva gráficos/validações e faz upload via OneDrive. Usa o livro já
     aberto se existir; senão abre uma instância invisível só para isto.
     Devolve (ok, mensagem)."""
-    if path == GRAPH_PATH:
+    if is_graph_path(path):
         # fonte web: o Excel/COM não se aplica, escreve-se pela API do Excel
-        return graph_write_status(sheet, xlrow, xlcol, fncol, fn, value)
+        drive_id, item_id = graph_ids_from_path(path)
+        return graph_write_status(sheet, xlrow, xlcol, fncol, fn, value,
+                                  drive_id, item_id)
     params = {"path": path, "basename": os.path.basename(path), "sheet": sheet,
               "xlrow": int(xlrow), "xlcol": int(xlcol), "fncol": int(fncol),
               "fn": fn, "value": value}
@@ -151,8 +155,9 @@ def locate_row(path, sheet_wanted, fn, todo):
     ficheiro estiver bloqueado). Devolve None se a linha não existir."""
     raw_key = (path, normalize(sheet_wanted))
     try:
-        if path == GRAPH_PATH:
-            real_sheet, all_sheets, rows = graph_load_rows(sheet_wanted)
+        if is_graph_path(path):
+            drive_id, item_id = graph_ids_from_path(path)
+            real_sheet, all_sheets, rows = graph_load_rows(drive_id, item_id, sheet_wanted)
             if real_sheet is None:
                 return None
         else:
@@ -248,6 +253,23 @@ def find_named_file(name):
             if os.path.isfile(path) and not os.path.basename(path).startswith("~"):
                 matches.add(os.path.abspath(path))
     return sorted(matches, key=os.path.getmtime, reverse=True)
+
+
+def browse_local_file():
+    """Abre a janela do Windows para escolher um .xlsx no disco. Devolve o
+    caminho escolhido, None se o utilizador cancelou, ou "unavailable" quando a
+    app está a correr no browser (sem janela nativa não há diálogo possível)."""
+    try:
+        import webview
+    except ImportError:
+        return "unavailable"
+    if not config.WEBVIEW_WINDOW:
+        return "unavailable"
+    escolhido = config.WEBVIEW_WINDOW.create_file_dialog(
+        webview.OPEN_DIALOG, file_types=("Excel files (*.xlsx)",))
+    if not escolhido:
+        return None
+    return str(escolhido[0]) if isinstance(escolhido, (list, tuple)) else str(escolhido)
 
 
 def pick_sheet(workbook, wanted):

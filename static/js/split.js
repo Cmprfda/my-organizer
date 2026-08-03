@@ -50,11 +50,17 @@ function flashRow(tr) {
 // pesquisa/filtros, limpa-os e tenta outra vez.
 function revealSource(src) {
   if (!src) return false;
-  if (sideView === src.view) { if (src.view === "ccrs") renderCCRs(); }
+  // a origem sabe de que livro veio: com vários abertos, salta-se primeiro
+  // para o separador certo (senão procurava-se a linha no livro errado)
+  if (src.view === "excel" && src.workbook) {
+    const tab = workbookTabs.find(x => x.name === src.workbook);
+    if (tab) src = { ...src, view: `wb:${tab.id}` };
+  }
+  if (sideView === normalizeView(src.view)) { if (src.view === "ccrs") renderCCRs(); }
   else showView(src.view);
 
   let tr = findSrcRow(src);
-  if (!tr && src.view === "excel" &&
+  if (!tr && isWorkbookView(src.view) &&
     ($("search").value || searchTerms.length || roleFilters.size || sideFilters.size || statusFilters.size)) {
     $("search").value = "";
     searchTerms = [];
@@ -72,8 +78,13 @@ function revealSource(src) {
 }
 
 // --- painéis ---
-const tabLabel = view =>
-  (document.querySelector(`.tabs button[data-view="${view}"]`) || {}).textContent || "";
+// os separadores dos livros levam o ✕ de fechar dentro do botão: o nome está
+// no data-label, não no textContent (que traria o ✕ atrás)
+const tabLabel = view => {
+  const b = document.querySelector(`.tabs button[data-view="${view}"]`);
+  if (!b) return "";
+  return b.dataset.label || b.textContent || "";
+};
 
 let splitPct = Math.min(78, Math.max(22, +localStorage.getItem("bsp-tracker-split") || 50));
 document.documentElement.style.setProperty("--split", splitPct + "%");
@@ -91,9 +102,18 @@ updateOrientBtn();
 
 function enterSplit(side, src) {
   if (!src) return;
-  if (sideView && sideView !== src.view) exitSplit();
-  sideView = src.view;
-  const el = $(VIEWS[sideView]);
+  // a origem pode apontar para um livro concreto (ver revealSource)
+  let view = src.view;
+  if (view === "excel" && src.workbook) {
+    const tab = workbookTabs.find(x => x.name === src.workbook);
+    if (tab) view = `wb:${tab.id}`;
+  }
+  view = normalizeView(view);
+  if (sideView && sideView !== view) exitSplit();
+  if (isWorkbookView(view)) setActiveTab(workbookViewId(view));
+  sideView = view;
+  const el = viewEl(sideView);
+  if (!el) { sideView = null; return; }
   $("sideBody").appendChild(el);
   el.classList.remove("hidden");
   $("sideTitle").textContent = tabLabel(sideView);
@@ -107,10 +127,13 @@ function enterSplit(side, src) {
 
 // dividir o ecrã arrastando um separador do menu para uma das faixas laterais
 function enterSplitView(side, view) {
-  if (!VIEWS[view]) return;
+  view = normalizeView(view);
+  if (!viewEl(view)) return;
   if (sideView && sideView !== view) exitSplit();
+  // o painel do livro é um só: pô-lo ao lado obriga a que seja esse o livro ativo
+  if (isWorkbookView(view)) setActiveTab(workbookViewId(view));
   sideView = view;
-  const el = $(VIEWS[view]);
+  const el = viewEl(view);
   $("sideBody").appendChild(el);
   el.classList.remove("hidden");
   $("sideTitle").textContent = tabLabel(view);
@@ -119,12 +142,15 @@ function enterSplitView(side, view) {
   document.body.classList.add("split");
   document.body.classList.toggle("side-left", side === "left");
   // o painel principal fica com a vista atual; se for a mesma, escolhe outra
-  showView(currentView === view ? (view === "excel" ? "todo" : "excel") : currentView);
+  // (nunca outro livro: o painel dos livros já está do lado)
+  showView(currentView === view || isWorkbookView(currentView)
+    ? (isWorkbookView(view) ? "todo" : fallbackView())
+    : currentView);
 }
 
 function exitSplit() {
   if (!sideView) return;
-  const el = $(VIEWS[sideView]);
+  const el = viewEl(sideView);
   $("paneMain").appendChild(el);
   el.classList.add("hidden");
   sideView = null;
@@ -158,8 +184,9 @@ document.querySelectorAll("#dropZones .dropZone").forEach(zone => {
   });
 });
 
-// arrastar um separador do menu mostra as faixas de largada
-document.querySelectorAll(".tabs button[data-view]").forEach(b => {
+// arrastar um separador do menu mostra as faixas de largada. Está numa função
+// porque os separadores dos livros nascem depois disto (ver renderWorkbookTabs).
+function wireTabDrag(b) {
   b.addEventListener("dragstart", e => {
     e.dataTransfer.setData("application/json",
       JSON.stringify({ kind: "tab", view: b.dataset.view }));
@@ -173,7 +200,8 @@ document.querySelectorAll(".tabs button[data-view]").forEach(b => {
     $("dropZones").classList.add("hidden");
     document.querySelectorAll("#dropZones .dropZone").forEach(z => z.classList.remove("over"));
   });
-});
+}
+document.querySelectorAll(".tabs button[data-view]").forEach(wireTabDrag);
 
 // fallback para tablets/smartphones onde o HTML5 DnD falha (ex.: iPad/Safari)
 let touchDrag = null;
@@ -204,7 +232,10 @@ function payloadFromTouchDragTarget(target) {
     if (!fn) return null;
     const detail = taskRowDetail(taskRow);
     const meta = currentMeta[[...$("tbody").rows].indexOf(taskRow)] || {};
-    const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
+    const ref = {
+      workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
+      fn: meta.fn || fn, todo: meta.todo || "",
+    };
     return { kind: "task", title: fn, detail, ref };
   }
 

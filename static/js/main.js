@@ -24,9 +24,6 @@ $("fetchBtn").addEventListener("click", async () => {
   try {
     await fetch("/api/fetch", { method: "POST" });
   } catch (e) { /* o load() seguinte mostra o erro do servidor */ }
-  // volta a "mais recente" para apanhar o ficheiro acabado de descarregar
-  FILE = "";
-  localStorage.setItem("bsp-tracker-file", "");
 
   let tries = 0;
   const done = () => { btn.disabled = false; btn.textContent = "Obter do SharePoint"; };
@@ -45,13 +42,17 @@ $("fetchBtn").addEventListener("click", async () => {
 // mostrar "A enviar…" enquanto o pedido decorre.
 async function doPush(btn) {
   if (lastData && lastData.pending) {
+    // o destino é sempre o livro do separador ativo: sem nenhum aberto não há
+    // para onde escrever (as alterações locais ficam à espera, não se perdem)
+    const alvo = (lastData && lastData.file) || tabFile(activeTab());
+    if (!alvo) { toast(t("push_need_book"), "err"); return; }
     btn.disabled = true;
     btn.textContent = t("btn_pushing");
     try {
       const res = await fetch("/api/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file: lastData.file }),
+        body: JSON.stringify({ file: alvo }),
       });
       const out = await res.json();
       if (out.ok && out.failed && out.failed.length)
@@ -103,15 +104,24 @@ $("searchMode").addEventListener("click", () => {
   localStorage.setItem("bsp-tracker-search-mode", searchMode);
   render();
 });
+// trocar o ficheiro local deste separador (só aparece nos livros locais)
 $("fileSelect").addEventListener("change", () => {
-  FILE = $("fileSelect").value;
-  localStorage.setItem("bsp-tracker-file", FILE);
-  clearFilters();
-  load();
+  const tab = activeTab();
+  const caminho = $("fileSelect").value;
+  if (!tab || !caminho || caminho === tab.path) return;
+  // não se muda tab.path no próprio objeto: o id do separador deriva do
+  // caminho (workbookId em state.js), por isso mudar só o caminho deixava o
+  // separador com um id que já não corresponde a si mesmo (localStorage,
+  // activeTabId, notify.js, tudo isso fica órfão). Fecha-se e abre-se de novo
+  // com o caminho novo, que já sabe tratar de tudo isso correctamente.
+  closeWorkbookTab(tab.id);
+  openWorkbookTab({ kind: "local", path: caminho });
 });
 $("sheetSelect").addEventListener("change", () => {
-  SHEET = $("sheetSelect").value;
-  localStorage.setItem("bsp-tracker-sheet", SHEET);
+  const tab = activeTab();
+  if (!tab) return;
+  tab.sheet = $("sheetSelect").value;
+  saveWorkbookTabs();
   clearFilters();
   load();
 });
@@ -175,10 +185,14 @@ $("toggleAll").addEventListener("click", () => {
   load();
 });
 
+// separadores dos livros que ficaram abertos da última vez (a app não abre
+// nenhum por si: se a lista estiver vazia, fica o painel de boas-vindas)
+renderWorkbookTabs();
 applyLang();
+showView(currentView);
 // o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
 // (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
-load().then(() => { notifyTaskChanges(); });
+loadAllTabs().then(() => { notifyTaskChanges(); });
 // a conta OneDrive memorizada só vem do /api/graph (localhost-only); o
 // /api/tasks nunca a traz, por estar exposto na LAN — um pedido único no
 // arranque chega, os polls seguintes ao /api/tasks preservam-na (graphInfo é
@@ -202,16 +216,18 @@ syncTopBar();
 // como rede de segurança. Os dados continuam a ser lidos com um editor aberto
 // (é o render que espera) — de outra forma uma nota deixada aberta congelava a
 // app inteira.
-async function checkForChanges() {
-  if (!lastData || lastData.error || !lastData.stamp) return;
-  try {
-    const res = await fetch(`/api/modified?file=${encodeURIComponent(lastData.file || "")}`);
-    const out = await res.json();
-    // este pedido chama mesmo a API do OneDrive quando a fonte é a nuvem: um
-    // erro aqui prova falta de rede, ao contrário do token em cache (que só
-    // expira de hora a hora e por isso pode mostrar "ligado" muito depois de
-    // a rede ter caído)
-    if (lastData.source === "onedrive") {
+async function checkTabForChanges(tab) {
+  const antes_data = tab.lastData;
+  if (!antes_data || antes_data.error || !antes_data.stamp) return false;
+  const ativo = tab.id === activeTabId;
+  const res = await fetch(`/api/modified?file=${encodeURIComponent(tabFile(tab))}`);
+  const out = await res.json();
+  // este pedido chama mesmo a API do OneDrive quando a fonte é a nuvem: um
+  // erro aqui prova falta de rede, ao contrário do token em cache (que só
+  // expira de hora a hora e por isso pode mostrar "ligado" muito depois de
+  // a rede ter caído). Só o separador à vista manda no distintivo.
+  if (ativo) {
+    if (antes_data.source === "onedrive") {
       const estavaOffline = liveOffline;
       liveOffline = !!out.error;
       liveError = out.error || "";
@@ -222,22 +238,35 @@ async function checkForChanges() {
       liveError = "";
       renderGraphState();
     }
-    if (out.stamp && out.stamp !== lastData.stamp) {
-      const antes = { rows: JSON.stringify(lastData.rows || []), digest: lastData.digest };
-      await load();
-      clientLog(`livro gravado ${out.modified} - recarregado #${antes.digest} -> ` +
-        `#${lastData && lastData.digest} (${antes.rows === JSON.stringify((lastData && lastData.rows) || []) ? "sem mudancas nas linhas" : "linhas mudaram"})`);
-      // o livro é gravado muitas vezes sem nada mudar nas nossas linhas:
-      // só avisamos quando os dados à vista mudam mesmo
-      if (!editorOpen && JSON.stringify((lastData && lastData.rows) || []) !== antes.rows)
-        toast(t("auto_refresh"), "ok");
-      // e, por cima disso, um cartão por cada tarefa minha que mudou mesmo
-      // (quem mexeu no estado/OBS/texto de uma linha ligada a mim) — corre
-      // sempre, mesmo com um editor aberto: os cartões são passivos e ficam num
-      // canto, ao contrário do render, que não pode mexer na célula em edição
-      await notifyTaskChanges();
-    }
-  } catch (e) { /* sem rede: o ciclo de 2 minutos volta a tentar */ }
+  }
+  if (!out.stamp || out.stamp === antes_data.stamp) return false;
+  const antes = { rows: JSON.stringify(antes_data.rows || []), digest: antes_data.digest };
+  if (ativo) await load();
+  else await loadTab(tab);
+  const agora = tab.lastData;
+  clientLog(`livro ${tab.name} gravado ${out.modified} - recarregado #${antes.digest} -> ` +
+    `#${agora && agora.digest} (${antes.rows === JSON.stringify((agora && agora.rows) || []) ? "sem mudancas nas linhas" : "linhas mudaram"})`);
+  // o livro é gravado muitas vezes sem nada mudar nas nossas linhas:
+  // só avisamos quando os dados à vista mudam mesmo
+  if (ativo && !editorOpen && JSON.stringify((agora && agora.rows) || []) !== antes.rows)
+    toast(t("auto_refresh"), "ok");
+  return true;
+}
+
+// todos os livros abertos são vigiados, não só o que está à vista: os avisos
+// por tarefa (cartões) devem aparecer venha a alteração do livro que vier
+async function checkForChanges() {
+  let mudou = false;
+  for (const tab of [...workbookTabs]) {
+    try {
+      if (await checkTabForChanges(tab)) mudou = true;
+    } catch (e) { /* sem rede: o ciclo de 2 minutos volta a tentar */ }
+  }
+  // um cartão por cada tarefa minha que mudou mesmo (quem mexeu no estado/OBS/
+  // texto de uma linha ligada a mim) — corre sempre, mesmo com um editor
+  // aberto: os cartões são passivos e ficam num canto, ao contrário do render,
+  // que não pode mexer na célula em edição
+  if (mudou) await notifyTaskChanges();
 }
 setInterval(checkForChanges, 20000);
-setInterval(load, 120000);
+setInterval(() => loadAllTabs(), 120000);

@@ -17,8 +17,10 @@ const NOTIFY_LINES = 3;     // colunas mostradas por cartão
 // É separado do lastData/rows da tabela à vista de propósito: a tabela pode
 // estar em "Ver tudo" (ou noutra vista) e isto tem de continuar a comparar
 // sempre o mesmo conjunto — as tarefas ligadas a mim.
-let notifySnap = null;
-let notifySig = "";         // livro||aba||pessoa a que o snapshot pertence
+// Um retrato POR LIVRO aberto (id do separador -> {sig, snap}): com vários
+// livros ao mesmo tempo, comparar o de um com o retrato de outro daria avisos
+// falsos em toda a linha.
+const notifySnaps = new Map();
 let notifySeq = 0;
 
 // ---------- pilha de cartões ----------
@@ -77,12 +79,19 @@ function notifyChangeHtml(ch) {
     `<span class="notifyTo">${para}</span></div>`;
 }
 
-function notifyTaskCard(row) {
+// o cartão diz sempre de que livro veio a alteração: com vários abertos, só o
+// nome da tarefa não chegava para se saber onde é que ela mudou
+function notifyHeadHtml(book) {
+  return `<div class="notifyHead">${esc(t("notify_task_changed"))}` +
+    (book ? `<span class="notifyBook">${esc(book)}</span>` : "") + `</div>`;
+}
+
+function notifyTaskCard(row, book) {
   const todo = (row.todo || "").trim();
   const curto = todo.length > 90 ? todo.slice(0, 90) + "…" : todo;
   const extra = row.changes.length - NOTIFY_LINES;
   notifyCard(
-    `<div class="notifyHead">${esc(t("notify_task_changed"))}</div>` +
+    notifyHeadHtml(book) +
     `<div class="notifyTitle">${esc(notifyTitle(row))}</div>` +
     (curto ? `<div class="notifySub">${esc(curto)}</div>` : "") +
     row.changes.slice(0, NOTIFY_LINES).map(notifyChangeHtml).join("") +
@@ -129,25 +138,24 @@ function notifyDiff(antes, agora) {
 
 // linhas da pessoa, sempre com "Ver tudo" desligado: o aviso é sobre as MINHAS
 // tarefas, independentemente do que a tabela está a mostrar. Com o "Ver tudo"
-// desligado o load() que acabou de correr já trouxe exatamente essas linhas —
+// desligado a leitura que acabou de correr já trouxe exatamente essas linhas —
 // reaproveita-se, para não reler o livro (uma chamada ao OneDrive) duas vezes.
-async function notifyScopedPayload() {
-  if (!lastData || lastData.error) return null;
-  if (!showAll) return lastData;
+async function notifyScopedPayload(tab) {
+  const data = tab && tab.lastData;
+  if (!data || data.error) return null;
+  if (!showAll) return data;
   try {
-    const res = await fetch(`/api/tasks?person=${encodeURIComponent(PERSON)}&all=0` +
-      `&sheet=${encodeURIComponent(lastData.sheet || SHEET)}` +
-      `&file=${encodeURIComponent(lastData.file || FILE)}` +
-      `&cycle=0&fresh=0&lang=${LANG}&source=${SOURCE}`);
+    const alvo = { ...tab, sheet: data.sheet || tab.sheet };
+    const res = await fetch(`/api/tasks?${tabQuery(alvo, { all: false })}`);
     return await res.json();
   } catch (e) {
     return null;   // sem rede: a ronda seguinte volta a tentar
   }
 }
 
-// chamada no arranque (só semeia) e depois de cada recarga por gravação do livro
-async function notifyTaskChanges() {
-  const data = await notifyScopedPayload();
+// compara um livro com o retrato que dele se tinha
+async function notifyTabChanges(tab) {
+  const data = await notifyScopedPayload(tab);
   if (!data || data.error) return;
   // leitura degradada (ficheiro bloqueado pelo Excel, cache antiga): os valores
   // podem não ser os da folha. O snapshot fica intocado para a comparação
@@ -157,19 +165,32 @@ async function notifyTaskChanges() {
   if (!metas.length) return;
   const sig = `${data.file || ""}||${data.sheet || ""}||${norm(data.person || PERSON)}`;
   const snap = notifySnapshot(metas);
-  if (!notifySnap || notifySig !== sig) {
-    // primeira leitura da sessão (ou mudou de livro/aba/pessoa): semeia em
-    // silêncio, senão a app abria com um cartão por cada tarefa
-    notifySnap = snap;
-    notifySig = sig;
+  const antes = notifySnaps.get(tab.id);
+  if (!antes || antes.sig !== sig) {
+    // primeira leitura da sessão (ou mudou de aba/pessoa neste livro): semeia
+    // em silêncio, senão a app abria com um cartão por cada tarefa
+    notifySnaps.set(tab.id, { sig, snap });
     return;
   }
-  const mudou = notifyDiff(notifySnap, snap);
-  notifySnap = snap;
+  const mudou = notifyDiff(antes.snap, snap);
+  notifySnaps.set(tab.id, { sig, snap });
   if (!mudou.length) return;
-  clientLog(`avisos: ${mudou.length} tarefa(s) minha(s) mudaram no livro`);
-  mudou.slice(0, NOTIFY_MAX).forEach(notifyTaskCard);
+  const livro = tab.name || "";
+  clientLog(`avisos: ${mudou.length} tarefa(s) minha(s) mudaram no livro ${livro}`);
+  mudou.slice(0, NOTIFY_MAX).forEach(row => notifyTaskCard(row, livro));
   if (mudou.length > NOTIFY_MAX)
-    notifyCard(`<div class="notifyHead">${esc(t("notify_task_changed"))}</div>` +
+    notifyCard(notifyHeadHtml(livro) +
       `<div class="notifyTitle">${esc(tf("notify_more_rows", mudou.length - NOTIFY_MAX))}</div>`);
+}
+
+// chamada no arranque (só semeia) e depois de cada recarga por gravação de um
+// livro. Cada livro aberto é comparado com o SEU próprio retrato.
+async function notifyTaskChanges() {
+  for (const tab of [...workbookTabs]) {
+    try {
+      await notifyTabChanges(tab);
+    } catch (e) { /* a ronda seguinte volta a tentar */ }
+  }
+  // livros entretanto fechados não precisam de retrato guardado
+  [...notifySnaps.keys()].forEach(id => { if (!tabById(id)) notifySnaps.delete(id); });
 }

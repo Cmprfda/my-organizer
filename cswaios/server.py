@@ -19,6 +19,7 @@ from urllib.parse import urlparse, parse_qs
 
 from . import config
 from .config import APP_VERSION, DOWNLOAD_URL, HERE, SHARE_URL, lan_ip
+from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, flush_pending,
                        report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
@@ -30,8 +31,8 @@ from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
 from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
                     save_overrides)
-from .tasks import (build_payload, current_stamp, forget_web_cache, known_headers,
-                    push_overrides, warm_cache)
+from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
+                    forget_web_cache, known_headers, push_overrides)
 from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
                     normalize_ref, normalize_todo_item, save_todo, sort_todos_by_priority,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
@@ -253,6 +254,35 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 log_event(f"{ip} /api/graph FALHOU: {exc!r}")
                 self._send(500, json.dumps({"error": "erro interno"}), "application/json")
+            return
+        if path == "/api/workbook/browse_local":
+            # escolher um .xlsx no disco pela janela do Windows. Só a partir
+            # deste PC: o diálogo abre na máquina onde a app corre, quem está
+            # na LAN não tem nada que o abrir.
+            if ip not in ("127.0.0.1", "::1", "localhost"):
+                log_event(f"{ip} tentou abrir o diálogo de ficheiros - recusado")
+                self._send(403, json.dumps({"error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                escolhido = browse_local_file()
+            except Exception as exc:
+                log_event(f"{ip} /api/workbook/browse_local FALHOU: {exc!r}")
+                self._send(500, json.dumps({"error": "erro interno"}), "application/json")
+                return
+            if escolhido == "unavailable":
+                self._send(200, json.dumps(
+                    {"path": None, "error": "procurar ficheiros só funciona na janela "
+                                            "da app (no browser não há diálogo)"}),
+                    "application/json")
+                return
+            if not escolhido:
+                self._send(200, json.dumps({"path": None}), "application/json")
+                return
+            log_event(f"{ip} escolheu o livro local {escolhido}")
+            self._send(200, json.dumps({"path": escolhido,
+                                        "name": os.path.basename(escolhido)}),
+                       "application/json")
             return
         if path == "/api/bug":
             # erro apanhado no browser: reportar automaticamente
@@ -722,12 +752,16 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                key = f'{payload["sheet"]}||{payload.get("fn", "")}||{payload.get("todo", "")}'
+                workbook_id = payload.get("file", "")
+                sheet, fn, todo = payload["sheet"], payload.get("fn", ""), payload.get("todo", "")
                 tag = (payload.get("tag") or "").strip()
                 note = (payload.get("note") or "").strip()
                 raw_checks = payload.get("checks") or {}
                 checks = {k: bool(v) for k, v in raw_checks.items() if isinstance(k, str)}
                 notes = load_notes()
+                found_key, _ = _override_entry(notes, workbook_id, sheet, fn, todo)
+                key = _wb_key(workbook_id, sheet, fn, todo)
+                notes.pop(found_key, None)   # migra para a chave nova (com livro) ao gravar
                 if not tag and not note and not any(checks.values()):
                     notes.pop(key, None)
                     log_event(f'{ip} limpou a nota de {payload.get("fn", "?")}')
@@ -800,18 +834,22 @@ class Handler(BaseHTTPRequestHandler):
                 headers = known_headers(payload.get("file", ""), payload.get("sheet", ""))
                 if not headers or column not in headers:
                     raise ValueError(f"coluna inválida: {column}")
-            key = f'{payload["sheet"]}||{payload.get("fn", "")}||{payload.get("todo", "")}'
+            workbook_id = payload.get("file", "")
+            sheet, fn, todo = payload["sheet"], payload.get("fn", ""), payload.get("todo", "")
 
             # a alteração fica só local (✎) até o utilizador carregar em Push;
             # a escrita no Excel/OneDrive acontece em /api/push
             overrides = load_overrides()
-            entry = overrides.get(key, {})
+            found_key, entry = _override_entry(overrides, workbook_id, sheet, fn, todo)
+            entry = dict(entry) if entry else {}
             if payload.get("value") is None:
                 entry.pop(column, None)          # repor o valor da folha
             else:
                 # mantém a base original se já havia override para esta célula
                 base = entry.get(column, {}).get("base", payload.get("base", ""))
                 entry[column] = {"value": str(payload["value"]), "base": base}
+            key = _wb_key(workbook_id, sheet, fn, todo)
+            overrides.pop(found_key, None)    # migra para a chave nova (com livro) ao gravar
             if entry:
                 overrides[key] = entry
             else:
@@ -869,8 +907,10 @@ def open_ui(url):
         pass
     # private_mode=False: preserva localStorage (preferência de tema, etc.)
     # entre arranques da app, tal como um browser normal faria.
-    webview.create_window("My Organizer", url, width=1300, height=850,
-                          min_size=(1000, 650))
+    window = webview.create_window("My Organizer", url, width=1300, height=850,
+                                   min_size=(1000, 650))
+    # guardada para quem precise de diálogos nativos (escolher um .xlsx no disco)
+    config.WEBVIEW_WINDOW = window
     webview.start(private_mode=False,
                   icon=os.path.join(HERE, "static", "img", "app-icon.ico"))
 
@@ -939,7 +979,6 @@ def main():
     trim_log()
     # feedback que ficou por entregar (partilha sem escrita) tenta seguir agora
     flush_pending()
-    threading.Thread(target=warm_cache, daemon=True).start()
     ip = lan_ip() if args.host == "0.0.0.0" else None
     log_event(f"servidor v{APP_VERSION}{' DEV' if args.dev else ''} iniciado em {url}" +
               (f" | rede: http://{ip}:{port}" if ip else ""))

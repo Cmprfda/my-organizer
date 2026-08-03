@@ -41,7 +41,8 @@ app.graph_config = lambda: dict(CFG)
 app.graph_token = lambda cfg=None: "TOKEN"
 
 # --- leitura ----------------------------------------------------------------
-sheet, sheets, rows = app.graph_load_rows("prj_cfg1")
+# sem drive/item explícitos: o livro é o que a app tiver escolhido (graph_item)
+sheet, sheets, rows = app.graph_load_rows("", "", "prj_cfg1")
 assert sheet == "PRJ_CFG1_reworks_julho", sheet
 assert sheets == ["PRJ_CFG1_reworks_julho", "Admin"], sheets
 # usedRange começa em B2: a linha 1 fica vazia e a coluna A a None

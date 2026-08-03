@@ -263,8 +263,15 @@ function setTodoLayout(layout) {
   renderTodo();
 }
 
-function kindChip(kind) {
-  if (kind === "task") return `<span class="chip done" style="opacity:1">Excel</span> `;
+// A etiqueta de uma origem do Excel leva o nome do livro de onde a linha veio
+// (ref.workbook). Os itens criados antes de haver vários livros abertos não o
+// têm — nesses fica o "Excel" de sempre.
+function kindChip(kind, ref) {
+  if (kind === "task") {
+    const livro = String((ref && ref.workbook) || "").trim();
+    return `<span class="chip done" style="opacity:1"${livro ? ` title="${esc(livro)}"` : ""}>` +
+      `${esc(livro || "Excel")}</span> `;
+  }
   if (kind === "ccr") return `<span class="chip" style="opacity:1;background:var(--accent-soft);color:var(--accent)">CCR</span> `;
   return "";
 }
@@ -279,11 +286,15 @@ function todoSources(it) {
   return out;
 }
 
-// uma etiqueta por tipo de origem, sem repetir
+// uma etiqueta por origem, sem repetir. Duas linhas do Excel em livros
+// diferentes são duas etiquetas diferentes (o nome do livro faz parte dela).
 function todoKindChips(it) {
-  const seen = [];
-  todoSources(it).forEach(src => { if (!seen.includes(src.kind)) seen.push(src.kind); });
-  return seen.map(kindChip).join("");
+  const seen = new Map();
+  todoSources(it).forEach(src => {
+    const chave = `${src.kind}||${((src.ref || {}).workbook) || ""}`;
+    if (!seen.has(chave)) seen.set(chave, src);
+  });
+  return [...seen.values()].map(src => kindChip(src.kind, src.ref)).join("");
 }
 
 function formatTodoElapsed(ms) {
@@ -389,7 +400,12 @@ function srcOfSource(src) {
   }
   if (src.kind === "task") {
     const fn = ref.fn || String(src.title).trim();
-    return fn ? { view: "excel", fn, todo: ref.todo || "", sheet: ref.sheet || "" } : null;
+    // `workbook` diz de que livro veio a linha: com vários abertos, é o que
+    // permite saltar para o separador certo (ver revealSource em split.js)
+    return fn ? {
+      view: "excel", fn, todo: ref.todo || "", sheet: ref.sheet || "",
+      workbook: ref.workbook || "",
+    } : null;
   }
   return null;
 }
@@ -436,17 +452,34 @@ function todoHas(kind, title, ref) {
 // O item só guarda o título e o "O que fazer" do momento em que foi criado;
 // papel, estados e execução são lidos do Excel a cada render, para
 // acompanharem a tarefa. O índice é recalculado quando chegam dados novos.
-let taskIndexData = null, taskIndexMap = null;
+// O índice cobre TODOS os livros abertos, não só o que está à vista: um item
+// ligado a uma linha de outro livro tem de continuar a mostrar o estado dela.
+// `taskIndexByBook` guarda um índice por livro (o nome vem em ref.workbook) e
+// `taskIndexMap` junta-os todos, para os itens antigos, que não sabem o livro.
+let taskIndexStamp = null, taskIndexMap = null, taskIndexByBook = null;
 
 function taskIndex() {
-  if (lastData === taskIndexData) return taskIndexMap;
-  taskIndexData = lastData;
+  // impressão digital do que está lido em memória: só se refaz quando muda
+  const stamp = workbookTabs.map(x => {
+    const d = x.lastData;
+    return `${x.id}:${d ? (d.digest || d.error || "?") : ""}:${(d && d.sheet) || ""}`;
+  }).join("|") + `#${showAll ? 1 : 0}#${PERSON}`;
+  if (stamp === taskIndexStamp && taskIndexMap) return taskIndexMap;
+  taskIndexStamp = stamp;
   taskIndexMap = new Map();
-  const compact = lastData && !lastData.error ? buildCompact(lastData) : null;
-  (compact ? compact.rows : []).forEach(r => {
-    const meta = r[6] || {};
-    const key = `${meta.fn || r[0]}\u001F${meta.todo || ""}`;
-    if (!taskIndexMap.has(key)) taskIndexMap.set(key, r);
+  taskIndexByBook = new Map();
+  workbookTabs.forEach(tab => {
+    const data = tab.lastData;
+    const compact = data && !data.error ? buildCompact(data) : null;
+    if (!compact) return;
+    const doLivro = new Map();
+    compact.rows.forEach(r => {
+      const meta = r[6] || {};
+      const key = `${meta.fn || r[0]}${meta.todo || ""}`;
+      if (!doLivro.has(key)) doLivro.set(key, r);
+      if (!taskIndexMap.has(key)) taskIndexMap.set(key, r);
+    });
+    taskIndexByBook.set(tab.name || "", doLivro);
   });
   return taskIndexMap;
 }
@@ -458,10 +491,13 @@ function taskRowFor(it) {
   if (!map || !map.size) return null;
   const ref = src.ref || {};
   const fn = ref.fn || String(src.title).trim();
-  const exact = map.get(`${fn}\u001F${ref.todo || ""}`);
+  // o item sabe de que livro veio e esse livro está aberto: só lá se procura,
+  // senão a mesma função noutro livro dava o estado errado
+  const onde = (ref.workbook && taskIndexByBook.get(ref.workbook)) || map;
+  const exact = onde.get(`${fn}${ref.todo || ""}`);
   if (exact) return exact;
   // itens antigos foram guardados sem o `todo`: aceita-se a 1.ª linha com o mesmo nome
-  for (const [key, row] of map) if (key.split("\u001F")[0] === fn) return row;
+  for (const [key, row] of onde) if (key.split("")[0] === fn) return row;
   return null;
 }
 
@@ -561,7 +597,7 @@ function todoLinksHtml(it) {
     const ref = l.ref || {};
     const label = l.title === it.title ? "" : l.title;
     const tip = `${l.title}${ref.todo ? ` — ${ref.todo}` : ""}`;
-    return `<li class="todoLinkItem" title="${esc(tip)}">${kindChip(l.kind)}` +
+    return `<li class="todoLinkItem" title="${esc(tip)}">${kindChip(l.kind, ref)}` +
       (label ? `<span class="todoLinkTitle">${esc(label)}</span>` : "") +
       `<button type="button" class="srcBtn" data-tlinkgo="${esc(it.id)}|${i}" title="${t("t_src")}">↗</button>` +
       `<button type="button" class="ccr-x" data-tlinkdel="${esc(it.id)}|${i}" title="${t("t_link_remove")}">✕</button></li>`;
@@ -839,7 +875,10 @@ function addTodoFromTaskRow(btn) {
   if (!fn) return;
   const detail = taskRowDetail(tr);
   const meta = currentMeta[ri] || {};
-  const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
+  const ref = {
+    workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
+    fn: meta.fn || fn, todo: meta.todo || "",
+  };
   addTodoWithFeedback({ action: "add", title: fn, kind: "task", detail, ref, col: todoDefaultCol() });
 }
 
@@ -1240,7 +1279,10 @@ $("tbody").addEventListener("dragstart", e => {
   const detail = taskRowDetail(tr);
   // ...e as chaves exatas da linha, para se poder voltar a ela mais tarde
   const meta = currentMeta[[...$("tbody").rows].indexOf(tr)] || {};
-  const ref = { sheet: (lastData && lastData.sheet) || "", fn: meta.fn || fn, todo: meta.todo || "" };
+  const ref = {
+    workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
+    fn: meta.fn || fn, todo: meta.todo || "",
+  };
   e.dataTransfer.setData("application/json", JSON.stringify({ kind: "task", title: fn, detail, ref }));
   e.dataTransfer.effectAllowed = "copy";
 });

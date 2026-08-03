@@ -22,7 +22,7 @@ def log_event(message):
 
 def install_crash_logging():
     """Regista no tracker.log qualquer excecao nao tratada numa thread em
-    segundo plano (servidor, warm_cache, etc.) -- sem isto, essas mortes
+    segundo plano (servidor, entrega de feedback, etc.) -- sem isto, essas mortes
     sao invisiveis quando a app corre sem consola (atalho "My Organizer")."""
     def _hook(args):
         detalhe = "".join(traceback.format_exception(

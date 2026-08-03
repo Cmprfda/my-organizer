@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Configuração e constantes globais da app.
 
-Valores mutáveis em execução (FORCED_FILE, SERVER_PORT, DEV_MODE) devem ser
-lidos sempre como `config.X` — nunca importados por valor.
+Valores mutáveis em execução (FORCED_FILE, SERVER_PORT, DEV_MODE,
+WEBVIEW_WINDOW) devem ser lidos sempre como `config.X` — nunca importados por
+valor.
 """
 
 import os
@@ -42,6 +43,7 @@ CANDIDATE_DIRS = [
 FORCED_FILE = None  # definido por --file / BSP_TRACKER_FILE
 SERVER_PORT = 8765  # atualizado no main()
 DEV_MODE = False    # --dev: instância de desenvolvimento (sem auto-atualização)
+WEBVIEW_WINDOW = None  # janela nativa (pywebview) em uso, None se a UI for o browser
 
 
 def lan_ip():

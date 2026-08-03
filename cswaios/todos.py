@@ -58,7 +58,9 @@ TODO_PRIORITY_DEFAULT = "normal"
 # origens que um item pode ter ligadas além da sua (só as que sabem apontar
 # para uma linha: escrever à mão não tem para onde ir)
 TODO_LINK_KINDS = ("task", "ccr")
-TODO_REF_KEYS = ("sheet", "fn", "todo", "ccr")
+# "workbook" = nome do livro a que a linha pertence (várias origens podem ter a
+# mesma aba/função em livros diferentes)
+TODO_REF_KEYS = ("workbook", "sheet", "fn", "todo", "ccr")
 
 
 def normalize_ref(raw):
