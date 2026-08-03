@@ -23,7 +23,7 @@ from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, flush_pending,
                        report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
-                    graph_logout, graph_pick, graph_state)
+                    graph_logout, graph_pick, graph_state, save_onedrive_root)
 from .jira import (fetch_issue, load_jira_config, log_work, save_jira_config,
                    search_issues)
 from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
@@ -245,9 +245,19 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, json.dumps({"ok": True, "book": book,
                                                 **graph_state()}), "application/json")
                     return
+                elif action == "set_onedrive_root":
+                    # OneDrive/site extra a seguir na navegação, escolhido pelo
+                    # utilizador nas Definições (ex.: o livro vive no OneDrive
+                    # de um colega, não no do dono desta instalação)
+                    save_onedrive_root(str(payload.get("onedrive_url") or ""))
+                    log_event(f"{ip} configurou o OneDrive extra")
+                    state = graph_state()
                 else:
                     state = graph_state()
                 self._send(200, json.dumps(state), "application/json")
+            except ValueError as exc:
+                self._send(200, json.dumps({**graph_state(), "error": str(exc)}),
+                           "application/json")
             except GraphError as exc:
                 self._send(200, json.dumps({**graph_state(), "error": str(exc)}),
                            "application/json")

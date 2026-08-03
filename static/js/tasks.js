@@ -206,9 +206,12 @@ function colTagHtml(colName) {
    texto simples, sem os editores da vista resumida normal. */
 const VIEWMAP_PREFIX = "bsp-tracker-viewmap";
 // campos da vista resumida que se podem mapear: [chave, chave i18n do rótulo]
+// "exec" não mapeia nenhuma coluna do Excel (a nota fica à parte, ver
+// execSummary/execCellHtml) — é só um interruptor on/off, tratado à parte em
+// renderViewMapRows (viewmap.js)
 const VIEWMAP_SLOTS = [
   ["fn", "viewmap_fn"], ["author", "viewmap_author"], ["reviewer", "viewmap_reviewer"],
-  ["status", "viewmap_status"], ["todo", "viewmap_todo"],
+  ["status", "viewmap_status"], ["todo", "viewmap_todo"], ["exec", "hdr_exec"],
 ];
 
 function viewMapKey(data) {
@@ -257,8 +260,11 @@ function buildCustomCompact(data) {
     fn: cols(map.fn), author: cols(map.author), reviewer: cols(map.reviewer),
     status: cols(map.status), todo: cols(map.todo),
   };
+  // "exec" é só um interruptor (sem coluna própria): map.exec vem de
+  // renderViewMapRows como ["__on__"] ou [] — nunca nomes de coluna
+  const execOn = !!(map.exec && map.exec.length);
   // nenhuma das colunas escolhidas existe nesta folha (mudou de aba ou de livro)
-  if (!Object.values(idx).some(arr => arr.length)) return null;
+  if (!Object.values(idx).some(arr => arr.length) && !execOn) return null;
 
   const cel = (row, i) => (i >= 0 && row[i]) ? String(row[i]).trim() : "";
   // várias colunas no mesmo campo: cada uma contribui o seu valor, vazias são ignoradas
@@ -319,9 +325,12 @@ function buildCustomCompact(data) {
     const todoStr = todoLinesArr.join("\n");
     // rawTodo/roleKey ficam vazios (não há colunas do tracker aqui); o índice 7
     // leva o nome real da coluna de cada linha de estado e o novo índice 10 o
-    // mesmo para o "O que fazer" — é por aí que a edição sabe onde escrever
+    // mesmo para o "O que fazer" — é por aí que a edição sabe onde escrever.
+    // Execução/notas (índice 4) não vem de nenhuma coluna: vem sempre do
+    // mesmo sítio genérico do buildCompact (meta.note, guardado à parte,
+    // ver execSummary) — só aparece quando o utilizador liga o interruptor
     return [celMulti(row, idx.fn, " / "), quem.map(([r, nome]) => `${esc(r)}: ${nome}`).join("\n"),
-    statusStr, todoStr, "", side, meta, statusCols, "", "", todoCols,
+    statusStr, todoStr, execOn ? execSummary(meta) : "", side, meta, statusCols, "", "", todoCols,
     // índices 11/12: as linhas já emparelhadas 1:1 com statusCols/todoCols —
     // o render nunca deve re-separar statusStr/todoStr por "\n", porque o valor
     // de uma coluna arbitrária pode ele próprio ter quebras de linha
@@ -330,11 +339,11 @@ function buildCustomCompact(data) {
 
   // um campo sem nenhuma coluna mapeada nunca tem valor em nenhuma linha —
   // não faz sentido mostrar essa etiqueta vazia no cartão, por isso o campo
-  // sai da vista (índices na tupla de cada linha, não nos VIEWMAP_SLOTS);
-  // "Execução" nunca tem dados nesta vista (índice 4 é sempre ""), sai sempre
+  // sai da vista (índices na tupla de cada linha, não nos VIEWMAP_SLOTS).
+  // "Execução" é a exceção: não depende de coluna nenhuma, só do interruptor.
   const slotActive = [
     !!idx.fn.length, !!(idx.author.length || idx.reviewer.length),
-    !!idx.status.length, !!idx.todo.length,
+    !!idx.status.length, !!idx.todo.length, execOn,
   ];
   const activeIdx = slotActive.map((on, i) => on ? i : -1).filter(i => i >= 0);
   const headers = compactHeaders();
@@ -790,6 +799,13 @@ function render() {
         // r[1] (papel) já vem em HTML de buildCustomCompact (nomes com tag de
         // coluna colorida e negrito) — nunca voltar a escapar aqui
         if (isCustomCompact && i2 === 1) return `<td class="role">${c}</td>`;
+        // Execução/notas ligada nas Definições: mesma célula editável da
+        // vista do tracker, meta vem de currentMeta tal como nessa vista
+        if (isCustomCompact && i2 === 4) {
+          const m = currentMeta[ri] || {};
+          const { inner, title } = execCellHtml(m);
+          return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
+        }
         if (isCustomCompact) return `<td${i2 === 0 ? ' class="fn"' : ""}>${i2 === 0 ? highlightTerms(c) : esc(c)}</td>`;
         if (useCompact && i2 === 0) {
           const m = currentMeta[ri] || {};

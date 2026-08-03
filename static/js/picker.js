@@ -59,6 +59,16 @@ function renderPicker(out, search) {
             `data-file="1" data-drive="${esc(b.drive_id)}" data-item="${esc(b.item_id)}" data-name="${esc(b.name)}"`,
             current && current.item_id === b.item_id ? " current" : "")).join("");
     }
+    if (out.warning) {
+        html += `<div class="pickNote pickWarn">` +
+            `<strong>${esc(t("pick_onedrive_warn"))}</strong> — ${esc(out.warning)}` +
+            `<br>${esc(t("pick_onedrive_hint"))}</div>`;
+    }
+    if (out.root_warning) {
+        html += `<div class="pickNote pickWarn">` +
+            `<strong>${esc(t("pick_onedrive_root_warn"))}</strong> — ${esc(out.root_warning)}` +
+            `<br>${esc(t("pick_onedrive_root_hint"))}</div>`;
+    }
     if ((out.places || []).length) {
         html += `<h4>${t("pick_places")}</h4>`;
         html += out.places.map(p => pickRow("☁️", p.name,

@@ -18,10 +18,19 @@ function renderViewMapRows() {
   const headers = (lastData && lastData.headers) || [];
   const map = viewMapDraft || {};
   const usedIn = {};
-  VIEWMAP_SLOTS.forEach(([slot]) => (map[slot] || []).forEach(h => { if (!(h in usedIn)) usedIn[h] = slot; }));
+  // "exec" não escolhe coluna nenhuma (é só um interruptor, ver VIEWMAP_SLOTS
+  // em tasks.js) — fica de fora da exclusividade coluna-por-campo
+  VIEWMAP_SLOTS.filter(([slot]) => slot !== "exec")
+    .forEach(([slot]) => (map[slot] || []).forEach(h => { if (!(h in usedIn)) usedIn[h] = slot; }));
   const labelOf = slot => t((VIEWMAP_SLOTS.find(s => s[0] === slot) || [])[1] || "");
 
   $("viewMapRows").innerHTML = VIEWMAP_SLOTS.map(([slot, label]) => {
+    if (slot === "exec") {
+      const on = !!(map.exec && map.exec.length);
+      return `<div class="viewMapRow"><span>${esc(t(label))}</span><div class="viewMapChips">` +
+        `<button type="button" class="viewMapChip${on ? " on" : ""}" data-slot="exec" data-h="__on__" aria-pressed="${on}">` +
+        `${esc(t(on ? "viewmap_exec_on" : "viewmap_exec_off"))}</button></div></div>`;
+    }
     const selected = map[slot] || [];
     const chips = headers.map(h => {
       const on = selected.includes(h);

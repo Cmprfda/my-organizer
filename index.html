@@ -80,6 +80,11 @@
         <span id="graphState"></span>
         <button type="button" class="mini" id="graphBtn"></button>
       </div>
+      <div class="setNote hidden" id="onedriveRootBox">
+        <input type="url" id="onedriveRootUrl" placeholder="https://tenant-my.sharepoint.com/personal/nome_dominio_com">
+        <button type="button" class="mini" id="onedriveRootSaveBtn">Gravar</button>
+        <span id="onedriveRootState"></span>
+      </div>
       <div class="setNote" id="jiraBox">
         <input type="url" id="jiraUrl" placeholder="https://jira.empresa.pt">
         <input type="password" id="jiraToken" placeholder="Personal Access Token">
@@ -482,7 +487,7 @@
         <button type="button" class="pickRow" id="wbAddOneDrive">
           <span class="pickIcon">☁️</span>
           <span class="pickName"><strong id="wbAddOneDriveTxt">Excel do OneDrive</strong>
-            <small id="wbAddOneDriveSub">Procurar no OneDrive/SharePoint</small></span>
+            <small id="wbAddOneDriveSub">Procurar no OneDrive/SharePoint (apenas Shallowford)</small></span>
         </button>
         <button type="button" class="pickRow" id="wbAddLocal">
           <span class="pickIcon">📁</span>

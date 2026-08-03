@@ -86,7 +86,7 @@ def graph_config():
         cfg = {}
     if not isinstance(cfg, dict):
         cfg = {}
-    for key in ("file_url", "site_url"):
+    for key in ("file_url", "site_url", "onedrive_url"):
         if cfg.get(key) and not str(cfg[key]).lower().startswith("https://"):
             cfg.pop(key)   # só aceita ligações cifradas
     cfg.setdefault("file_name", "")
@@ -101,6 +101,31 @@ def graph_config():
     cfg.setdefault("authority", "https://login.microsoftonline.com")
     cfg.setdefault("graph_base", "https://graph.microsoft.com/v1.0")
     return cfg
+
+
+def save_onedrive_root(url):
+    """Grava (ou remove, com url vazio) o OneDrive/site extra a seguir na
+    navegação — ao contrário do `site_url`, que só vem do graph_config.json da
+    instalação, este é escolhido pelo próprio utilizador nas Definições
+    (ex.: o OneDrive de um colega, quando o livro vive lá)."""
+    url = str(url or "").strip().rstrip("/")
+    if url and not url.lower().startswith("https://"):
+        raise ValueError("o URL tem de começar por https://")
+    try:
+        with open(GRAPH_CONFIG_FILE, encoding="utf-8-sig") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    if url:
+        cfg["onedrive_url"] = url
+    else:
+        cfg.pop("onedrive_url", None)
+    with open(GRAPH_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=4)
+    log_event(f"OneDrive extra definido nas Definições: {url or '(removido)'}")
+    return url
 
 
 def load_books():
@@ -584,7 +609,7 @@ def graph_state():
              "code": "", "url": "", "pending": False, "error": "",
              "book": book.get("name", "") if book else "",
              "book_path": book.get("path", "") if book else "",
-             "has_book": has_book()}
+             "has_book": has_book(), "onedrive_url": cfg.get("onedrive_url", "")}
     if not cfg:
         return state
     try:
@@ -807,11 +832,17 @@ def _entry(item, drive_fallback=""):
 
 
 def _add_site_drives(places, site_id, label, cfg):
-    """Acrescenta as bibliotecas de um site do SharePoint aos pontos de partida."""
+    """Acrescenta as bibliotecas de um site do SharePoint aos pontos de partida.
+
+    Devolve quantas bibliotecas foram acrescentadas: um site pode resolver-se
+    (tem "id") mas n\u00e3o ter nenhuma biblioteca acess\u00edvel ao token atual (falta
+    de permiss\u00e3o Sites.Selected para esse site, por exemplo) \u2014 o chamador usa
+    este valor para distinguir "site sem acesso" de "site sem bibliotecas"."""
     try:
         drives = graph_api(f"/sites/{site_id}/drives?$select=id,name", cfg=cfg).get("value", [])
     except GraphError:
-        return
+        return 0
+    adicionadas = 0
     for drv in drives:
         try:
             root = graph_api(f"/drives/{drv['id']}/root?$select=id", cfg=cfg)
@@ -824,14 +855,25 @@ def _add_site_drives(places, site_id, label, cfg):
             nome += f" \u00b7 {drv['name']}"
         places.append({"drive_id": drv["id"], "item_id": root["id"],
                        "name": nome, "folder": True})
+        adicionadas += 1
+    return adicionadas
 
 
 def graph_places(cfg=None):
     """Pontos de partida da navegação: o OneDrive do utilizador, o site
-    configurado, os sites do SharePoint que ele segue e o local do livro atual."""
+    configurado, o OneDrive extra escolhido nas Definições, os sites do
+    SharePoint que ele segue e o local do livro atual.
+
+    Devolve (places, aviso, aviso_root): "aviso" só vem preenchido quando o
+    OneDrive pessoal (/me/drive) falhou mas outros pontos de partida
+    resultaram, e "aviso_root" quando é o OneDrive extra (onedrive_url) que
+    falhou — para o utilizador perceber porquê em vez de a falha ficar só nos
+    logs (ver graph_browse)."""
     cfg = cfg or graph_config()
     places = []
     falha = ""
+    aviso_pessoal = ""
+    aviso_root = ""
     try:
         drive = graph_api("/me/drive?$select=id,name", cfg=cfg)
         root = graph_api("/me/drive/root?$select=id", cfg=cfg)
@@ -839,7 +881,8 @@ def graph_places(cfg=None):
             places.append({"drive_id": drive["id"], "item_id": root["id"],
                            "name": "OneDrive", "folder": True})
     except GraphError as exc:
-        falha = str(exc)
+        falha = aviso_pessoal = str(exc)
+        log_event(f"OneDrive pessoal (/me/drive) indisponível: {aviso_pessoal}")
     if cfg.get("site_url"):
         try:
             parts = urllib.parse.urlparse(cfg["site_url"])
@@ -850,6 +893,20 @@ def graph_places(cfg=None):
                                  site.get("displayName") or "SharePoint", cfg)
         except GraphError as exc:
             falha = falha or str(exc)
+    if cfg.get("onedrive_url"):
+        try:
+            parts = urllib.parse.urlparse(cfg["onedrive_url"])
+            site = graph_api(f"/sites/{parts.netloc}:{parts.path.rstrip('/')}"
+                             "?$select=id,displayName", cfg=cfg)
+            if not site.get("id"):
+                raise GraphError("site não encontrado")
+            if not _add_site_drives(places, site["id"],
+                                    site.get("displayName") or "OneDrive", cfg):
+                raise GraphError("sem biblioteca acessível nesse OneDrive/SharePoint "
+                                 "(o token pode não ter permissão para este site)")
+        except GraphError as exc:
+            aviso_root = str(exc)
+            log_event(f"OneDrive extra (onedrive_url) indisponível: {aviso_root}")
     try:
         sites = graph_api("/me/followedSites?$select=id,displayName", cfg=cfg).get("value", [])
     except GraphError as exc:
@@ -877,7 +934,7 @@ def graph_places(cfg=None):
         unicos.append(place)
     if not unicos and falha:
         raise GraphError(falha)
-    return unicos
+    return unicos, aviso_pessoal, aviso_root
 
 
 def graph_browse(drive_id="", item_id="", search=""):
@@ -899,8 +956,10 @@ def graph_browse(drive_id="", item_id="", search=""):
                 "drive_id": drive_id, "item_id": item_id, "parent": None,
                 "recent": load_books()["recent"], "current": current_book()}
     if not drive_id or not item_id:
-        return {"places": graph_places(cfg), "folders": [], "files": [], "path": "",
-                "drive_id": "", "item_id": "", "parent": None,
+        places, aviso, aviso_root = graph_places(cfg)
+        return {"places": places, "folders": [], "files": [], "path": "",
+                "drive_id": "", "item_id": "", "parent": None, "warning": aviso,
+                "root_warning": aviso_root,
                 "recent": load_books()["recent"], "current": current_book()}
 
     info = graph_api(f"/drives/{drive_id}/items/{item_id}"

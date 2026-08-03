@@ -190,7 +190,7 @@ applyTheme();
 // fonte dos dados: ficheiro local ou o livro no OneDrive lido pela API do
 // Excel (Microsoft Graph). O bloco só aparece se o servidor estiver configurado.
 let graphInfo = { configured: false, connected: false, code: "", url: "", pending: false, error: "",
-                  account_email: "", account_name: "" };
+                  account_email: "", account_name: "", onedrive_url: "" };
 let graphPoll = null;
 // prova ao vivo (não só o prazo do token em cache) de que o pedido de 20 em 20
 // segundos ao OneDrive falhou por falta de rede — ver checkForChanges() em main.js
@@ -236,7 +236,47 @@ function renderGraphState() {
   // sem client_id só há a via da Azure CLI, que se gere fora da app
   const usable = graphInfo.connected ? graphInfo.method !== "cli" : graphInfo.can_login;
   $("graphBtn").classList.toggle("hidden", graphInfo.pending || !usable);
+  renderOnedriveRootState();
 }
+
+// OneDrive/site extra a seguir na navegação (além do pessoal e do site fixo em
+// graph_config.json) — para quando o livro vive no OneDrive de outra pessoa.
+// Só aparece com a fonte web configurada, tal como o graphBox.
+function renderOnedriveRootState() {
+  $("onedriveRootBox").classList.toggle("hidden", !graphInfo.configured);
+  if (!graphInfo.configured) return;
+  $("onedriveRootUrl").placeholder = t("onedrive_root_ph");
+  $("onedriveRootSaveBtn").textContent = t("btn_save");
+  if (document.activeElement !== $("onedriveRootUrl")) {
+    $("onedriveRootUrl").value = graphInfo.onedrive_url || "";
+  }
+  const set = !!graphInfo.onedrive_url;
+  $("onedriveRootState").innerHTML = `<span class="stateDot ${set ? "ok" : ""}"></span>` +
+    esc(t(set ? "onedrive_root_state_set" : "onedrive_root_state_off"));
+}
+
+async function saveOnedriveRoot() {
+  const btn = $("onedriveRootSaveBtn");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/graph", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_onedrive_root",
+                             onedrive_url: $("onedriveRootUrl").value.trim() }),
+    });
+    const out = await res.json();
+    if (out.error) throw new Error(out.error);
+    graphInfo = { ...graphInfo, ...out };
+    renderGraphState();
+    toast(t("onedrive_root_saved"), "ok");
+  } catch (err) {
+    toast(`${t("onedrive_root_save_err")} ${err.message || ""}`.trim(), "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("onedriveRootSaveBtn").addEventListener("click", saveOnedriveRoot);
 
 // distintivo no canto superior direito: verde quando os dados vêm do OneDrive,
 // vermelho quando algo está por ligar/falhou, neutro com o ficheiro local

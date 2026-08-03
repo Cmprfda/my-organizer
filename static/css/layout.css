@@ -342,15 +342,18 @@ body.topShrunk .ios-top #helpBtn {
   display: none;
 }
 
-/* Jira: URL + token + Gravar não cabem numa linha só como os outros .setNote,
-   e os tipos url/password não são apanhados pelas regras de forms.css */
-.settingsPanel #jiraBox {
+/* Jira e o OneDrive extra: URL (+ token, no Jira) e Gravar não cabem numa
+   linha só como os outros .setNote, e os tipos url/password não são
+   apanhados pelas regras de forms.css */
+.settingsPanel #jiraBox,
+.settingsPanel #onedriveRootBox {
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 8px;
 }
 
-.settingsPanel #jiraBox input {
+.settingsPanel #jiraBox input,
+.settingsPanel #onedriveRootBox input {
   flex: 1 1 100%;
   min-width: 0;
   font: inherit;
@@ -361,11 +364,13 @@ body.topShrunk .ios-top #helpBtn {
   color: var(--text);
 }
 
-.settingsPanel #jiraBox button {
+.settingsPanel #jiraBox button,
+.settingsPanel #onedriveRootBox button {
   margin-left: 0;
 }
 
-.settingsPanel #jiraBox #jiraState {
+.settingsPanel #jiraBox #jiraState,
+.settingsPanel #onedriveRootBox #onedriveRootState {
   flex: 1 1 100%;
 }
 

@@ -91,6 +91,14 @@
     color: var(--muted);
 }
 
+.pickNote.pickWarn {
+    margin: 4px 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--status-doing-bg);
+    color: var(--status-doing-fg);
+}
+
 /* ---------- abrir livros: "+", janela de escolha e separadores ---------- */
 
 #wbAddBody {
