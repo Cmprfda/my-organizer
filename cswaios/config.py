@@ -20,7 +20,9 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
-APP_VERSION = "1.2.0"  # semantic versioning (X.Y.Z): incrementado a cada release
+APP_VERSION = "108"  # release-ponte (numeração antiga) para desbloquear quem
+# ficou preso na v107 (ver cswaios/updates.py: _parse_version); a próxima
+# release volta ao formato semântico X.Y.Z
 
 DEFAULT_SHEET = "PRJ_CFG1_reworks_julho"
 DEFAULT_PERSON = "Carlos Andrade"

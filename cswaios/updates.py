@@ -24,22 +24,28 @@ _USER_AGENT = "my-organizer-app"
 
 def _parse_version(version_str):
     """Converte uma versão (inteira ou semântica) para tuple comparável.
-    
+
+    O primeiro elemento é o marcador de esquema (0 = versão inteira antiga,
+    1 = versão semântica), para que qualquer versão semântica seja sempre
+    considerada mais recente que qualquer versão inteira antiga (senão
+    (107,) > (1, 2, 0) e quem está na v107 nunca deteta atualizações).
+
     Exemplos:
-    - "106" ou "v106" → (106,)
-    - "1.0.107" ou "v1.0.107" → (1, 0, 107)
+    - "106" ou "v106" → (0, 106)
+    - "1.0.107" ou "v1.0.107" → (1, 1, 0, 107)
+    - vazio/inválido → (0, 0)
     """
     v = str(version_str or "").lstrip("vV").strip()
     if not v:
-        return (0,)
+        return (0, 0)
     try:
         # Se tem pontos, é semântica (X.Y.Z)
         if "." in v:
-            return tuple(int(x) for x in v.split("."))
-        # Senão, é inteira (N)
-        return (int(v),)
+            return (1,) + tuple(int(x) for x in v.split("."))
+        # Senão, é inteira (N) — esquema antigo, ordena sempre abaixo
+        return (0, int(v))
     except (ValueError, AttributeError):
-        return (0,)
+        return (0, 0)
 
 
 def _version_tuple(version_str_or_obj):
@@ -69,8 +75,10 @@ def find_releases_dir():
 
 def github_latest():
     """Última release publicada no GitHub (repositório público, sem precisar
-    de autenticação). Devolve (versão, url do zip, notas) ou (None, None, "")
-    se não conseguir (sem rede, repositório em baixo, etc.)."""
+    de autenticação). Devolve (tag da versão, url do zip, notas) — a tag tal
+    como o GitHub a publica (ex.: "v1.2.0"), em string — ou (None, None, "")
+    se não conseguir (sem rede, repositório em baixo, tag que não é uma
+    versão, etc.)."""
     try:
         req = urllib.request.Request(GITHUB_API_LATEST, headers={
             "Accept": "application/vnd.github+json", "User-Agent": _USER_AGENT})
@@ -78,17 +86,14 @@ def github_latest():
             data = json.load(resp)
     except (OSError, ValueError):
         return None, None, ""
-    try:
-        version = _parse_version(data.get("tag_name") or "")
-        if not version or version == (0,):
-            return None, None, ""
-    except ValueError:
-        return None, None, ""
+    tag = str(data.get("tag_name") or "")
+    if _parse_version(tag) in (None, (0, 0)):
+        return None, None, ""   # tag que não é uma versão (ex.: "beta")
     asset = next((a for a in data.get("assets") or []
                   if str(a.get("name", "")).endswith(".zip")), None)
     if not asset:
         return None, None, ""
-    return version, asset.get("browser_download_url"), str(data.get("body") or "")
+    return tag, asset.get("browser_download_url"), str(data.get("body") or "")
 
 
 def read_changelog():
@@ -125,7 +130,7 @@ def read_changelog():
         for rlz in releases or []:
             try:
                 version_tuple = _parse_version(rlz.get("tag_name") or "")
-                if not version_tuple or version_tuple == (0,):
+                if not version_tuple or version_tuple == (0, 0):
                     continue  # tag que não é uma versão (ex.: "beta")
             except ValueError:
                 continue
@@ -239,13 +244,15 @@ def _check_update_github():
     funciona mesmo sem a pasta OneDrive partilhada (instalações fora da
     Critical Software). Devolve True se atualizou, False se não havia nada
     mais recente (ou não foi possível chegar ao GitHub)."""
-    new_version_tuple, asset_url, body = github_latest()
+    new_tag, asset_url, body = github_latest()
+    new_version_tuple = _parse_version(new_tag)
     current_version_tuple = _parse_version(APP_VERSION)
-    
-    if not new_version_tuple or new_version_tuple <= current_version_tuple or not asset_url:
+
+    if not new_tag or new_version_tuple <= current_version_tuple or not asset_url:
         return False
 
-    new_version_str = ".".join(str(x) for x in new_version_tuple)
+    # a tag pode vir com "v" à frente ("v1.2.0"), como o _parse_version já tolera
+    new_version_str = str(new_tag).lstrip("vV").strip()
     print(f"Versão nova encontrada no GitHub: v{new_version_str} (local: v{APP_VERSION}). A descarregar...")
     with tempfile.TemporaryDirectory() as td:
         zip_path = os.path.join(td, "release.zip")

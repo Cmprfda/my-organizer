@@ -17,7 +17,7 @@ from .graph import GraphError, graph_login_start, graph_logout, graph_state
 from .logs import LOG_FILE, log_event
 from .store import load_overrides
 from .tasks import push_overrides
-from .updates import GITHUB_REPO, check_update, find_releases_dir, github_latest
+from .updates import GITHUB_REPO, _parse_version, check_update, find_releases_dir, github_latest
 
 def _running_port(args=None):
     """Porto onde está a correr o tracker DESTA pasta, ou None. Confirmar a
@@ -39,20 +39,24 @@ def _running_port(args=None):
 def _shared_version():
     """(versão, ficheiro, fonte) publicados na pasta partilhada do OneDrive
     ou, se essa pasta não existir nesta máquina, na página pública de
-    Releases do GitHub — devolve (0, "", "") se nenhuma das duas resultar
-    (sem OneDrive e sem rede para o GitHub, por exemplo)."""
+    Releases do GitHub. A versão é a string publicada (ex.: "1.2.0") —
+    compara-se com _parse_version, nunca como número. Devolve ("", "", "")
+    se nenhuma das duas resultar (sem OneDrive e sem rede para o GitHub,
+    por exemplo)."""
     rel = find_releases_dir()
     if rel:
         try:
             with open(os.path.join(rel, "latest.json"), encoding="utf-8-sig") as f:
                 latest = json.load(f)
-            return int(latest.get("version", 0)), os.path.join(rel, latest.get("file", "")), "onedrive"
+            version = str(latest.get("version", "") or "").strip()
+            if version:
+                return version, os.path.join(rel, latest.get("file", "")), "onedrive"
         except (OSError, ValueError):
             pass
     version, asset_url, _ = github_latest()
     if version:
         return version, asset_url, "github"
-    return 0, "", ""
+    return "", "", ""
 
 
 def cmd_version(args):
@@ -63,7 +67,8 @@ def cmd_version(args):
     shared, _, source = _shared_version()
     if shared:
         print(f"  publicada: v{shared} (via {source})" +
-              ("  <- ha uma versao nova (corre: app.py update)" if shared > APP_VERSION else ""))
+              ("  <- ha uma versao nova (corre: app.py update)"
+               if _parse_version(shared) > _parse_version(APP_VERSION) else ""))
     return 0
 
 
@@ -77,7 +82,7 @@ def cmd_update(args):
         print(f"GitHub: https://github.com/{GITHUB_REPO}/releases/latest")
         return 1
     if args.check:
-        if shared > APP_VERSION:
+        if _parse_version(shared) > _parse_version(APP_VERSION):
             print(f"Ha uma versao nova: v{shared} (local: v{APP_VERSION}, via {source}).")
             return 0
         print(f"Ja estas na versao mais recente (v{APP_VERSION}).")
@@ -98,7 +103,7 @@ def cmd_status(args):
     port = _running_port(args)
     print(f"Servidor:   {'a correr em http://localhost:' + str(port) if port else 'parado'}")
     shared, _, _ = _shared_version()
-    if shared > APP_VERSION:
+    if shared and _parse_version(shared) > _parse_version(APP_VERSION):
         print(f"Atualizacao: v{shared} disponivel (corre: app.py update)")
     state = graph_state()
     detalhe = state.get("error") or (f"ligado ({state['method']})"
