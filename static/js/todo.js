@@ -249,12 +249,13 @@ function todoTaskInfoHtml(it) {
   const row = taskRowFor(it);
   if (!row) return "";
   const meta = row[6] || {};
-  const cols = row[7] || [];
+  // nomes de todos os autores/reviewers e ambos os estados aplicáveis (elementos
+  // 10/11 da linha resumida), para o bloco do TODO mostrar a linha completa
+  const people = row[10] || [];
+  const statuses = row[11] || [];
   const parts = [];
-  if (row[1]) parts.push(`<span class="role">${esc(row[1])}</span>`);
-  String(row[2]).split("\n").filter(l => l.trim()).forEach((l, k) => {
-    parts.push(badgeHtml(l, cols[k], meta));
-  });
+  people.forEach(([label, nome]) => parts.push(`<span class="role">${esc(label)}: ${esc(nome)}</span>`));
+  statuses.forEach(([col, text]) => parts.push(badgeHtml(text, col, meta)));
   const obsText = String(row[3] === undefined ? "" : row[3]).split("")[1] || "";
   parts.push(obsHtml(obsText, meta));
   const { inner, title } = execCellHtml(meta);

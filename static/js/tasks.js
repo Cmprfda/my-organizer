@@ -148,7 +148,14 @@ function buildCompact(data) {
     if (obs) resumo += "\u001F" + obs;   // separador interno para formatar a OBS à parte
 
     const execDisplay = execSummary(meta);
-    return [val(row, idx.fn), papel, estado, resumo, execDisplay, side, meta, linesCols, rawTodo, roleKey];
+    // elementos 10/11: informação completa da linha (todas as pessoas e ambos os
+    // estados aplicáveis), usada só pelo bloco de info do TODO — a coluna "Papel"
+    // e o "Estado" da vista resumida continuam a ser os elementos 1/2
+    const peopleInfo = peopleOf(meta, row);
+    const statusAll = [];
+    if (applicable(sTC)) statusAll.push(["Status TC", "TC: " + sTC]);
+    if (applicable(sTP)) statusAll.push(["Status TP", "TP: " + sTP]);
+    return [val(row, idx.fn), papel, estado, resumo, execDisplay, side, meta, linesCols, rawTodo, roleKey, peopleInfo, statusAll];
   }).filter(Boolean);
 
   return { headers: compactHeaders(), rows };
