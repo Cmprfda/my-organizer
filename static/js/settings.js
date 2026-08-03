@@ -123,8 +123,6 @@ function applyLang() {
   $("shareAppBtn").title = t("t_share_app");
   $("changelogBtn").textContent = t("btn_changelog");
   $("changelogBtn").title = t("t_changelog");
-  $("betaBtn").textContent = t("btn_beta");
-  $("betaBtn").title = t("t_beta");
   $("changelogTitle").textContent = t("changelog_title");
   renderHelp();
   // a página do Jira monta os seus textos no render (painel "Tarefas por ligar")
@@ -313,53 +311,3 @@ $("sourceSel").addEventListener("change", () => {
   load();
 });
 
-// Programa Beta: funcionalidades em teste, desligadas por omissão (ver state.js: BETA_ENABLED)
-let betaDraft = BETA_ENABLED;
-
-function renderBetaPanel() {
-  $("betaIntro").textContent = t("beta_intro");
-  $("betaListTitle").textContent = t("beta_list_title");
-  $("betaFeatureList").innerHTML = `<li>${esc(t("beta_feat_viewmap"))}</li>`;
-  $("betaChkLabel").textContent = t("beta_chk");
-  $("betaChk").checked = betaDraft;
-  $("betaSave").textContent = t("beta_save");
-}
-
-function setBetaOpen(open) {
-  if (open) {
-    betaDraft = BETA_ENABLED;
-    $("betaTitle").textContent = t("beta_title");
-    $("betaClose").title = t("t_close");
-    renderBetaPanel();
-  }
-  $("betaOverlay").classList.toggle("hidden", !open);
-}
-
-// mostra o popup do Beta automaticamente na primeira vez (alguma vez) que a
-// app carrega dados com sucesso; nas vezes seguintes só reabre pelo botão em Definições
-function maybeShowBetaIntro() {
-  if (localStorage.getItem("bsp-tracker-beta-intro-seen")) return;
-  if (!lastData || lastData.error) return;
-  localStorage.setItem("bsp-tracker-beta-intro-seen", "1");
-  setBetaOpen(true);
-}
-
-$("betaBtn").addEventListener("click", () => setBetaOpen(true));
-$("betaClose").addEventListener("click", () => setBetaOpen(false));
-$("betaOverlay").addEventListener("click", e => {
-  if (e.target === $("betaOverlay")) setBetaOpen(false);
-});
-$("betaChk").addEventListener("change", () => { betaDraft = $("betaChk").checked; });
-$("betaSave").addEventListener("click", () => {
-  BETA_ENABLED = betaDraft;
-  localStorage.setItem("bsp-tracker-beta", BETA_ENABLED ? "1" : "0");
-  setBetaOpen(false);
-  updateViewMapButton(lastData);
-  toast(t(BETA_ENABLED ? "beta_on" : "beta_off"), "ok");
-});
-document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && !$("betaOverlay").classList.contains("hidden")) {
-    e.stopImmediatePropagation();
-    setBetaOpen(false);
-  }
-}, { capture: true });

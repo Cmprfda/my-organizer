@@ -178,7 +178,7 @@ $("toggleAll").addEventListener("click", () => {
 applyLang();
 // o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
 // (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
-load().then(() => { notifyTaskChanges(); maybeShowBetaIntro(); });
+load().then(() => { notifyTaskChanges(); });
 
 // barra do topo: encolhe (mais estreita e sem subtítulos) assim que se desce
 // zona morta entre os 32 e os 64px para não oscilar (encolhe/expande em

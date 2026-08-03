@@ -4,7 +4,7 @@ let viewMapDraft = null;   // edições em curso; só vão para o localStorage n
 
 function updateViewMapButton(data) {
   const btn = $("viewMapBtn");
-  const mostra = BETA_ENABLED && !!(data && !data.error && (data.headers || []).length);
+  const mostra = !!(data && !data.error && (data.headers || []).length);
   btn.classList.toggle("hidden", !mostra);
   if (!mostra) return;
   const hasView = hasResumedView(data);
