@@ -166,8 +166,60 @@ def validate_python_syntax():
             sys.exit(1)
     print(f"  ✓ {len(alvos)} ficheiros Python validados com sucesso.")
 
+def _parse_semver(version: str):
+    """Converte X.Y.Z para tuple de inteiros; devolve None se não for semver."""
+    v = str(version or "").strip()
+    match = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)", v)
+    if not match:
+        return None
+    return tuple(map(int, match.groups()))
+
+
+def _version_to_release_number(version: str):
+    """Converte para número inteiro de release quando possível.
+
+    Aceita:
+    - inteiro: "107" -> 107
+    - legado semântico: "1.0.106" -> 107
+
+    Devolve None para outros formatos semânticos (ex.: 1.4.0).
+    """
+    v = str(version or "").strip()
+    if re.fullmatch(r"[0-9]+", v):
+        return int(v)
+
+    semver = _parse_semver(v)
+    if semver is None:
+        return None
+
+    major, minor, patch = semver
+    if major == 1 and minor == 0:
+        return patch + 1
+    return None
+
+
+def _version_sort_key(version: str):
+    """Chave de ordenação robusta para changelog misto (inteiro + semver)."""
+    v = str(version or "").strip()
+    if re.fullmatch(r"[0-9]+", v):
+        # Inteiro (vN) é o esquema atual; ordenar acima de semver antigo.
+        return (1, int(v))
+
+    semver = _parse_semver(v)
+    if semver is not None:
+        return (0, ) + semver
+
+    raise ValueError(f"Versão inválida: {version}. Use inteiro (vN) ou semver X.Y.Z.")
+
+
+def _version_heading(version: str) -> str:
+    """Etiqueta para RELEASES.md: prefere vN, cai para formato bruto se necessário."""
+    release_n = _version_to_release_number(version)
+    return f"v{release_n}" if release_n is not None else f"v{version}"
+
+
 def get_current_app_version() -> str:
-    """Lê APP_VERSION (formato X.Y.Z) de cswaios/config.py."""
+    """Lê APP_VERSION de cswaios/config.py."""
     config_py = os.path.join(DEV_DIR, "cswaios", "config.py")
     with open(config_py, "r", encoding="utf-8") as f:
         content = f.read()
@@ -176,42 +228,6 @@ def get_current_app_version() -> str:
         print("  ❌ Não foi possível encontrar APP_VERSION em cswaios/config.py.")
         sys.exit(1)
     return match.group(1)
-
-def bump_version(current: str, bump_type: str) -> str:
-    """Incrementa versão semântica (X.Y.Z).
-    
-    bump_type: 'major' (X+1.0.0), 'minor' (X.Y+1.0), 'patch' (X.Y.Z+1)
-    """
-    # Suporta legado: se receber inteiro, converte para 1.0.N
-    if "." not in current:
-        try:
-            version_int = int(current)
-            # Mapear v107 → 1.0.106 (v1 → 1.0.0, v2 → 1.0.1, etc)
-            current = f"1.0.{version_int - 1}"
-        except ValueError:
-            print(f"  ❌ Versão inválida: {current}. Formato esperado: X.Y.Z")
-            sys.exit(1)
-    
-    # Processar semântico X.Y.Z
-    parts = current.split(".")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):
-        print(f"  ❌ Versão inválida: {current}. Formato esperado: X.Y.Z")
-        sys.exit(1)
-    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
-    
-    if bump_type == "major":
-        major += 1
-        minor = 0
-        patch = 0
-    elif bump_type == "minor":
-        minor += 1
-        patch = 0
-    elif bump_type == "patch":
-        patch += 1
-    else:
-        print(f"  ❌ Tipo de bump inválido: {bump_type}")
-        sys.exit(1)
-    return f"{major}.{minor}.{patch}"
 
 def update_app_version_in_config(new_version: str):
     """Atualiza APP_VERSION em cswaios/config.py."""
@@ -230,14 +246,14 @@ def update_app_version_in_config(new_version: str):
 def update_releases_md(changelog_data: dict):
     """Regenera o RELEASES.md a partir do changelog.json sem BOM em UTF-8."""
     lines = ["# My Organizer - historico de versoes", ""]
-    # Ordenar versões semanticamente (X.Y.Z) em ordem descendente
+    # Ordenar de forma robusta, suportando histórico semver existente.
     sorted_versions = sorted(
         changelog_data.keys(),
-        key=lambda v: tuple(map(int, v.split("."))),
+        key=_version_sort_key,
         reverse=True
     )
     for version in sorted_versions:
-        lines.append(f"## v{version}")
+        lines.append(f"## {_version_heading(version)}")
         for item in changelog_data[version]:
             lines.append(f"- {item}")
         lines.append("")
@@ -256,30 +272,41 @@ def main():
     validate_python_syntax()
 
     # 2. Obter versão atual
-    current_version = get_current_app_version()
-    print(f"\n[2/9] Versão atual detetada em cswaios/config.py: v{current_version}")
-    
-    # 3. Perguntar qual parte bumpar
-    print("\n[3/9] Escolha a parte a incrementar:")
-    print(f"  [p]atch (v{bump_version(current_version, 'patch')})")
-    print(f"  [m]inor (v{bump_version(current_version, 'minor')})")
-    print(f"  [M]ajor (v{bump_version(current_version, 'major')})")
-    print("  ou introduza uma versão customizada (ex: 1.0.107)")
-    
-    choice = input("  > ").strip().lower()
-    
-    if choice == "p":
-        new_version = bump_version(current_version, "patch")
-    elif choice == "m":
-        new_version = bump_version(current_version, "minor")
-    elif choice == "M":
-        new_version = bump_version(current_version, "major")
+    current_version_raw = get_current_app_version()
+    current_release_number = _version_to_release_number(current_version_raw)
+
+    if current_release_number is not None:
+        print(f"\n[2/9] Versão atual detetada em cswaios/config.py: v{current_release_number}")
     else:
-        # Validar versão customizada (semântica)
-        if not re.match(r'^[0-9]+\.[0-9]+\.[0-9]+$', choice):
-            print("  ❌ Formato inválido. Use X.Y.Z (ex: 1.0.107)")
+        print(f"\n[2/9] Versão atual detetada em cswaios/config.py: v{current_version_raw}")
+        print("      ⚠️ Não foi possível mapear automaticamente para vN.")
+
+    # 3. Definir próxima versão no formato inteiro antigo (vN)
+    print("\n[3/9] Defina a nova versão (formato inteiro, ex: 107).")
+    suggested_release = None
+    if current_release_number is not None:
+        suggested_release = current_release_number + 1
+        print(f"  Enter vazio usa a próxima versão: v{suggested_release}")
+    else:
+        print("  Introduza explicitamente o próximo número inteiro (vN).")
+
+    choice = input("  > ").strip()
+
+    if not choice:
+        if suggested_release is None:
+            print("  ❌ Sem sugestão automática: indique a versão inteira manualmente.")
             sys.exit(1)
-        new_version = choice
+        new_release_number = suggested_release
+    elif not re.fullmatch(r"[0-9]+", choice):
+        print("  ❌ Formato inválido. Use apenas inteiro (ex: 107).")
+        sys.exit(1)
+    else:
+        new_release_number = int(choice)
+        if new_release_number <= 0:
+            print("  ❌ A versão deve ser um inteiro positivo.")
+            sys.exit(1)
+
+    new_version = str(new_release_number)
     
     print(f"  → Nova versão: v{new_version}")
     
@@ -311,9 +338,14 @@ def main():
         print("  ❌ changelog.json inesperado: era esperado um objeto {versao: [notas]}.")
         sys.exit(1)
 
-    # a app lê o changelog como {"1.0.0": ["nota", ...]}; re-executar sobrepõe a versao
+    # Re-executar sobrepõe a versão escolhida.
     changelog[new_version] = changes
-    changelog = {k: changelog[k] for k in sorted(changelog, key=lambda v: tuple(map(int, v.split("."))))}
+    try:
+        changelog = {k: changelog[k] for k in sorted(changelog, key=_version_sort_key)}
+    except ValueError as exc:
+        print(f"  ❌ {exc}")
+        print("     Corrija as chaves de versão no changelog.json para inteiro (vN) ou semver X.Y.Z.")
+        sys.exit(1)
 
     with open(CHANGELOG_PATH, "w", encoding="utf-8", newline="\n") as f:
         json.dump(changelog, f, indent=2, ensure_ascii=False)
