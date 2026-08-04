@@ -59,6 +59,16 @@ def _shared_version():
     return "", "", ""
 
 
+def _latest_git_tag():
+    """Tag mais recente por ordenacao de versao do git, ou "" se falhar."""
+    try:
+        out = subprocess.check_output(["git", "tag", "--sort=-version:refname"], text=True)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    tags = [line.strip() for line in out.splitlines() if line.strip()]
+    return tags[0] if tags else ""
+
+
 def cmd_version(args):
     print(f"My Organizer v{APP_VERSION}")
     print(f"  pasta:    {HERE}")
@@ -69,6 +79,17 @@ def cmd_version(args):
         print(f"  publicada: v{shared} (via {source})" +
               ("  <- ha uma versao nova (corre: app.py update)"
                if _parse_version(shared) > _parse_version(APP_VERSION) else ""))
+    if args.check_git_tag:
+        tag = _latest_git_tag()
+        if not tag:
+            print("  git tag:  nao consegui ler tags locais")
+            return 1
+        print(f"  git tag:  {tag}")
+        if _parse_version(tag) == _parse_version(APP_VERSION):
+            print("  tag check: OK (tag mais recente corresponde a versao da app)")
+            return 0
+        print("  tag check: NAO (tag mais recente nao corresponde a versao da app)")
+        return 2
     return 0
 
 
@@ -310,7 +331,7 @@ def cmd_help(args):
 COMMANDS = {
     "help": (cmd_help, "mostra esta lista de comandos"),
     "update": (cmd_update, "procura e instala uma versao nova a partir da pasta partilhada"),
-    "version": (cmd_version, "mostra a versao local e a publicada"),
+    "version": (cmd_version, "mostra a versao local e a publicada (e opcionalmente valida a tag git)"),
     "status": (cmd_status, "resumo: servidor, ficheiros, OneDrive e alteracoes por enviar"),
     "push": (cmd_push, "envia para o Excel/OneDrive as alteracoes de estado pendentes"),
     "logs": (cmd_logs, "mostra as ultimas linhas do tracker.log"),
@@ -341,6 +362,9 @@ def run_command(argv):
         if name == "update":
             sub.add_argument("--check", action="store_true",
                              help="so verifica se ha versao nova, nao instala")
+        if name == "version":
+            sub.add_argument("--check-git-tag", action="store_true",
+                             help="valida se a tag git mais recente corresponde a versao da app")
         if name == "logs":
             sub.add_argument("-n", type=int, default=30,
                              help="numero de linhas a mostrar (por omissao 30)")
