@@ -4,6 +4,7 @@
 import glob
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -148,6 +149,152 @@ def write_status_to_excel(path, sheet, xlrow, xlcol, fncol, fn, value):
             return False, "o Excel demorou demasiado a responder"
         except Exception as exc:
             return False, str(exc)
+
+
+def _parse_cell_ref(cell):
+    m = re.match(r"^\$?([A-Za-z]+)\$?(\d+)$", (cell or "").strip())
+    if not m:
+        raise ValueError(f"referência de célula inválida: {cell!r}")
+    return m.group(1).upper(), int(m.group(2))
+
+
+def _col_letters_to_num(letters):
+    n = 0
+    for ch in letters:
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n
+
+
+def _num_to_col_letters(n):
+    letters = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        letters = chr(65 + r) + letters
+    return letters
+
+
+def _options_list_range(sheet, cell, orientation, size):
+    """Endereço absoluto do intervalo que contém a lista de opções, a partir
+    da sua primeira célula, orientação (vertical/horizontal) e nº de itens."""
+    col, row = _parse_cell_ref(cell)
+    try:
+        size = int(size)
+    except (TypeError, ValueError):
+        raise ValueError("o tamanho da lista tem de ser um número")
+    if size < 1:
+        raise ValueError("o tamanho da lista tem de ser pelo menos 1")
+    if orientation == "vertical":
+        end_col, end_row = col, row + size - 1
+    elif orientation == "horizontal":
+        end_col, end_row = _num_to_col_letters(_col_letters_to_num(col) + size - 1), row
+    else:
+        raise ValueError("orientação inválida (usa 'vertical' ou 'horizontal')")
+    return f"'{sheet}'!${col}${row}:${end_col}${end_row}"
+
+
+SET_VALIDATION_PS1 = r"""
+param([string]$ParamsPath)
+$ErrorActionPreference = 'Stop'
+$own = $null
+try {
+  $p = Get-Content -Raw -Path $ParamsPath -Encoding UTF8 | ConvertFrom-Json
+  $wb = $null
+  try { $x = [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application') } catch { $x = $null }
+  if ($x) {
+    $wb = @($x.Workbooks) | Where-Object { $_.Name -eq $p.basename } | Select-Object -First 1
+  }
+  if (-not $wb) {
+    $own = New-Object -ComObject Excel.Application
+    $own.Visible = $false
+    $own.DisplayAlerts = $false
+    $wb = $own.Workbooks.Open($p.path)
+  }
+  $ws = $wb.Worksheets.Item($p.targetSheet)
+  $cell = $ws.Range($p.targetCell)
+  $cell.Validation.Delete()
+  $cell.Validation.Add(3, 1, 1, [string]$p.formula, [string]::Empty)
+  $cell.Validation.IgnoreBlank = $true
+  $cell.Validation.InCellDropdown = $true
+  $wb.Save()
+  if ($own) { $wb.Close($true); $own.Quit() }
+  Write-Output 'OK'
+  exit 0
+} catch {
+  Write-Output ('ERRO: ' + $_.Exception.Message)
+  if ($own) { try { $wb.Close($false) } catch {}; try { $own.Quit() } catch {} }
+  exit 1
+}
+"""
+
+
+def _run_set_validation(path, target_sheet, target_cell, formula):
+    """Corre o SET_VALIDATION_PS1 com o Formula1 já pronto (referência de
+    intervalo ou lista literal de valores), partilhado por
+    set_data_validation_list e set_data_validation_fixed_list."""
+    params = {"path": path, "basename": os.path.basename(path), "targetSheet": target_sheet,
+              "targetCell": target_cell, "formula": formula}
+    with tempfile.TemporaryDirectory() as td:
+        params_path = os.path.join(td, "params.json")
+        ps1_path = os.path.join(td, "validation.ps1")
+        with open(params_path, "w", encoding="utf-8") as f:
+            json.dump(params, f, ensure_ascii=False)
+        with open(ps1_path, "w", encoding="ascii") as f:
+            f.write(SET_VALIDATION_PS1)
+        try:
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", ps1_path, params_path],
+                capture_output=True, timeout=120)
+            out = proc.stdout.decode("utf-8", errors="replace").strip()
+            return proc.returncode == 0, out or "sem resposta do Excel"
+        except subprocess.TimeoutExpired:
+            return False, "o Excel demorou demasiado a responder"
+        except Exception as exc:
+            return False, str(exc)
+
+
+def set_data_validation_list(path, target_sheet, target_cell, source_sheet, source_cell,
+                              orientation, size):
+    """Aplica, a uma célula, uma lista de valores predefinidos (Data
+    Validation) cujas opções já existem numa aba/intervalo do próprio livro.
+    Escreve pelo Excel (COM), tal como write_status_to_excel, para preservar
+    o resto do livro (gráficos, outras validações). Devolve (ok, mensagem)."""
+    if is_graph_path(path):
+        return False, "não é possível definir validações num ficheiro só acessível via Graph/OneDrive"
+    if not target_sheet or not target_cell:
+        return False, "aba e célula de destino são obrigatórias"
+    if not source_sheet:
+        return False, "aba da lista de opções é obrigatória"
+    try:
+        _parse_cell_ref(target_cell)
+        formula = "=" + _options_list_range(source_sheet, source_cell, orientation, size)
+    except ValueError as exc:
+        return False, str(exc)
+    return _run_set_validation(path, target_sheet, target_cell, formula)
+
+
+def set_data_validation_fixed_list(path, target_sheet, target_cell, values):
+    """Aplica, a uma célula, uma lista de valores predefinidos (Data
+    Validation) cujas opções são literais (biblioteca de listas guardada no
+    cliente, ver viewmap.js), sem depender de nenhum intervalo do livro.
+    Devolve (ok, mensagem)."""
+    if is_graph_path(path):
+        return False, "não é possível definir validações num ficheiro só acessível via Graph/OneDrive"
+    if not target_sheet or not target_cell:
+        return False, "aba e célula de destino são obrigatórias"
+    vals = [str(v).strip() for v in (values or []) if str(v).strip()]
+    if not vals:
+        return False, "a lista de valores não pode estar vazia"
+    if any("," in v for v in vals):
+        return False, "os valores da lista não podem conter vírgulas (separador do Excel)"
+    try:
+        _parse_cell_ref(target_cell)
+    except ValueError as exc:
+        return False, str(exc)
+    formula = ",".join(vals)
+    if len(formula) > 255:
+        return False, "a lista de valores excede o limite de 255 carateres do Excel"
+    return _run_set_validation(path, target_sheet, target_cell, formula)
 
 
 def locate_row(path, sheet_wanted, fn, todo):

@@ -23,10 +23,11 @@ function hasCanonicalCompact(data) {
 }
 
 // Esta folha tem alguma vista resumida ativa — a do tracker ou uma personalizada
-// gravada nas Definições (ver viewmap.js) — usado para mostrar opções (ex.: Lados)
-// que dependem de haver mesmo uma vista resumida, não a folha em bruto.
+// gravada nas Definições (ver viewmap.js) — só usado para o texto do botão
+// ("Criar" vs "Editar"). "Lados" continua exclusivo da vista do tracker,
+// ver hasCanonicalCompact em setViewMapOpen (viewmap.js).
 function hasResumedView(data) {
-  return hasCanonicalCompact(data) || Object.keys(loadViewMap(data) || {}).length > 0;
+  return hasCanonicalCompact(data) || !!loadViewMap(data);
 }
 
 /* Constrói a vista resumida a partir das colunas do tracker:
@@ -184,171 +185,309 @@ function highlightTerms(text) {
   return boldTerms(text, terms);
 }
 
-// vista mapeada à medida: quando várias colunas do Excel alimentam o mesmo
-// campo (ex.: Author TC + Author TP no mesmo "Autor"), cada valor leva à
-// frente uma etiqueta com o nome da coluna — a cor agrupa visualmente os
-// valores da mesma coluna, sem usar as cores já reservadas ao estado (statusClass)
-const COLTAG_HUES = 5;
-function colTagIndex(colName) {
-  let h = 0;
-  const s = String(colName || "");
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % COLTAG_HUES;
-}
-function colTagHtml(colName) {
-  return colName ? `<span class="colTag colTag-${colTagIndex(colName)}">${esc(colName)}</span> ` : "";
-}
-
 /* ---------- vista resumida à medida (qualquer folha, só leitura) ----------
-   Para folhas sem as colunas do tracker, o utilizador escolhe nas Definições
-   que coluna alimenta cada campo da vista resumida. Como as colunas não são as
-   do tracker, nada aqui se edita nem se escreve no Excel: as células saem como
-   texto simples, sem os editores da vista resumida normal. */
+   Para folhas sem as colunas do tracker, o utilizador define nas Definições,
+   por categoria, a célula inicial do Excel, a orientação e o tamanho (ver
+   viewmap.js) — o servidor (build_cell_categories, cswaios/tasks.py) lê e
+   concatena as células e devolve o resultado em data.cell_view. Categorias são
+   livres (sem campo fixo Autor/Reviewer/Estado), por isso esta vista não tem
+   papel/lado (sideOf) nem estados editáveis: é sempre texto simples. */
 const VIEWMAP_PREFIX = "bsp-tracker-viewmap";
-// campos da vista resumida que se podem mapear: [chave, chave i18n do rótulo]
-// "exec" não mapeia nenhuma coluna do Excel (a nota fica à parte, ver
-// execSummary/execCellHtml) — é só um interruptor on/off, tratado à parte em
-// renderViewMapRows (viewmap.js)
-const VIEWMAP_SLOTS = [
-  ["fn", "viewmap_fn"], ["author", "viewmap_author"], ["reviewer", "viewmap_reviewer"],
-  ["status", "viewmap_status"], ["todo", "viewmap_todo"], ["exec", "hdr_exec"],
-];
+const PREDEFLIST_PREFIX = "bsp-tracker-predeflists";
 
 function viewMapKey(data) {
   return `${VIEWMAP_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
 }
 
-// cada campo aceita várias colunas (map[slot] é um array de nomes) — a mesma
-// coluna nunca pode alimentar dois campos ao mesmo tempo, regra imposta na UI
-// (renderViewMapRows em viewmap.js), não aqui
-function loadViewMap(data) {
-  if (!data || !data.sheet) return null;
+function predefListKey(data) {
+  return `${PREDEFLIST_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
+}
+
+// biblioteca de listas predefinidas desta aba (botão na barra, ver viewmap.js):
+// [{id, name, mode, values, sheet, cell, orientation, size}, ...], por
+// livro+aba, independente do mapa de categorias — uma categoria com
+// useList=true e listMode="fixed" escolhe uma destas pelo id (ver
+// renderViewMapRows). mode="manual" usa `values` (valores literais); mode=
+// "range" lê ao vivo um intervalo do próprio livro (sheet+cell+orientation+
+// size), tal como o listMode="range" de uma categoria — ver buildTasksQuery,
+// mais abaixo, para como isso é traduzido no pedido ao servidor.
+function loadPredefLists(data) {
+  if (!data || !data.sheet) return [];
+  let raw;
   try {
-    const raw = JSON.parse(localStorage.getItem(viewMapKey(data)) || "null");
-    if (!raw || typeof raw !== "object") return null;
-    const map = {};
-    VIEWMAP_SLOTS.forEach(([slot]) => {
-      const v = raw[slot];
-      const arr = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
-      if (arr.length) map[slot] = arr;
-    });
-    return Object.keys(map).length ? map : null;
+    raw = JSON.parse(localStorage.getItem(predefListKey(data)) || "null");
   } catch (e) {
-    return null;
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(l => l && typeof l === "object" && String(l.id || "").trim())
+    .map(l => {
+      const size = parseInt(l.size, 10);
+      return {
+        id: String(l.id),
+        name: String(l.name || "").trim(),
+        mode: l.mode === "range" ? "range" : "manual",
+        values: Array.isArray(l.values) ? l.values.map(v => String(v || "").trim()).filter(Boolean) : [],
+        sheet: String(l.sheet || "").trim(),
+        cell: String(l.cell || "").trim(),
+        orientation: l.orientation === "horizontal" ? "horizontal" : "vertical",
+        size: Number.isFinite(size) && size > 0 ? size : "",
+      };
+    });
+}
+
+function savePredefLists(data, lists) {
+  if (!data || !data.sheet) return;
+  const cleaned = (lists || []).filter(l => l && String(l.id || "").trim() && String(l.name || "").trim() &&
+    (l.mode === "range" ? String(l.cell || "").trim() : l.values.length));
+  if (cleaned.length) {
+    localStorage.setItem(predefListKey(data), JSON.stringify(cleaned));
+  } else {
+    localStorage.removeItem(predefListKey(data));
   }
 }
 
-function saveViewMap(data, map) {
-  if (!data || !data.sheet) return;
-  const limpo = {};
-  Object.entries(map || {}).forEach(([k, v]) => {
-    const arr = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
-    if (arr.length) limpo[k] = arr;
+// { categories: [{name, startCell, orientation, size, useList, listMode,
+// listSheet, listCell, listOrientation, listSize, listId}, ...], exec: bool }.
+// size vazio/nulo = 1 célula (a própria startCell); só > 1 concatena as
+// células seguintes na mesma linha/coluna (ver build_cell_categories,
+// cswaios/tasks.py). Com useList=true, a categoria fica editável através de
+// uma lista de valores predefinida em vez de simples texto — ver
+// openCellCatEditor. A lista vem de uma de duas fontes (listMode): "range"
+// lê um intervalo do próprio livro (listSheet+listCell+listOrientation+
+// listSize); "fixed" escolhe (por listId) uma lista guardada na biblioteca
+// desta aba (ver loadPredefLists/savePredefLists, renderViewMapRows).
+// Formatos antigos (antes desta versão, um objeto {slot: [nomes de coluna]})
+// são descartados: não há como migrar um nome de coluna para uma coordenada.
+function loadViewMap(data) {
+  if (!data || !data.sheet) return null;
+  let raw;
+  try {
+    raw = JSON.parse(localStorage.getItem(viewMapKey(data)) || "null");
+  } catch (e) {
+    return null;
+  }
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.categories)) return null;
+  const categories = raw.categories.filter(c => c && typeof c === "object" && c.startCell).map(c => {
+    const size = parseInt(c.size, 10);
+    const listSize = parseInt(c.listSize, 10);
+    const listMode = c.listMode === "fixed" ? "fixed" : "range";
+    const useList = !!c.useList && (
+      listMode === "fixed" ? !!String(c.listId || "").trim()
+        : (String(c.listSheet || "").trim() && String(c.listCell || "").trim()));
+    return {
+      name: String(c.name || "").trim(),
+      startCell: String(c.startCell || "").trim(),
+      orientation: c.orientation === "vertical" ? "vertical" : "horizontal",
+      size: Number.isFinite(size) && size > 0 ? size : "",
+      useList: !!useList,
+      listMode,
+      listSheet: String(c.listSheet || "").trim(),
+      listCell: String(c.listCell || "").trim(),
+      listOrientation: c.listOrientation === "horizontal" ? "horizontal" : "vertical",
+      listSize: Number.isFinite(listSize) && listSize > 0 ? listSize : "",
+      listId: String(c.listId || "").trim(),
+    };
   });
-  if (Object.keys(limpo).length) localStorage.setItem(viewMapKey(data), JSON.stringify(limpo));
-  else localStorage.removeItem(viewMapKey(data));
+  const exec = !!raw.exec;
+  return (categories.length || exec) ? { categories, exec } : null;
+}
+
+function saveViewMap(data, cfg) {
+  if (!data || !data.sheet) return;
+  const categories = (cfg && cfg.categories || []).filter(c => c && c.startCell);
+  const exec = !!(cfg && cfg.exec);
+  if (categories.length || exec) {
+    localStorage.setItem(viewMapKey(data), JSON.stringify({ categories, exec }));
+  } else {
+    localStorage.removeItem(viewMapKey(data));
+  }
+}
+
+/* ---------- filtros personalizados (qualquer folha, por livro+aba) ----------
+   Regras 100% à medida do utilizador: nome (etiqueta do botão no resumo) e um
+   ou mais grupos de condições (coluna real da folha — o nome verbatim, tal
+   como em row_meta[].orig, por isso funciona em qualquer folha, mesmo sem as
+   colunas do tracker — operador e valor). Dentro de um grupo todas as
+   condições têm de bater certo (E); um filtro bate certo se PELO MENOS UM dos
+   seus grupos bater (OU entre grupos) — ver `groups` e evalCustomFilter, mais
+   abaixo. Um filtro com um único grupo comporta-se como "todas em E", tal
+   como antes de existirem grupos. `usePerson` substitui o valor pelo PERSON
+   atual (com a mesma tolerância a nomes parciais que author/reviewer já
+   tinham), para "o que é meu" deixar de estar preso às 4 colunas fixas do
+   tracker. "está numa lista"/"não está numa lista" refere-se antes a uma das
+   Listas predefinidas desta aba (biblioteca partilhada com as categorias da
+   vista à medida, ver loadPredefLists) em vez de um valor literal — ver
+   customFilterListValues, mais abaixo, para como as listas mode="range"
+   (lidas ao vivo do livro) chegam resolvidas do servidor. Vários filtros
+   ativos em simultâneo combinam-se sempre em E entre si (ver
+   activeCustomFilters, mais abaixo). */
+const CUSTOMFILTER_PREFIX = "bsp-tracker-customfilters";
+const CUSTOMFILTER_OPS = ["contains", "not_contains", "equals", "not_equals", "empty", "not_empty",
+  "in_list", "not_in_list"];
+
+function customFilterKey(data) {
+  return `${CUSTOMFILTER_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
+}
+
+function cleanCustomCondition(c) {
+  return {
+    column: String((c && c.column) || "").trim(),
+    op: CUSTOMFILTER_OPS.includes(c && c.op) ? c.op : "contains",
+    value: String((c && c.value) || ""),
+    usePerson: !!(c && c.usePerson),
+    listId: String((c && c.listId) || "").trim(),
+  };
+}
+
+function cleanCustomGroup(g) {
+  return { conditions: ((g && g.conditions) || []).map(cleanCustomCondition).filter(c => c.column) };
+}
+
+// filtros gravados antes de haver grupos tinham coluna/operador/valor
+// diretamente no filtro (condição única) ou um array `conditions` plano com
+// `logic` a decidir E/OU entre todas — migra-os para grupos em memória (a
+// gravação seguinte já usa o formato novo): logic="and" vira um único grupo
+// com todas as condições (mesmo resultado: todas em E); logic="or" vira um
+// grupo por condição (mesmo resultado: basta uma bater certo)
+function customFilterGroupsFrom(f) {
+  if (Array.isArray(f.groups)) {
+    return f.groups.map(cleanCustomGroup).filter(g => g.conditions.length);
+  }
+  const conditions = (Array.isArray(f.conditions) ? f.conditions : [f]).map(cleanCustomCondition).filter(c => c.column);
+  if (!conditions.length) return [];
+  return f.logic === "or" ? conditions.map(c => ({ conditions: [c] })) : [{ conditions }];
+}
+
+function loadCustomFilters(data) {
+  if (!data || !data.sheet) return [];
+  let raw;
+  try {
+    raw = JSON.parse(localStorage.getItem(customFilterKey(data)) || "null");
+  } catch (e) {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(f => f && typeof f === "object" && String(f.id || "").trim())
+    .map(f => ({
+      id: String(f.id),
+      name: String(f.name || "").trim(),
+      groups: customFilterGroupsFrom(f),
+    }))
+    .filter(f => f.groups.length);
+}
+
+function saveCustomFilters(data, filters) {
+  if (!data || !data.sheet) return;
+  const cleaned = (filters || [])
+    .map(f => ({
+      id: String((f && f.id) || "").trim(),
+      name: String((f && f.name) || "").trim(),
+      groups: ((f && f.groups) || []).map(cleanCustomGroup).filter(g => g.conditions.length),
+    }))
+    .filter(f => f.id && f.name && f.groups.length);
+  if (cleaned.length) {
+    localStorage.setItem(customFilterKey(data), JSON.stringify(cleaned));
+  } else {
+    localStorage.removeItem(customFilterKey(data));
+  }
+}
+
+// colunas reais desta folha (nomes verbatim), pela ordem da folha — vêm de
+// row_meta[].orig (ver read_sheet, cswaios/tasks.py), que tem sempre todas as
+// colunas, mesmo as que a vista escondeu por estarem vazias
+function customFilterColumns(data) {
+  const seen = new Set(), out = [];
+  (data && data.row_meta || []).forEach(m => {
+    if (!m || !m.orig) return;
+    Object.keys(m.orig).forEach(k => { if (!seen.has(k)) { seen.add(k); out.push(k); } });
+  });
+  return out;
+}
+
+// valores de cada lista predefinida referenciada por alguma condição (op
+// in_list/not_in_list): mode="manual" já tem os valores no localStorage;
+// mode="range" vem resolvido do servidor em data.filter_lists (ver
+// tabQuery/build_payload, cswaios/tasks.py) porque só ele pode ler ao vivo o
+// intervalo do livro.
+function customFilterListValues(data, filters) {
+  const predefLists = loadPredefLists(data);
+  const out = {};
+  (filters || []).forEach(f => (f.groups || []).forEach(g => (g.conditions || []).forEach(c => {
+    if ((c.op !== "in_list" && c.op !== "not_in_list") || !c.listId || out[c.listId]) return;
+    const list = predefLists.find(l => l.id === c.listId);
+    out[c.listId] = !list ? []
+      : list.mode === "range" ? ((data && data.filter_lists && data.filter_lists[c.listId]) || [])
+        : list.values;
+  })));
+  return out;
+}
+
+function evalCustomCondition(meta, c, listValuesById) {
+  const raw = String((meta && meta.orig && meta.orig[c.column]) || "");
+  if (c.op === "empty") return !raw.trim();
+  if (c.op === "not_empty") return !!raw.trim();
+  const cell = norm(raw);
+  if (c.op === "in_list" || c.op === "not_in_list") {
+    const values = (listValuesById && listValuesById[c.listId]) || [];
+    const hit = values.some(v => norm(v) === cell);
+    return c.op === "in_list" ? hit : !hit;
+  }
+  let hit;
+  if (c.usePerson) {
+    const me = norm(PERSON);
+    const tokens = me.split(" ").filter(tk => tk.length >= 4);
+    hit = (!!me && cell.includes(me)) || tokens.some(tk => cell === tk);
+  } else {
+    const val = norm(c.value || "");
+    hit = (c.op === "equals" || c.op === "not_equals") ? cell === val : cell.includes(val);
+  }
+  return (c.op === "not_contains" || c.op === "not_equals") ? !hit : hit;
+}
+
+// um filtro bate certo se pelo menos um dos seus grupos bater (OU entre
+// grupos); dentro de cada grupo, todas as condições têm de bater certo (E) —
+// um filtro de um único grupo dá o mesmo resultado que "todas em E" de antes
+// dos grupos existirem. Filtros diferentes continuam sempre em E entre si
+// (ver activeCustomFilters, mais abaixo)
+function evalCustomFilter(meta, f, listValuesById) {
+  const groups = f.groups || [];
+  return groups.some(g => (g.conditions || []).every(c => evalCustomCondition(meta, c, listValuesById)));
 }
 
 function buildCustomCompact(data) {
-  if (!data || data.error || !(data.headers || []).length) return null;
-  const map = loadViewMap(data);
-  if (!map) return null;
-  const h = data.headers.map(norm);
-  const col = name => (name ? h.findIndex(x => x === norm(name)) : -1);
-  const cols = names => (names || []).map(col).filter(i => i >= 0);
-  const idx = {
-    fn: cols(map.fn), author: cols(map.author), reviewer: cols(map.reviewer),
-    status: cols(map.status), todo: cols(map.todo),
-  };
-  // "exec" é só um interruptor (sem coluna própria): map.exec vem de
-  // renderViewMapRows como ["__on__"] ou [] — nunca nomes de coluna
-  const execOn = !!(map.exec && map.exec.length);
-  // nenhuma das colunas escolhidas existe nesta folha (mudou de aba ou de livro)
-  if (!Object.values(idx).some(arr => arr.length) && !execOn) return null;
+  const cv = data && data.cell_view;
+  const cfg = loadViewMap(data);
+  const catHeaders = (cv && cv.headers) || [];
+  const execOn = !!(cfg && cfg.exec);
+  if (!catHeaders.length && !execOn) return null;
 
-  const cel = (row, i) => (i >= 0 && row[i]) ? String(row[i]).trim() : "";
-  // várias colunas no mesmo campo: cada uma contribui o seu valor, vazias são ignoradas
-  const celMulti = (row, idxs, sep) => idxs.map(i => cel(row, i)).filter(Boolean).join(sep);
-  // como celMulti, mas cada valor leva à frente o nome real da coluna de onde veio —
-  // com várias colunas no mesmo campo, "N/A, Carlos Andrade" não diz de qual
-  // coluna é cada valor; passa a ler-se "(Author TC) N/A, (Author TP) Carlos Andrade"
-  const celMultiLabeled = (row, idxs, sep) => idxs.map(i => {
-    const v = cel(row, i);
-    return v ? `${colTagHtml(data.headers[i])}${highlightTerms(v)}` : "";
-  }).filter(Boolean).join(sep);
-  // como celMulti, mas também devolve o nome real (verbatim) da coluna de cada
-  // linha não vazia, na mesma ordem — para os estados/"O que fazer" ficarem
-  // editáveis por coluna, tal como TC/TP na vista do tracker (ver statusCell)
-  const celMultiCols = (row, idxs) => {
-    const lines = [], names = [];
-    idxs.forEach(i => {
-      const v = cel(row, i);
-      if (v) { lines.push(v); names.push(data.headers[i]); }
-    });
-    return { lines, names };
-  };
-
-  // mesma lógica de correspondência de nome do buildCompact, para saber se
-  // sou Autor/Reviewer nesta linha e conseguir aplicar sideOf() (ver sidemap.js)
-  const me = norm(PERSON);
-  const meTokens = me.split(" ").filter(t => t.length >= 4);
-  const isMe = c => { const v = norm(c); return v.includes(me) || meTokens.includes(v); };
-
-  const rows = data.rows.map((row, ri) => {
-    const meta = (data.row_meta || [])[ri] || null;
-    const quem = [[t("role_author"), celMultiLabeled(row, idx.author, ", ")], [t("role_reviewer"), celMultiLabeled(row, idx.reviewer, ", ")]]
-      .filter(([, nome]) => nome);
-    const { lines: statusLinesArr, names: statusCols } = celMultiCols(row, idx.status);
-    const statusStr = statusLinesArr.join("\n");
-    // uma vertente por índice (Autor/Reviewer/Estado na mesma posição das
-    // colunas escolhidas, tal como TC/TP em buildCompact) — sideOf() precisa do
-    // estado dessa vertente isolado, nunca do bloco todo concatenado (statusStr),
-    // senão os overrides por estado (sidemap.js) nunca encontram a chave e uma
-    // vertente "in review" contamina o lado de outra que nada tem a ver;
-    // roles.js/sideOf() comparam a string literal "Reviewer", por isso não se
-    // usa aqui o rótulo traduzido (t("role_reviewer"))
-    const applicableStatus = s => { const v = norm(s); return v !== "" && v !== "n/a"; };
-    const scopeCount = Math.max(idx.author.length, idx.reviewer.length, idx.status.length);
-    const sides = [];
-    for (let k = 0; k < scopeCount; k++) {
-      const sK = cel(row, idx.status[k] !== undefined ? idx.status[k] : idx.status[idx.status.length - 1]);
-      if (!applicableStatus(sK)) continue;
-      if (idx.author[k] !== undefined && isMe(cel(row, idx.author[k]))) sides.push(sideOf("Author", sK));
-      if (idx.reviewer[k] !== undefined && isMe(cel(row, idx.reviewer[k]))) sides.push(sideOf("Reviewer", sK));
+  const headers = execOn ? [...catHeaders, t("hdr_exec")] : catHeaders;
+  const execIdx = execOn ? headers.length - 1 : -1;
+  const catRows = (cv && cv.rows) || [];
+  // categorias com useList=true (ver openCellCatEditor): coluna real (0-based),
+  // opções da lista e, por linha, se há alteração local por enviar + o valor
+  // cru da folha (para o Push saber comparar, tal como meta.orig nas colunas fixas)
+  const useList = (cv && cv.useList) || [];
+  const catCols = (cv && cv.cols) || [];
+  const catLists = (cv && cv.lists) || [];
+  const catOptions = (cv && cv.options) || [];
+  const pendingRows = (cv && cv.pending) || [];
+  const baseRows = (cv && cv.base) || [];
+  const rows = (data.row_meta || []).map((meta, ri) => {
+    const vals = (catRows[ri] || catHeaders.map(() => "")).slice();
+    if (execOn) vals.push(execSummary(meta));
+    if (meta) {
+      meta.cellcatPending = pendingRows[ri] || [];
+      meta.cellcatBase = baseRows[ri] || [];
     }
-    const side = sides.includes("On my side") ? "On my side"
-      : sides.includes("On the other side") ? "On the other side"
-        : sides.includes("Done") ? "Done"
-          // sem papel meu aqui, ou só vertentes marcadas N/A: não conta para nenhum lado
-          : null;
-    const { lines: todoLinesArr, names: todoCols } = celMultiCols(row, idx.todo);
-    const todoStr = todoLinesArr.join("\n");
-    // rawTodo/roleKey ficam vazios (não há colunas do tracker aqui); o índice 7
-    // leva o nome real da coluna de cada linha de estado e o novo índice 10 o
-    // mesmo para o "O que fazer" — é por aí que a edição sabe onde escrever.
-    // Execução/notas (índice 4) não vem de nenhuma coluna: vem sempre do
-    // mesmo sítio genérico do buildCompact (meta.note, guardado à parte,
-    // ver execSummary) — só aparece quando o utilizador liga o interruptor
-    return [celMulti(row, idx.fn, " / "), quem.map(([r, nome]) => `${esc(r)}: ${nome}`).join("\n"),
-    statusStr, todoStr, execOn ? execSummary(meta) : "", side, meta, statusCols, "", "", todoCols,
-    // índices 11/12: as linhas já emparelhadas 1:1 com statusCols/todoCols —
-    // o render nunca deve re-separar statusStr/todoStr por "\n", porque o valor
-    // de uma coluna arbitrária pode ele próprio ter quebras de linha
-    statusLinesArr, todoLinesArr];
+    vals.push(meta || null);
+    return vals;
   });
 
-  // um campo sem nenhuma coluna mapeada nunca tem valor em nenhuma linha —
-  // não faz sentido mostrar essa etiqueta vazia no cartão, por isso o campo
-  // sai da vista (índices na tupla de cada linha, não nos VIEWMAP_SLOTS).
-  // "Execução" é a exceção: não depende de coluna nenhuma, só do interruptor.
-  const slotActive = [
-    !!idx.fn.length, !!(idx.author.length || idx.reviewer.length),
-    !!idx.status.length, !!idx.todo.length, execOn,
-  ];
-  const activeIdx = slotActive.map((on, i) => on ? i : -1).filter(i => i >= 0);
-  const headers = compactHeaders();
-
-  return { headers: activeIdx.map(i => headers[i]), rows, custom: true, activeIdx };
+  return { headers, rows, custom: true, execIdx, useList, catCols, catLists, catOptions };
 }
 
 let lastSelectorsSig = "";
@@ -383,6 +522,25 @@ function badgeHtml(text, col, meta, editable = meta && (col === "Status TC" || c
     // gravado no Excel viria com a anotação colada por engano
     (editable ? ` data-xlrow="${esc(meta.xlrow)}" data-col="${esc(col)}" data-rawstatus="${esc(text)}" title="${title}"` : "") +
     `>${colTag}${highlightTerms(display)}${local ? " ✎" : ""}</span>`;
+}
+
+// categoria livre com lista predefinida (useList=true na vista mapeada à
+// medida, ver openCellCatEditor): texto clicável, tal como o Function/TC e o
+// "To Do" — sem cor por estado (statusClass), porque o valor não é
+// necessariamente um "estado". col0/options/list vêm de compact.catCols/
+// catOptions/catLists (build_cell_categories, cswaios/tasks.py), na mesma
+// posição que este cabeçalho.
+function cellCatHtml(text, colIdx, meta, compact) {
+  const pending = !!(meta && meta.cellcatPending && meta.cellcatPending[colIdx]);
+  const base = (meta && meta.cellcatBase && meta.cellcatBase[colIdx]) || "";
+  const options = (compact.catOptions || [])[colIdx] || [];
+  const col0 = (compact.catCols || [])[colIdx];
+  const list = (compact.catLists || [])[colIdx] || null;
+  const title = pending ? t("t_local") : t("t_edit_cellcat");
+  return `<span class="cellcatText${pending ? " local" : ""}"` +
+    ` data-catxlrow="${esc(meta.xlrow)}" data-catcol="${esc(col0)}" data-catbase="${esc(base)}"` +
+    ` data-catoptions="${esc(JSON.stringify(options))}" data-catlist="${esc(JSON.stringify(list))}"` +
+    ` title="${esc(title)}">${highlightTerms(text)}${pending ? " ✎" : ""}</span>`;
 }
 
 // a OBS do Excel é editável: escrever aqui fica como alteração local (✎) e
@@ -575,6 +733,8 @@ function render() {
   }
   populateSelectors(data);
   updateViewMapButton(data);
+  updatePredefListButton(data);
+  updateCustomFilterButton(data);
 
   if (data.error) {
     tbl.classList.add("hidden");
@@ -605,17 +765,25 @@ function render() {
     (data.notice ? `<br><span class="notice">ℹ ${esc(data.notice)}</span>` : "");
 
   // vista resumida do tracker ou, para outras folhas, a que o utilizador
-  // mapeou nas Definições
+  // definiu nas Definições por coordenadas de célula (ver viewmap.js)
   const compact = buildCustomCompact(data) || buildCompact(data);
   $("viewToggle").classList.toggle("hidden", !compact);
   const useCompact = compact && compactView;
-  // vista mapeada à medida: só o estado e o "O que fazer" se escrevem no Excel
-  const isCustomCompact = !!(useCompact && compact.custom);
-  if (isCustomCompact) $("fileInfo").innerHTML += `<br><span class="notice">ℹ ${esc(t("viewmap_readonly"))}</span>`;
+  // vista mapeada à medida: categorias livres, sempre só leitura (sem papel/lado)
+  const isCellCompact = !!(useCompact && compact.custom);
+  const isCanonicalCompact = useCompact && !isCellCompact;
+  if (isCellCompact && !(compact.useList || []).some(Boolean))
+    $("fileInfo").innerHTML += `<br><span class="notice">ℹ ${esc(t("viewmap_readonly"))}</span>`;
   // lista/caixas vale para as duas vistas (resumida e completa)
   $("taskMode").classList.remove("hidden");
   const headers = useCompact ? compact.headers : data.headers;
   const allRows = useCompact ? compact.rows : data.rows;
+  // meta (row_meta, com o orig por coluna real) de uma linha à vista, seja
+  // qual for a vista ativa — usado tanto para os filtros personalizados como
+  // para currentMeta, mais abaixo
+  const metaFor = r => isCellCompact ? (r[headers.length] || null)
+    : useCompact ? (r[6] || null)
+    : ((data.row_meta || [])[data.rows.indexOf(r)] || null);
 
   const query = activeSearchTerms();
   const searched = query.length
@@ -627,15 +795,16 @@ function render() {
     : allRows;
 
   // resumo: contagens calculadas antes do filtro de estado, para os botões não desaparecerem
-  const statusIdx = headers.findIndex(isStatusHeader);
+  // (na vista mapeada à medida não há coluna de estado fixa: nunca conta como tal)
+  const statusIdx = isCellCompact ? -1 : headers.findIndex(isStatusHeader);
   // a coluna do papel pode mostrar nomes de outras pessoas; quem manda nos
   // filtros/contadores é a chave de papel (elemento 9), que continua a ser
-  // "Autor"/"Reviewer"/"Mencionado"/"Sem responsável"
-  const roleIdx = useCompact ? 9 : -1;
+  // "Autor"/"Reviewer"/"Mencionado"/"Sem responsável" — só existe na vista do tracker
+  const roleIdx = isCanonicalCompact ? 9 : -1;
   const exactRoles = [t("role_mentioned"), t("role_unassigned")];
   const roleMatches = papel =>
     [...roleFilters].some(f => exactRoles.includes(f) ? papel === f : String(papel).includes(f));
-  const sideIdx = useCompact ? 5 : -1;
+  const sideIdx = isCanonicalCompact ? 5 : -1;
   const roleActive = roleFilters.size && roleIdx >= 0;
   const sideActive = sideFilters.size && sideIdx >= 0;
   let rows = roleActive ? searched.filter(r => roleMatches(r[roleIdx])) : searched;
@@ -643,6 +812,26 @@ function render() {
     rows = rows.filter(r => sideFilters.has(r[sideIdx]));
   if (statusFilters.size && statusIdx >= 0 && !useCompact)
     rows = rows.filter(r => statusLines(r[statusIdx]).some(s => statusFilters.has(s)));
+
+  // filtros personalizados (ver customfilters.js): sempre pela coluna real da
+  // folha (row_meta[].orig), por isso funcionam em qualquer vista — resumida
+  // do tracker, à medida por coordenadas ou tabela completa. Cada um ativo
+  // aplica-se em AND com os restantes (tal como papel+lado+estado já fazem
+  // entre si); a contagem de cada botão é facetada pelos OUTROS filtros
+  // personalizados ativos, mas já com papel/lado/estado aplicados.
+  const allCustomFilters = loadCustomFilters(data);
+  const activeCustomFilters = allCustomFilters.filter(f => customFilterActive.has(f.id));
+  const customListValues = customFilterListValues(data, allCustomFilters);
+  const customFacetCounts = {};
+  allCustomFilters.forEach(f => {
+    const others = allCustomFilters.filter(o => o.id !== f.id && customFilterActive.has(o.id));
+    const base = others.length
+      ? rows.filter(r => others.every(o => evalCustomFilter(metaFor(r), o, customListValues)))
+      : rows;
+    customFacetCounts[f.id] = base.filter(r => evalCustomFilter(metaFor(r), f, customListValues)).length;
+  });
+  if (activeCustomFilters.length)
+    rows = rows.filter(r => activeCustomFilters.every(f => evalCustomFilter(metaFor(r), f, customListValues)));
 
   // bases facetadas: cada grupo de botões é contado com os filtros dos OUTROS
   // grupos aplicados (mas não os do próprio), para os números refletirem a seleção
@@ -674,7 +863,7 @@ function render() {
       `<span class="${pillClasses("", roleFilters.has(k), fac[k])}" data-role="${k}">${k}: ${fac[k]}</span>`
     ).join("");
   }
-  if (useCompact && searched.length) {
+  if (isCanonicalCompact && searched.length) {
     const countSides = arr => {
       const c = {};
       arr.forEach(r => { c[r[sideIdx]] = (c[r[sideIdx]] || 0) + 1; });
@@ -697,12 +886,18 @@ function render() {
         `<span class="pill${statusFilters.has(s) ? " active" : ""}" data-status="${esc(s)}">${esc(s)}: ${n}</span>`
       ).join("");
   }
+  if (allCustomFilters.length && searched.length) {
+    summaryHtml += allCustomFilters.map(f =>
+      `<span class="${pillClasses("customfilter", customFilterActive.has(f.id), customFacetCounts[f.id] || 0)}" ` +
+      `data-customfilter="${esc(f.id)}">${esc(f.name)}: ${customFacetCounts[f.id] || 0}</span>`
+    ).join("");
+  }
   $("summary").innerHTML = summaryHtml;
 
   if (!rows.length) {
     tbl.classList.add("hidden");
     box.classList.remove("hidden");
-    box.innerHTML = (statusFilters.size || sideFilters.size || roleFilters.size)
+    box.innerHTML = (statusFilters.size || sideFilters.size || roleFilters.size || customFilterActive.size)
       ? `<h2>${t("none_filter")}.</h2><p>${t("none_hint")}</p>`
       : query.length
         ? `<h2>${t("none_search")} "${esc(searchLabel())}".</h2>`
@@ -717,30 +912,17 @@ function render() {
   const _narrow = window.innerWidth <= 720;
   tbl.classList.toggle("cards", taskLayout === "cards" || _narrow);
   $("thead").innerHTML = "<tr>" + headers.map(h => `<th>${esc(h)}</th>`).join("") + `<th class="todoActionCell">${esc(t("hdr_action"))}</th></tr>`;
-  currentMeta = rows.map(r =>
-    useCompact ? (r[6] || null) : ((data.row_meta || [])[data.rows.indexOf(r)] || null));
+  currentMeta = rows.map(metaFor);
   currentObs = rows.map(r =>
-    useCompact ? (String(r[3] === undefined ? "" : r[3]).split("\u001F")[1] || "") : "");
+    isCanonicalCompact ? (String(r[3] === undefined ? "" : r[3]).split("\u001F")[1] || "") : "");
   currentStatuses = data.statuses || [];
 
   function statusCell(r, ri, i) {
     const meta = currentMeta[ri];
-    if (useCompact) {
-      // na vista mapeada à medida cada linha vem de uma coluna real diferente
-      // (nome verbatim do cabeçalho), por isso a edição é forçada com !!meta —
-      // esses nomes nunca são "Status TC"/"Status TP". Aí usam-se as linhas já
-      // emparelhadas com as colunas em buildCustomCompact (índice 11): nunca
-      // re-separar r[2] por "\n", porque um valor de coluna arbitrário pode ele
-      // próprio conter quebras de linha e desalinhar a linha N com o nome N
-      const lines = isCustomCompact ? (r[11] || []) : String(r[2]).split("\n").filter(l => l.trim());
+    if (isCanonicalCompact) {
+      const lines = String(r[2]).split("\n").filter(l => l.trim());
       const cols = r[7] || [];
-      return lines.map((l, k) => {
-        const colName = cols[k];
-        // vista mapeada à medida: o nome da coluna vira uma tag colorida em
-        // vez de texto "(Column Name)" colado ao estado
-        const tag = isCustomCompact ? colTagHtml(colName) : "";
-        return badgeHtml(l, colName, meta, !!meta, l, tag);
-      }).join("<br>");
+      return lines.map((l, k) => badgeHtml(l, cols[k], meta)).join("<br>");
     }
     const c = r[i] ? String(r[i]) : "";
     return c ? badgeHtml(c, headers[i], meta) : "";
@@ -751,21 +933,6 @@ function render() {
     const [todo, obs] = String(r[3] === undefined ? "" : r[3]).split("\u001F");
     const rawTodo = r[8] || "";
     return `${todoTextHtml(todo, rawTodo, currentMeta[ri])}${obsHtml(obs || "", currentMeta[ri])}`;
-  }
-
-  // Vista mapeada à medida: "O que fazer" pode vir de várias colunas
-  // mapeadas. Cada uma aparece na sua própria linha, editável à parte (tal
-  // como os estados TC/TP), porque cada linha escreve numa coluna real
-  // diferente — sem OBS aqui, essa vista não tem esse campo.
-  function customTodoCellHtml(r, ri) {
-    const meta = currentMeta[ri];
-    const lines = r[12] || [];
-    const cols = r[10] || [];
-    if (!lines.length) return "";
-    return lines.map((l, k) => {
-      const colName = cols[k];
-      return todoTextHtml(l, l, meta, colName, !!meta, colTagHtml(colName));
-    }).join("<br>");
   }
 
   // o botão "+ TODO" só existe enquanto a linha não estiver na TODO list
@@ -780,33 +947,29 @@ function render() {
       : `<button type="button" class="todoActionBtn" data-todoadd="${ri}" title="${t("todo_add_click")}">${t("btn_add_todo")}</button>`;
   }
 
-  // vista mapeada à medida: cada campo sem coluna mapeada foi removido de
-  // "headers" em buildCustomCompact, e activeIdx diz a que posição da tupla
-  // de cada linha (fn/papel/estado/resumo/execução) corresponde cada coluna
-  // ainda visível, para o resto do código continuar a ler r[] pela posição certa
-  const colOf = isCustomCompact && compact.activeIdx ? compact.activeIdx : headers.map((_, i) => i);
+  const colOf = headers.map((_, i) => i);
   $("tbody").innerHTML = rows.map((r, ri) =>
     `<tr draggable="true" title="${t("t_drag")}">` + headers.map((_, i) => {
       const i2 = colOf[i];
       const cell = (() => {
         const c = r[i2] !== undefined ? r[i2] : "";
+        // vista mapeada à medida: categorias livres, sempre texto simples —
+        // a única exceção é a Execução, se o utilizador a ligou nas Definições
+        // (mesma célula editável da vista do tracker, ver execCellHtml)
+        if (isCellCompact) {
+          if (i2 === compact.execIdx) {
+            const m = currentMeta[ri] || {};
+            const { inner, title } = execCellHtml(m);
+            return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
+          }
+          if ((compact.useList || [])[i2]) {
+            const m = currentMeta[ri] || {};
+            return `<td>${cellCatHtml(c, i2, m, compact)}</td>`;
+          }
+          return `<td${i2 === 0 ? ' class="fn"' : ""}>${i2 === 0 ? highlightTerms(c) : esc(c)}</td>`;
+        }
         if (useCompact ? i2 === 2 : isStatusHeader(headers[i]))
           return `<td>${statusCell(r, ri, i2)}</td>`;
-        // vista mapeada à medida: "O que fazer" agora escreve no Excel (uma
-        // linha por coluna real mapeada); Function/TC e o papel continuam
-        // texto simples, sem nada em que se possa clicar para editar
-        if (isCustomCompact && i2 === 3) return `<td>${customTodoCellHtml(r, ri)}</td>`;
-        // r[1] (papel) já vem em HTML de buildCustomCompact (nomes com tag de
-        // coluna colorida e negrito) — nunca voltar a escapar aqui
-        if (isCustomCompact && i2 === 1) return `<td class="role">${c}</td>`;
-        // Execução/notas ligada nas Definições: mesma célula editável da
-        // vista do tracker, meta vem de currentMeta tal como nessa vista
-        if (isCustomCompact && i2 === 4) {
-          const m = currentMeta[ri] || {};
-          const { inner, title } = execCellHtml(m);
-          return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
-        }
-        if (isCustomCompact) return `<td${i2 === 0 ? ' class="fn"' : ""}>${i2 === 0 ? highlightTerms(c) : esc(c)}</td>`;
         if (useCompact && i2 === 0) {
           const m = currentMeta[ri] || {};
           const linked = notesForTask(m.fn || c, m.todo || "");
@@ -852,6 +1015,51 @@ function tabQuery(tab, { cycle = false, fresh = false, all = showAll } = {}) {
   q.set("source", tabSource(tab));
   // o nome só serve ao servidor para achar a cópia sincronizada no disco
   if (tab && tab.kind === "onedrive" && tab.name) q.set("book_name", tab.name);
+  // vista mapeada à medida (ver viewmap.js): manda as categorias guardadas
+  // para este ficheiro+aba, para o servidor calcular data.cell_view. A chave
+  // usa data.file/data.sheet da última leitura (o mesmo que viewMapKey usa
+  // para gravar); antes da primeira leitura usa-se o melhor palpite disponível
+  // (tabFile/tab.sheet), que já é exato para ficheiros locais.
+  const known = (tab && tab.lastData) || { file: tabFile(tab), sheet: (tab && tab.sheet) || "" };
+  const cfg = loadViewMap(known);
+  if (cfg && cfg.categories.length) {
+    // categorias listMode="fixed": o servidor não vê o localStorage, por isso
+    // a biblioteca (loadPredefLists) é resolvida aqui. Uma lista mode="manual"
+    // manda os valores literais dentro do cellcat (listValues); uma lista
+    // mode="range" manda antes sheet/cell/orientation/size e passa a viajar
+    // como listMode="range", para o servidor a ler ao vivo do livro tal como
+    // já faz para o intervalo próprio de uma categoria — ver build_cell_categories.
+    const predefLists = loadPredefLists(known);
+    const cellcats = cfg.categories.map(cat => {
+      if (cat.listMode !== "fixed") return cat;
+      const list = predefLists.find(l => l.id === cat.listId);
+      if (list && list.mode === "range") {
+        return {
+          ...cat, listMode: "range",
+          listSheet: list.sheet, listCell: list.cell,
+          listOrientation: list.orientation, listSize: list.size,
+        };
+      }
+      return { ...cat, listValues: list ? list.values : [] };
+    });
+    q.set("cellcats", JSON.stringify(cellcats));
+  }
+  // filtros personalizados com op in_list/not_in_list sobre uma lista
+  // mode="range" (ver customFilterListValues, tasks.js): o servidor é que
+  // consegue ler o intervalo ao vivo, por isso pede-se aqui, tal como as
+  // categorias listMode="fixed" com uma lista "range" acima
+  const filters = loadCustomFilters(known);
+  const predefListsForFilters = loadPredefLists(known);
+  const neededListIds = new Set(filters
+    .flatMap(f => f.groups)
+    .flatMap(g => g.conditions)
+    .filter(c => (c.op === "in_list" || c.op === "not_in_list") && c.listId)
+    .map(c => c.listId));
+  const filterLists = [...neededListIds]
+    .map(id => predefListsForFilters.find(l => l.id === id))
+    .filter(l => l && l.mode === "range")
+    .map(l => ({ id: l.id, sheet: l.sheet, cell: l.cell, orientation: l.orientation, size: l.size }));
+  if (filterLists.length) q.set("filterlists", JSON.stringify(filterLists));
   return q.toString();
 }
 
@@ -958,6 +1166,8 @@ function tbodyTap(e) {
   if (add) { e.preventDefault(); e.stopPropagation(); addTodoFromTaskRow(add); return; }
   const badge = e.target.closest(".badge[data-col]");
   if (badge) return openStatusEditor(badge);
+  const catText = e.target.closest(".cellcatText[data-catxlrow]");
+  if (catText) return openCellCatEditor(catText);
   const obs = e.target.closest("[data-obsxlrow]");
   if (obs && !obs.dataset.editing) return openObsEditor(obs);
   const todoTxt = e.target.closest("[data-todoxlrow]");
@@ -1270,6 +1480,60 @@ function openStatusEditor(badge) {
           xlrow: meta.xlrow,
           xlcol: cols[col],
           fncol: cols.fn,
+        }),
+      });
+      const out = await res.json();
+      if (!out.ok) alert(`${t("err_save")} ` + (out.error || "?"));
+    } catch (err) {
+      alert("Não foi possível contactar o servidor: " + err);
+    }
+    load();
+  });
+  sel.addEventListener("blur", () => { if (!done) { done = true; editorOpen = false; refreshTaskViews(); } });
+}
+
+// categoria livre com lista predefinida (useList=true, ver cellCatHtml): o
+// mesmo padrão do editor de estados (badge -> <select>), mas identificada por
+// posição na folha (xlrow+col0), não por Function/TC+To Do — ver
+// queue_cellcat_override/push_overrides, cswaios/tasks.py, para o porquê.
+function openCellCatEditor(span) {
+  const xlrow = span.dataset.catxlrow;
+  const col0 = span.dataset.catcol;
+  const meta = metaByRow(xlrow);
+  if (!meta) return;
+  const base = span.dataset.catbase;
+  const list = JSON.parse(span.dataset.catlist || "null");
+  let opts = [];
+  try { opts = JSON.parse(span.dataset.catoptions || "[]"); } catch (e) { opts = []; }
+  const displayed = span.innerText.replace(" ✎", "").trim();
+  if (displayed && !opts.includes(displayed)) opts = [displayed, ...opts];
+
+  const sel = document.createElement("select");
+  sel.className = "statusEdit";
+  sel.innerHTML = opts.map(v => `<option value="${esc(v)}"${v === displayed ? " selected" : ""}>${esc(v)}</option>`).join("") +
+    (span.classList.contains("local") ? `<option value="__clear__">${t("opt_revert")}</option>` : "");
+  span.replaceWith(sel);
+  editorOpen = true;
+  sel.focus();
+
+  let done = false;
+  sel.addEventListener("change", async () => {
+    if (done) return;
+    done = true;
+    editorOpen = false;
+    sel.disabled = true;
+    try {
+      const res = await fetch("/api/cellcat/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: lastData.file,
+          sheet: lastData.sheet,
+          xlrow: meta.xlrow,
+          col0: Number(col0),
+          value: sel.value === "__clear__" ? null : sel.value,
+          base,
+          list,
         }),
       });
       const out = await res.json();

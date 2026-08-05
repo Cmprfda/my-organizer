@@ -4,17 +4,20 @@
 import hashlib
 import json
 import os
+import re
 import time
 from datetime import datetime
 
 import openpyxl
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 from . import config
 from .config import (APP_VERSION, BASE_STATUSES, CANDIDATE_DIRS, DEFAULT_PERSON,
                      DEFAULT_SHEET, lan_ip)
 from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbook,
                     detect_header_row, find_named_file, find_tracker_files, locate_row,
-                    pick_sheet, write_status_to_excel)
+                    pick_sheet, set_data_validation_fixed_list, set_data_validation_list,
+                    write_status_to_excel)
 from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_forget_item,
                     graph_ids_from_path, graph_load_rows, graph_modified, graph_path_for,
                     graph_state, has_book, is_graph_path)
@@ -352,6 +355,252 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     }
 
 
+_CELL_REF_RE = re.compile(r"^([A-Za-z]{1,3})(\d+)$")
+
+
+def parse_cell_ref(ref):
+    """Converte uma referência estilo Excel ("C3") em (linha0, coluna0), ambos
+    0-based. None se o formato for inválido."""
+    m = _CELL_REF_RE.match(str(ref or "").strip())
+    if not m:
+        return None
+    try:
+        col0 = column_index_from_string(m.group(1).upper()) - 1
+    except ValueError:
+        return None
+    return int(m.group(2)) - 1, col0
+
+
+def _ensure_raw_rows(path, sheet_wanted):
+    """Garante que a folha pedida está no _RAW_CACHE (lendo-a se preciso) e
+    devolve (aba real, grelha em bruto) — usado para ler a lista de opções de
+    uma categoria (ver _read_list_options), que pode viver numa aba diferente
+    da que está a ser vista."""
+    raw_key = (path, normalize(sheet_wanted))
+    cached = _RAW_CACHE.get(raw_key)
+    if cached:
+        return cached[1], cached[3]
+    try:
+        if is_graph_path(path):
+            drive_id, item_id = graph_ids_from_path(path)
+            real_sheet, all_sheets, rows = graph_load_rows(drive_id, item_id, sheet_wanted)
+            if real_sheet is None:
+                return None, None
+        else:
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            try:
+                real_sheet = pick_sheet(wb, sheet_wanted)
+                if real_sheet is None:
+                    return None, None
+                rows = [list(r) for r in wb[real_sheet].iter_rows(values_only=True)]
+                all_sheets = wb.sheetnames
+            finally:
+                wb.close()
+    except Exception:
+        return None, None
+    _RAW_CACHE[raw_key] = (datetime.now(), real_sheet, all_sheets, rows)
+    return real_sheet, rows
+
+
+def _read_list_options(path, sheet_wanted, cell, orientation, size):
+    """Valores de uma lista de opções predefinida (aba + célula inicial +
+    orientação + tamanho), para o dropdown de uma categoria com useList=true
+    na vista mapeada à medida (ver build_cell_categories)."""
+    ref = parse_cell_ref(cell)
+    if ref is None or not sheet_wanted:
+        return []
+    row0, col0 = ref
+    try:
+        size = max(1, int(size))
+    except (TypeError, ValueError):
+        size = 1
+    real_sheet, rows = _ensure_raw_rows(path, sheet_wanted)
+    if real_sheet is None:
+        return []
+
+    def cell_at(r0, c0):
+        if 0 <= r0 < len(rows):
+            row = rows[r0]
+            if 0 <= c0 < len(row):
+                return cell_to_text(row[c0])
+        return ""
+
+    if orientation == "vertical":
+        vals = [cell_at(row0 + k, col0) for k in range(size)]
+    else:
+        vals = [cell_at(row0, col0 + k) for k in range(size)]
+    seen, out = set(), []
+    for v in vals:
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+def _cellcat_key(workbook_id, sheet, xlrow, col0):
+    """Identidade de uma célula de categoria livre (vista mapeada à medida):
+    livro||aba||__cellcat__||linha||coluna. Ao contrário das colunas fixas do
+    tracker (identificadas por Function/TC+To Do), uma folha genérica pode não
+    ter nenhuma das duas, por isso usa-se a própria posição na folha — tal
+    como metaByRow, no cliente, já usa o xlrow em vez de função+"to do" por
+    ser a única coisa realmente única por linha."""
+    return f"{workbook_id}||{sheet}||__cellcat__||{xlrow}||{col0}"
+
+
+def _split_cellcat_key(key):
+    """Inverso de _cellcat_key: (livro, aba, linha, coluna), ou None se a
+    chave não seguir esse formato (ver push_overrides)."""
+    parts = str(key).split("||")
+    if len(parts) != 5 or parts[2] != "__cellcat__":
+        return None, None, None, None
+    return parts[0], parts[1], parts[3], parts[4]
+
+
+def queue_cellcat_override(workbook_id, sheet, xlrow, col0, value, base, list_cfg):
+    """Alteração local (✎) a uma categoria livre com lista predefinida (vista
+    mapeada à medida, ver build_cell_categories): fica em `overrides.json`
+    até ao Push, tal como as colunas fixas do tracker. `list_cfg` (aba+célula+
+    orientação+tamanho da lista de opções) viaja com o próprio override para
+    o Push também poder aplicar a validação nativa do Excel a essa célula
+    (ver push_overrides), sem precisar de reconsultar a configuração da vista."""
+    overrides = load_overrides()
+    key = _cellcat_key(workbook_id, sheet, xlrow, col0)
+    if value is None:
+        overrides.pop(key, None)
+    else:
+        entry = {"value": str(value), "base": base}
+        if list_cfg:
+            entry["list"] = list_cfg
+        overrides[key] = entry
+    save_overrides(overrides)
+
+
+def build_cell_categories(path, sheet_name, categories, row_meta):
+    """Vista resumida à medida por coordenadas de célula (ver viewmap.js): cada
+    categoria lê a célula em startCell (ou, com `size` > 1, essa célula mais as
+    seguintes na mesma linha se orientation="horizontal", ou na mesma coluna se
+    "vertical") e concatena-as. `size` vazio/nulo lê só a própria célula — uma
+    categoria == uma célula do Excel, sem tentar adivinhar onde a próxima
+    categoria começa. Lê sempre da grelha em bruto desta leitura (a mesma que
+    alimentou read_sheet), nunca de data_rows/headers já truncados e podados
+    (tasks.py:311/321-325), porque só a grelha em bruto preserva a posição real
+    das colunas.
+
+    Categorias normais continuam só de leitura. Uma categoria com useList=true
+    é editável através de uma lista de valores predefinida, vinda de uma de
+    duas fontes: um intervalo do próprio livro (listSheet+listCell+
+    listOrientation+listSize, listMode="range") ou uma lista fixa guardada na
+    biblioteca por aba do cliente (listMode="fixed", valores já resolvidos em
+    listValues, ver viewmap.js). A alteração fica local (✎) até ao Push, tal
+    como as colunas fixas do tracker, mas guardada com uma chave própria (ver
+    _cellcat_key) porque folhas genéricas não têm Function/TC nem To Do para
+    identificar a linha."""
+    cached = _RAW_CACHE.get((path, normalize(sheet_name)))
+    if not cached or not categories:
+        return {"headers": [], "rows": []}
+    _, real_sheet, _, rows = cached
+
+    def cell_at(r0, c0):
+        if 0 <= r0 < len(rows):
+            row = rows[r0]
+            if 0 <= c0 < len(row):
+                return cell_to_text(row[c0])
+        return ""
+
+    headers, specs = [], []
+    for i, cat in enumerate(categories or []):
+        if not isinstance(cat, dict):
+            continue
+        ref = parse_cell_ref(cat.get("startCell"))
+        if ref is None:
+            continue
+        row0, col0 = ref
+        orientation = "vertical" if cat.get("orientation") == "vertical" else "horizontal"
+        raw_size = cat.get("size")
+        size = 1
+        if raw_size not in (None, ""):
+            try:
+                size = max(1, int(raw_size))
+            except (TypeError, ValueError):
+                size = 1
+        name = str(cat.get("name") or "").strip() or cell_at(row0, col0) or f"Categoria {i + 1}"
+        list_cfg = None
+        if cat.get("useList") and cat.get("listMode") == "fixed":
+            # biblioteca de listas predefinidas por aba (ver viewmap.js): o
+            # cliente já resolveu listId -> valores literais antes de mandar
+            # este cellcat, porque a biblioteca só existe no localStorage dele
+            values = cat.get("listValues")
+            if isinstance(values, list) and values:
+                list_cfg = {"fixed": True, "values": [str(v) for v in values]}
+        elif cat.get("useList") and cat.get("listSheet") and cat.get("listCell"):
+            list_cfg = {
+                "sheet": str(cat.get("listSheet") or ""),
+                "cell": str(cat.get("listCell") or ""),
+                "orientation": "horizontal" if cat.get("listOrientation") == "horizontal" else "vertical",
+                "size": cat.get("listSize"),
+            }
+        headers.append(name)
+        specs.append((col0, orientation, size, list_cfg))
+
+    def _list_options(cfg):
+        if not cfg:
+            return []
+        if cfg.get("fixed"):
+            seen, out = set(), []
+            for v in cfg.get("values") or []:
+                if v and v not in seen:
+                    seen.add(v)
+                    out.append(v)
+            return out
+        return _read_list_options(path, cfg["sheet"], cfg["cell"], cfg["orientation"], cfg["size"])
+
+    options = [_list_options(cfg) for _, _, _, cfg in specs]
+    use_list_flags = [cfg is not None for _, _, _, cfg in specs]
+
+    overrides = load_overrides()
+    overrides_stale = False
+    data_rows, pending_rows, base_rows = [], [], []
+    for meta in row_meta or []:
+        xlrow = meta["xlrow"]
+        r0 = xlrow - 1
+        line, pending_line, base_line = [], [], []
+        for col0, orientation, size, list_cfg in specs:
+            pending, base = False, ""
+            if list_cfg is not None:
+                base = cell_at(r0, col0)
+                key = _cellcat_key(path, real_sheet, xlrow, col0)
+                entry = overrides.get(key)
+                if entry and entry.get("base", "") == base:
+                    value, pending = str(entry.get("value", "")), True
+                elif entry:
+                    # a folha mudou desde a alteração local: descarta-a, tal
+                    # como as colunas fixas do tracker fazem em read_sheet
+                    overrides.pop(key, None)
+                    overrides_stale = True
+                    value = base
+                else:
+                    value = base
+            else:
+                vals = [cell_at(r0, col0 + k) for k in range(size)] if orientation == "horizontal" \
+                    else [cell_at(r0 + k, col0) for k in range(size)]
+                value = " ".join(v for v in vals if v)
+            line.append(value)
+            pending_line.append(pending)
+            base_line.append(base)
+        data_rows.append(line)
+        pending_rows.append(pending_line)
+        base_rows.append(base_line)
+
+    if overrides_stale:
+        save_overrides(overrides)
+
+    cols = [col0 for col0, _, _, _ in specs]
+    lists = [list_cfg for _, _, _, list_cfg in specs]
+    return {"headers": headers, "rows": data_rows, "useList": use_list_flags,
+            "options": options, "pending": pending_rows, "base": base_rows,
+            "cols": cols, "lists": lists}
+
+
 def known_headers(path, sheet):
     """Cabeçalhos (texto verbatim, com o mesmo fallback "Coluna N" que read_sheet
     expõe ao cliente) da última leitura em cache desta folha, ou None se ainda
@@ -434,13 +683,45 @@ def push_overrides(target):
     # Push, fundam por engano as suas colunas pendentes numa só
     renamed_this_call = set()
     for key in list(overrides.keys()):
+        entry = overrides.get(key)
+        if not isinstance(entry, dict):
+            continue
+        if "||__cellcat__||" in key:
+            # categoria livre com lista predefinida (vista mapeada à medida):
+            # identificada por posição na folha, não por Function/TC+To Do
+            # (ver _cellcat_key) — escreve-se diretamente, sem locate_row
+            wb_id, sheet, xlrow_s, col0_s = _split_cellcat_key(key)
+            if wb_id is None or os.path.normcase(wb_id) != os.path.normcase(target):
+                continue
+            try:
+                xlrow, col0 = int(xlrow_s), int(col0_s)
+            except (TypeError, ValueError):
+                overrides.pop(key, None)
+                continue
+            xlcol = col0 + 1
+            valor, base = entry.get("value", ""), entry.get("base", "")
+            # a célula é a sua própria "guarda": só escreve se ainda tiver o
+            # texto que foi lido quando a alteração local foi feita
+            ok, msg_text = write_status_to_excel(target, sheet, xlrow, xlcol, xlcol, base, valor)
+            if ok:
+                overrides.pop(key, None)
+                pushed += 1
+                list_cfg = entry.get("list")
+                if isinstance(list_cfg, dict) and list_cfg.get("fixed") and list_cfg.get("values"):
+                    set_data_validation_fixed_list(
+                        target, sheet, f"{get_column_letter(xlcol)}{xlrow}", list_cfg.get("values"))
+                elif isinstance(list_cfg, dict) and list_cfg.get("sheet") and list_cfg.get("cell"):
+                    set_data_validation_list(
+                        target, sheet, f"{get_column_letter(xlcol)}{xlrow}",
+                        list_cfg.get("sheet"), list_cfg.get("cell"),
+                        list_cfg.get("orientation"), list_cfg.get("size"))
+            else:
+                failed.append({"fn": f"{sheet}!{get_column_letter(xlcol)}{xlrow}", "error": msg_text})
+            continue
         wb_id, sheet, fn, todo = _split_key(key)
         # chave antiga (sem livro): é do tempo em que só havia um, vai para o
         # destino pedido; com livro, só se for mesmo este
         if wb_id is not None and os.path.normcase(wb_id) != os.path.normcase(target):
-            continue
-        entry = overrides.get(key)
-        if not isinstance(entry, dict):
             continue
         coords = locate_row(target, sheet, fn, todo)
         if coords is None:
@@ -717,6 +998,46 @@ def build_payload(query):
     result["digest"] = hashlib.md5(
         json.dumps(result.get("rows") or [], ensure_ascii=False).encode("utf-8")
     ).hexdigest()[:8]
+
+    # vista resumida à medida por coordenadas de célula (ver viewmap.js): o
+    # cliente manda a lista de categorias guardada para este ficheiro+aba: só
+    # faz sentido calcular com uma leitura sem erro (row_meta vem de lá)
+    if not result.get("error"):
+        cellcats_raw = query.get("cellcats", [""])[0]
+        if cellcats_raw:
+            try:
+                categories = json.loads(cellcats_raw)
+            except (TypeError, ValueError):
+                categories = None
+            if isinstance(categories, list) and categories:
+                result["cell_view"] = build_cell_categories(
+                    path, sheet_read, categories, result.get("row_meta"))
+
+        # filtros personalizados (ver customfilters.js): listas predefinidas
+        # mode="range" referenciadas por um filtro in_list/not_in_list — só o
+        # servidor consegue ler o intervalo ao vivo, tal como para as
+        # categorias listMode="fixed" acima
+        filterlists_raw = query.get("filterlists", [""])[0]
+        if filterlists_raw:
+            try:
+                wanted_lists = json.loads(filterlists_raw)
+            except (TypeError, ValueError):
+                wanted_lists = None
+            if isinstance(wanted_lists, list) and wanted_lists:
+                resolved = {}
+                for entry in wanted_lists:
+                    if not isinstance(entry, dict):
+                        continue
+                    list_id = str(entry.get("id") or "").strip()
+                    list_sheet = str(entry.get("sheet") or "").strip()
+                    list_cell = str(entry.get("cell") or "").strip()
+                    if not list_id or not list_sheet or not list_cell:
+                        continue
+                    resolved[list_id] = _read_list_options(
+                        path, list_sheet, list_cell, entry.get("orientation"), entry.get("size"))
+                if resolved:
+                    result["filter_lists"] = resolved
+
     return result
 
 

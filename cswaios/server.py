@@ -32,7 +32,8 @@ from .notepad import image_file, image_type, load_notepad
 from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
                     save_overrides)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
-                    forget_web_cache, known_headers, push_overrides)
+                    forget_web_cache, known_headers, push_overrides,
+                    queue_cellcat_override)
 from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
                     normalize_ref, normalize_todo_item, save_todo, sort_todos_by_priority,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
@@ -832,6 +833,27 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 log_event(f"{ip} pediu atualização — já na versão mais recente")
                 self._send(200, json.dumps({"ok": True, "updated": False}), "application/json")
+            return
+        if path == "/api/cellcat/update":
+            # categoria livre com lista predefinida (vista mapeada à medida):
+            # fica só local (✎) até ao Push, tal como /api/update — mas
+            # identificada por posição na folha, não por Function/TC+To Do
+            # (ver queue_cellcat_override, cswaios/tasks.py)
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                workbook_id = payload.get("file", "")
+                sheet = payload.get("sheet", "")
+                xlrow, col0 = int(payload["xlrow"]), int(payload["col0"])
+                queue_cellcat_override(workbook_id, sheet, xlrow, col0,
+                                       payload.get("value"), payload.get("base", ""),
+                                       payload.get("list"))
+                log_event(f"{ip} alterou categoria livre (local, à espera de Push): "
+                          f"{sheet} linha {xlrow} coluna {col0 + 1}")
+                self._send(200, json.dumps({"ok": True, "queued": True}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} alteração de categoria livre FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
         if path != "/api/update":
             self._send(404, "Not found", "text/plain")

@@ -4,6 +4,7 @@ function clearFilters() {
   statusFilters.clear();
   sideFilters.clear();
   roleFilters.clear();
+  customFilterActive.clear();
 }
 
 $("clearNotes").addEventListener("click", async () => {
@@ -138,6 +139,7 @@ $("personInput").addEventListener("change", () => {
   statusFilters.clear();
   sideFilters.clear();
   roleFilters.clear();
+  customFilterActive.clear();
   if (showAll) $("toggleAll").textContent = `${t("btn_only")} ${PERSON.split(" ")[0]}`;
   load();
 });
@@ -159,6 +161,11 @@ $("summary").addEventListener("click", e => {
     const wasActive = roleFilters.has(r);
     roleFilters.clear();
     if (!wasActive) roleFilters.add(r);
+  } else if (pill.dataset.customfilter) {
+    // não exclusivo: vários filtros personalizados podem estar ligados ao
+    // mesmo tempo, combinados em AND (ver render(), tasks.js)
+    const id = pill.dataset.customfilter;
+    customFilterActive.has(id) ? customFilterActive.delete(id) : customFilterActive.add(id);
   } else {
     return;
   }
@@ -169,6 +176,7 @@ $("viewToggle").addEventListener("click", () => {
   statusFilters.clear();
   sideFilters.clear();
   roleFilters.clear();
+  customFilterActive.clear();
   $("viewToggle").textContent = compactView ? t("btn_full") : t("btn_compact");
   render();
 });
@@ -186,6 +194,7 @@ $("toggleAll").addEventListener("click", () => {
   statusFilters.clear();
   sideFilters.clear();
   roleFilters.clear();
+  customFilterActive.clear();
   $("toggleAll").textContent = showAll ? `${t("btn_only")} ${PERSON.split(" ")[0]}` : t("btn_all");
   load();
 });

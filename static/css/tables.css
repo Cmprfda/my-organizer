@@ -18,14 +18,16 @@
 
 .summary .pill[data-status],
 .summary .pill[data-role],
-.summary .pill[data-side] {
+.summary .pill[data-side],
+.summary .pill[data-customfilter] {
   cursor: pointer;
   user-select: none;
 }
 
 .summary .pill[data-status]:hover,
 .summary .pill[data-role]:hover,
-.summary .pill[data-side]:hover {
+.summary .pill[data-side]:hover,
+.summary .pill[data-customfilter]:hover {
   filter: brightness(1.08);
 }
 
@@ -43,6 +45,11 @@
 .summary .pill.side-done {
   background: var(--status-done-bg);
   color: var(--status-done-fg);
+}
+
+.summary .pill.customfilter {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
 }
 
 .summary .pill.active {
@@ -156,20 +163,24 @@ td .obs.local {
   color: var(--accent-text);
 }
 
-/* Function/TC e "To Do" editáveis (escrevem nas colunas do Excel, no Push) */
+/* Function/TC e "To Do" editáveis (escrevem nas colunas do Excel, no Push);
+   categoria livre com lista predefinida (vista mapeada à medida) igual */
 td .fnText[data-fnxlrow],
-td .todoText[data-todoxlrow] {
+td .todoText[data-todoxlrow],
+td .cellcatText[data-catxlrow] {
   cursor: pointer;
 }
 
 td .fnText[data-fnxlrow]:hover,
-td .todoText[data-todoxlrow]:hover {
+td .todoText[data-todoxlrow]:hover,
+td .cellcatText[data-catxlrow]:hover {
   color: var(--accent-text);
 }
 
 /* alteração local por enviar (✎), como nos estados e na OBS */
 td .fnText.local,
-td .todoText.local {
+td .todoText.local,
+td .cellcatText.local {
   color: var(--accent-text);
   font-style: italic;
 }

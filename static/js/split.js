@@ -61,7 +61,8 @@ function revealSource(src) {
 
   let tr = findSrcRow(src);
   if (!tr && isWorkbookView(src.view) &&
-    ($("search").value || searchTerms.length || roleFilters.size || sideFilters.size || statusFilters.size)) {
+    ($("search").value || searchTerms.length || roleFilters.size || sideFilters.size || statusFilters.size ||
+      customFilterActive.size)) {
     $("search").value = "";
     searchTerms = [];
     clearFilters();

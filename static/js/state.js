@@ -89,6 +89,7 @@ let taskLayout = localStorage.getItem("bsp-tracker-task-layout") === "cards" ? "
 const statusFilters = new Set();   // estados selecionados (vista completa)
 const sideFilters = new Set();     // On my side / On the other side / Done (vista resumida)
 const roleFilters = new Set();     // papéis selecionados (Autor / Reviewer / Mencionado)
+const customFilterActive = new Set();  // ids dos filtros personalizados ligados (ver customfilters.js)
 let searchTerms = [];              // termos de pesquisa fixados (Enter na caixa)
 // como combinar os termos: "or" = qualquer um deles, "and" = todos
 // por omissão "and" — cada termo novo estreita a pesquisa em vez de a alargar
