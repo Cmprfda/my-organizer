@@ -60,6 +60,11 @@ async function doPush(btn) {
           out.failed.map(f => `${f.fn}: ${f.error}`).join("\n"));
       else if (!out.ok)
         alert("Push falhou: " + (out.error || "?"));
+      // fonte OneDrive: a Microsoft por vezes demora a refletir uma escrita
+      // recente na leitura seguinte (sessão de coautoria) — avisa para não
+      // parecer que o Push não fez nada
+      else if (out.ok && out.pushed && alvo.startsWith("onedrive:"))
+        toast(t("push_onedrive_lag"), "ok");
     } catch (err) {
       alert("Push falhou: " + err);
     }

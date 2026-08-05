@@ -344,12 +344,22 @@ body.topShrunk .ios-top #helpBtn {
 
 /* Jira e o OneDrive extra: URL (+ token, no Jira) e Gravar não cabem numa
    linha só como os outros .setNote, e os tipos url/password não são
-   apanhados pelas regras de forms.css */
+   apanhados pelas regras de forms.css. O OneDrive ganha a mesma disposição
+   quando a linha "Ligar automaticamente" está à vista. */
 .settingsPanel #jiraBox,
-.settingsPanel #onedriveRootBox {
+.settingsPanel #onedriveRootBox,
+.settingsPanel #graphBox {
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 8px;
+}
+
+.settingsPanel .graphAutoLbl {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
 }
 
 .settingsPanel #jiraBox input,

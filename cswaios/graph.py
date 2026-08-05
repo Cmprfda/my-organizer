@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -493,6 +494,11 @@ def _graph_login_browser(cfg):
                          "done": False, "error": ""})
     threading.Thread(target=_graph_wait_redirect,
                      args=(cfg, srv, verifier, state, redirect), daemon=True).start()
+    # abrir pelo próprio servidor (não pelo browser do cliente, com window.open):
+    # assim funciona também quando o pedido de login vem sozinho, sem nenhum
+    # clique — um separador novo aberto por JS sem gesto do utilizador é
+    # bloqueado como popup, isto não
+    webbrowser.open(url)
     log_event("ligação ao OneDrive: à espera da autenticação no browser")
     return graph_state()
 

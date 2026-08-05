@@ -197,6 +197,12 @@ let graphPoll = null;
 let liveOffline = false;
 // motivo dessa falha, para o distintivo o poder explicar em vez de só ficar vermelho
 let liveError = "";
+// religar sozinho quando a sessão do OneDrive cai, sem esperar por um clique em
+// "Ligar" — só entra em jogo depois de já ter havido um login (há conta
+// memorizada): nunca abre o browser sozinho da primeira vez
+const GRAPH_AUTO_KEY = "bsp-tracker-onedrive-auto";
+let graphAutoReconnect = localStorage.getItem(GRAPH_AUTO_KEY) !== "0";
+let graphAutoReconnectAt = 0;
 
 // conta Microsoft memorizada no servidor (só email/nome — o token nunca sai de
 // lá). Mostra-se para se saber qual é a identidade que vai ser reutilizada: o
@@ -236,7 +242,50 @@ function renderGraphState() {
   // sem client_id só há a via da Azure CLI, que se gere fora da app
   const usable = graphInfo.connected ? graphInfo.method !== "cli" : graphInfo.can_login;
   $("graphBtn").classList.toggle("hidden", graphInfo.pending || !usable);
+  // só faz sentido escolher "ligar sozinho" depois de já haver conta memorizada
+  // (a app nunca abre o browser sem ter havido primeiro um login manual)
+  const podeAuto = graphInfo.method !== "cli" && !!graphInfo.account_email;
+  $("graphAutoRow").classList.toggle("hidden", !podeAuto);
+  if (podeAuto) {
+    $("graphAutoReconnect").checked = graphAutoReconnect;
+    $("graphAutoReconnectTxt").textContent = t("graph_auto");
+    $("graphAutoRow").title = tf("t_graph_auto", graphInfo.account_name || graphInfo.account_email);
+  }
   renderOnedriveRootState();
+  maybeAutoReconnectGraph();
+}
+
+// pede ao servidor para religar à Microsoft (é ele que abre o browser, não o
+// window.open daqui — um separador aberto por JS sem clique do utilizador
+// fica bloqueado como popup) e espera pelo resultado. Serve tanto o clique em
+// "Ligar" como a religação automática.
+async function startGraphLogin() {
+  await graphAction("login");
+  if (!graphInfo.pending) return;
+  clearInterval(graphPoll);
+  graphPoll = setInterval(async () => {
+    await graphAction("state");
+    if (graphInfo.connected || !graphInfo.pending) {
+      clearInterval(graphPoll);
+      graphPoll = null;
+      if (graphInfo.connected) { toast(t("graph_on"), "ok"); loadAllTabs(); }
+      else toast(graphInfo.error || t("graph_off"), "err");
+    }
+  }, 4000);
+}
+
+// com a opção ligada e uma conta já conhecida, religa sozinho quando a sessão
+// cair — sem esperar por um clique. Um intervalo mínimo entre tentativas evita
+// abrir um separador novo a cada 20s enquanto o anterior ainda está por resolver
+// (ex.: o utilizador deixou-o aberto sem terminar o login).
+function maybeAutoReconnectGraph() {
+  if (!graphAutoReconnect || graphInfo.pending) return;
+  if (graphInfo.connected || graphInfo.method === "cli" || !graphInfo.account_email) return;
+  const agora = Date.now();
+  if (agora - graphAutoReconnectAt < 5 * 60 * 1000) return;
+  graphAutoReconnectAt = agora;
+  toast(t("graph_auto_reconnecting"), "ok");
+  startGraphLogin();
 }
 
 // OneDrive/site extra a seguir na navegação (além do pessoal e do site fixo em
@@ -336,23 +385,19 @@ async function graphAction(action) {
 }
 
 $("graphBtn").addEventListener("click", async () => {
-  const connecting = !graphInfo.connected;
-  await graphAction(connecting ? "login" : "logout");
-  // sair da conta afeta todos os livros do OneDrive abertos, não só o da frente
-  if (!connecting) { loadAllTabs(); return; }
-  if (!graphInfo.pending) return;
-  // o utilizador autentica-se no browser; aqui só se espera pelo resultado
-  window.open(graphInfo.url, "_blank", "noopener");
-  clearInterval(graphPoll);
-  graphPoll = setInterval(async () => {
-    await graphAction("state");
-    if (graphInfo.connected || !graphInfo.pending) {
-      clearInterval(graphPoll);
-      graphPoll = null;
-      if (graphInfo.connected) { toast(t("graph_on"), "ok"); loadAllTabs(); }
-      else toast(graphInfo.error || t("graph_off"), "err");
-    }
-  }, 4000);
+  if (graphInfo.connected) {
+    await graphAction("logout");
+    // sair da conta afeta todos os livros do OneDrive abertos, não só o da frente
+    loadAllTabs();
+    return;
+  }
+  await startGraphLogin();
+});
+
+$("graphAutoReconnect").addEventListener("change", () => {
+  graphAutoReconnect = $("graphAutoReconnect").checked;
+  localStorage.setItem(GRAPH_AUTO_KEY, graphAutoReconnect ? "1" : "0");
+  if (graphAutoReconnect) { graphAutoReconnectAt = 0; maybeAutoReconnectGraph(); }
 });
 
 
