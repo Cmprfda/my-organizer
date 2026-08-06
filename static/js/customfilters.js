@@ -5,6 +5,7 @@
 // e evalCustomFilter/loadCustomFilters/customFilterColumns, também em tasks.js).
 
 let customFilterDraft = null;   // edições em curso; só vão para o localStorage no Gravar
+let customFilterSearchTerm = "";   // filtra as linhas mostradas (ver renderCustomFilterRows) — nunca mexe no draft nem nos índices (fi continua a apontar para customFilterDraft)
 
 function newCustomCondition() {
   return { column: "", op: "contains", value: "", usePerson: false, listId: "" };
@@ -20,6 +21,7 @@ function updateCustomFilterButton(data) {
 function renderCustomFilterRows() {
   const filters = customFilterDraft || [];
   const columns = customFilterColumns(lastData);
+  const compoundCats = loadCompoundCats(lastData);
   const predefLists = loadPredefLists(lastData);
   const isList = c => c.op === "in_list" || c.op === "not_in_list";
 
@@ -28,6 +30,10 @@ function renderCustomFilterRows() {
       <select class="viewMapCatField customFilterField" data-fi="${fi}" data-gi="${gi}" data-ci="${ci}" data-field="column">
         <option value="">${esc(t("customfilter_column_pick_ph"))}</option>
         ${columns.map(col => `<option value="${esc(col)}"${c.column === col ? " selected" : ""}>${esc(col)}</option>`).join("")}
+        ${compoundCats.length ? `
+        <optgroup label="${esc(t("compoundcat_group_label"))}">
+          ${compoundCats.map(cc => `<option value="${esc(compoundColumnValue(cc.id))}"${c.column === compoundColumnValue(cc.id) ? " selected" : ""}>${esc(cc.name)}</option>`).join("")}
+        </optgroup>` : ""}
       </select>
       <select class="viewMapCatField customFilterField" data-fi="${fi}" data-gi="${gi}" data-ci="${ci}" data-field="op">
         <option value="contains"${c.op === "contains" ? " selected" : ""}>${esc(t("customfilter_op_contains"))}</option>
@@ -71,10 +77,19 @@ function renderCustomFilterRows() {
       </div>
     </div>`;
 
+  const colorRow = (f, fi) => `
+    <div class="customFilterColors" data-fi="${fi}">
+      ${CUSTOMFILTER_COLORS.map(col => `
+      <button type="button" class="customFilterColorDot customfilter${col ? "-" + col : ""}${(f.color || "") === col ? " selected" : ""}"
+        data-fi="${fi}" data-color="${col}" title="${esc(t(`customfilter_color_${col || "default"}`))}"></button>
+      `).join("")}
+    </div>`;
+
   const card = (f, fi) => `
     <div class="viewMapCatRow" data-fi="${fi}">
       <input type="text" class="viewMapCatField" data-fi="${fi}" data-field="name"
         placeholder="${esc(t("customfilter_name_ph"))}" value="${esc(f.name || "")}">
+      ${colorRow(f, fi)}
       <button type="button" class="mini viewMapCatRemove customFilterRemove" data-fi="${fi}" title="${esc(t("customfilter_remove"))}">✕</button>
       <div class="viewMapListCfg">
         ${f.groups.map((g, gi) => (gi ? `<div class="customFilterGroupOr">${esc(t("customfilter_group_or"))}</div>` : "") +
@@ -85,12 +100,23 @@ function renderCustomFilterRows() {
       </div>
     </div>`;
 
+  const term = norm(customFilterSearchTerm);
+  const entries = filters
+    .map((f, fi) => ({ f, fi }))
+    .filter(({ f }) => !term || norm(f.name || "").includes(term));
+
   $("customFilterRows").innerHTML =
-    (filters.length ? filters.map(card).join("") : `<p class="viewMapEmptyHint">${esc(t("viewmap_none"))}</p>`) +
+    (entries.length ? entries.map(({ f, fi }) => card(f, fi)).join("")
+      : `<p class="viewMapEmptyHint">${esc(t(filters.length ? "customfilter_search_none" : "viewmap_none"))}</p>`) +
     `<div class="viewMapCatActions">` +
     `<button type="button" class="mini" id="customFilterAdd">${esc(t("customfilter_add"))}</button>` +
     `</div>`;
 }
+
+$("customFilterSearch").addEventListener("input", e => {
+  customFilterSearchTerm = e.target.value;
+  renderCustomFilterRows();
+});
 
 function setCustomFilterOpen(open) {
   if (open && !lastData) return;
@@ -99,9 +125,12 @@ function setCustomFilterOpen(open) {
     customFilterDraft = loadCustomFilters(lastData).map(f => ({
       ...f, groups: f.groups.map(g => ({ conditions: g.conditions.map(c => ({ ...c })) })),
     }));
+    customFilterSearchTerm = "";
     $("customFilterTitle").textContent = t("customfilter_title");
     $("customFilterHint").textContent = t("customfilter_hint");
     $("customFilterSave").textContent = t("viewmap_save");
+    $("customFilterSearch").value = "";
+    $("customFilterSearch").placeholder = t("customfilter_search_ph");
     renderCustomFilterRows();
   }
   $("customFilterOverlay").classList.toggle("hidden", !open);
@@ -139,13 +168,19 @@ $("customFilterRows").addEventListener("click", e => {
   if (e.target.id === "customFilterAdd") {
     customFilterDraft.push({
       id: `cf${Date.now()}${Math.floor(Math.random() * 1000)}`,
-      name: "", groups: [{ conditions: [newCustomCondition()] }],
+      name: "", color: "", groups: [{ conditions: [newCustomCondition()] }],
     });
     renderCustomFilterRows();
     return;
   }
   if (e.target.classList.contains("customFilterManageLists")) {
     setPredefListOpen(true);
+    return;
+  }
+  const colorDot = e.target.closest(".customFilterColorDot");
+  if (colorDot) {
+    const f = customFilterDraft[Number(colorDot.dataset.fi)];
+    if (f) { f.color = colorDot.dataset.color; renderCustomFilterRows(); }
     return;
   }
   const addGroup = e.target.closest(".customFilterAddGroup");

@@ -443,6 +443,19 @@ body.topShrunk .ios-top #helpBtn {
 .viewMapCatCell { width: 70px; }
 .viewMapCatSize { width: 60px; }
 
+/* caixa de pesquisa por nome, no topo dos menus "Filtros personalizados" e
+   "Listas predefinidas" (ver customFilterSearch/predefListSearch) */
+.viewMapSearch {
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .viewMapEmptyHint {
   margin: 0;
   font-size: 12.5px;
@@ -546,6 +559,77 @@ body.topShrunk .ios-top #helpBtn {
   letter-spacing: var(--tracking-eyebrow);
   color: var(--muted);
   text-align: center;
+}
+
+/* janela "Categorias compostas desta aba" (ver loadCompoundCats, tasks.js;
+   UI em viewmap.js): mesmo layout de linhas, reaproveitando as classes
+   viewMapCat* — as colunas a juntar aparecem como checkboxes dentro de
+   .viewMapListCfg, tal como o intervalo de uma lista predefinida */
+#compoundCatBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* paleta de cor do botão-resumo de cada filtro (ver colorRow, customfilters.js) */
+.customFilterColors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.customFilterColorDot {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.customFilterColorDot.selected {
+  border-color: var(--text);
+}
+
+/* mesmas classes customfilter[-cor] do botão-resumo (tables.css), só que
+   aqui fora de .summary — o ponto mostra sempre a cor de fundo pura */
+.customFilterColorDot.customfilter { background: var(--status-info-bg); }
+.customFilterColorDot.customfilter-purple { background: var(--coltag-purple-bg); }
+.customFilterColorDot.customfilter-teal { background: var(--coltag-teal-bg); }
+.customFilterColorDot.customfilter-indigo { background: var(--coltag-indigo-bg); }
+.customFilterColorDot.customfilter-sand { background: var(--coltag-sand-bg); }
+.customFilterColorDot.customfilter-slate { background: var(--coltag-slate-bg); }
+
+/* "sem cor" (ver predefListColorRow, viewmap.js): única forma de tirar uma
+   cor já escolhida a um valor de lista predefinida — círculo vazio, nunca uma
+   cor sólida, para nunca se confundir com uma das opções de cor a sério */
+.customFilterColorDot.listValNone {
+  background: var(--surface);
+  border: 1.5px dashed var(--muted);
+}
+
+/* cor por valor de uma lista predefinida manual (ver renderPredefListRows,
+   viewmap.js): uma linha por valor, com o mesmo conjunto de pontos de cor */
+.predefListColors {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.predefListColorRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.predefListColorLabel {
+  font-size: 13px;
+  color: var(--text);
+  min-width: 90px;
 }
 
 /* janela "Lados: Autor/Reviewer": mapa estado -> lado (ver sidemap.js) */

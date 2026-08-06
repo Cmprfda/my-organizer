@@ -194,6 +194,8 @@ function highlightTerms(text) {
    papel/lado (sideOf) nem estados editáveis: é sempre texto simples. */
 const VIEWMAP_PREFIX = "bsp-tracker-viewmap";
 const PREDEFLIST_PREFIX = "bsp-tracker-predeflists";
+const COMPOUNDCAT_PREFIX = "bsp-tracker-compoundcats";
+const COLORDER_PREFIX = "bsp-tracker-colorder";
 
 function viewMapKey(data) {
   return `${VIEWMAP_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
@@ -202,6 +204,115 @@ function viewMapKey(data) {
 function predefListKey(data) {
   return `${PREDEFLIST_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
 }
+
+function compoundCatKey(data) {
+  return `${COMPOUNDCAT_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
+}
+
+// ordem de exibição das colunas da tabela de Tarefas (ver render()/colOf, mais
+// abaixo, e o dragstart/drop no thead): guarda só os NOMES dos cabeçalhos, por
+// livro+aba+vista ("full"/"canonical"/"custom", ver currentColOrderKind) —
+// cada vista tem o seu próprio conjunto de colunas, por isso cada uma tem a
+// sua própria ordem. Arrastar um cabeçalho nunca muda o que uma coluna
+// significa (o índice original continua o mesmo em headers/r[]), só a ORDEM
+// em que aparecem no ecrã.
+function colOrderKey(data, kind) {
+  return `${COLORDER_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}:${kind}`;
+}
+
+function loadColOrder(data, kind) {
+  if (!data || !data.sheet) return null;
+  let raw;
+  try {
+    raw = JSON.parse(localStorage.getItem(colOrderKey(data, kind)) || "null");
+  } catch (e) {
+    return null;
+  }
+  return Array.isArray(raw) ? raw.filter(v => typeof v === "string") : null;
+}
+
+function saveColOrder(data, kind, headerNames) {
+  if (!data || !data.sheet) return;
+  localStorage.setItem(colOrderKey(data, kind), JSON.stringify(headerNames));
+}
+
+// índices originais de `headers`, na ordem de exibição gravada — nomes já
+// gravados que deixaram de existir são ignorados; colunas novas (nunca
+// gravadas) ou repetidas entram no fim, pela ordem original
+function resolveColOrder(data, kind, headers) {
+  const saved = loadColOrder(data, kind);
+  if (!saved || !saved.length) return headers.map((_, i) => i);
+  const byName = new Map();
+  headers.forEach((h, i) => {
+    if (!byName.has(h)) byName.set(h, []);
+    byName.get(h).push(i);
+  });
+  const used = new Set(), order = [];
+  saved.forEach(name => {
+    const list = byName.get(name);
+    const idx = list && list.find(i => !used.has(i));
+    if (idx !== undefined) { order.push(idx); used.add(idx); }
+  });
+  headers.forEach((_, i) => { if (!used.has(i)) order.push(i); });
+  return order;
+}
+
+// categorias compostas desta aba (ver customfilters.js): [{id, name, columns:
+// [nome, nome, ...]}, ...] — cada `columns` é uma lista de nomes verbatim (de
+// customFilterColumns ou das categorias da vista mapeada à medida, ver
+// buildCustomCompact) que passam a poder ser tratados como um só, só para
+// leitura/filtro: nunca substitui as colunas de origem, que continuam
+// disponíveis sozinhas (ex.: "Status TC" continua a poder ser escolhida à
+// parte num filtro, mesmo depois de existir uma composta "Status TC + TP").
+// Partilhada entre os filtros personalizados e a vista mapeada à medida: numa
+// aba com colunas do tracker é avaliada linha a linha (evalCustomCondition);
+// numa aba com categorias mapeadas só aparece na tabela se TODOS os nomes
+// referidos baterem certo com categorias mesmo definidas nessa vista.
+function loadCompoundCats(data) {
+  if (!data || !data.sheet) return [];
+  let raw;
+  try {
+    raw = JSON.parse(localStorage.getItem(compoundCatKey(data)) || "null");
+  } catch (e) {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(cc => cc && typeof cc === "object" && String(cc.id || "").trim())
+    .map(cc => {
+      const seen = new Set();
+      const columns = (Array.isArray(cc.columns) ? cc.columns : [])
+        .map(c => String(c || "").trim()).filter(c => c && !seen.has(c) && seen.add(c));
+      return { id: String(cc.id), name: String(cc.name || "").trim(), columns };
+    })
+    .filter(cc => cc.name && cc.columns.length >= 2);
+}
+
+function saveCompoundCats(data, list) {
+  if (!data || !data.sheet) return;
+  const cleaned = (list || [])
+    .map(cc => {
+      const seen = new Set();
+      const columns = (Array.isArray(cc && cc.columns) ? cc.columns : [])
+        .map(c => String(c || "").trim()).filter(c => c && !seen.has(c) && seen.add(c));
+      return { id: String((cc && cc.id) || "").trim(), name: String((cc && cc.name) || "").trim(), columns };
+    })
+    .filter(cc => cc.id && cc.name && cc.columns.length >= 2);
+  if (cleaned.length) {
+    localStorage.setItem(compoundCatKey(data), JSON.stringify(cleaned));
+  } else {
+    localStorage.removeItem(compoundCatKey(data));
+  }
+}
+
+// valor de uma coluna composta para uma condição de filtro (ver
+// evalCustomCondition, mais abaixo): prefixo reservado a que nenhum cabeçalho
+// real da folha deve corresponder (tal como "__cellcat__" em
+// cswaios/tasks.py), para o <select> de coluna distinguir as duas sem precisar
+// de outro campo no objeto da condição.
+const COMPOUNDCOL_PREFIX = "__compound:";
+const compoundColumnValue = id => `${COMPOUNDCOL_PREFIX}${id}`;
+const compoundColumnId = v => (String(v || "").startsWith(COMPOUNDCOL_PREFIX) ? v.slice(COMPOUNDCOL_PREFIX.length) : "");
 
 // biblioteca de listas predefinidas desta aba (botão na barra, ver viewmap.js):
 // [{id, name, mode, values, sheet, cell, orientation, size}, ...], por
@@ -224,11 +335,23 @@ function loadPredefLists(data) {
     .filter(l => l && typeof l === "object" && String(l.id || "").trim())
     .map(l => {
       const size = parseInt(l.size, 10);
+      const values = Array.isArray(l.values) ? l.values.map(v => String(v || "").trim()).filter(Boolean) : [];
+      // cor por valor (ver renderPredefListRows, viewmap.js): só faz sentido
+      // para valores que ainda existem na lista — descarta as restantes, tal
+      // como um valor removido perde o resto da sua configuração
+      const colors = {};
+      if (l.colors && typeof l.colors === "object") {
+        values.forEach(v => {
+          const c = l.colors[v];
+          if (CUSTOMFILTER_COLORS.includes(c) && c) colors[v] = c;
+        });
+      }
       return {
         id: String(l.id),
         name: String(l.name || "").trim(),
         mode: l.mode === "range" ? "range" : "manual",
-        values: Array.isArray(l.values) ? l.values.map(v => String(v || "").trim()).filter(Boolean) : [],
+        values,
+        colors,
         sheet: String(l.sheet || "").trim(),
         cell: String(l.cell || "").trim(),
         orientation: l.orientation === "horizontal" ? "horizontal" : "vertical",
@@ -240,7 +363,12 @@ function loadPredefLists(data) {
 function savePredefLists(data, lists) {
   if (!data || !data.sheet) return;
   const cleaned = (lists || []).filter(l => l && String(l.id || "").trim() && String(l.name || "").trim() &&
-    (l.mode === "range" ? String(l.cell || "").trim() : l.values.length));
+    (l.mode === "range" ? String(l.cell || "").trim() : l.values.length))
+    .map(l => {
+      const colors = {};
+      (l.values || []).forEach(v => { if (l.colors && l.colors[v]) colors[v] = l.colors[v]; });
+      return { ...l, colors };
+    });
   if (cleaned.length) {
     localStorage.setItem(predefListKey(data), JSON.stringify(cleaned));
   } else {
@@ -326,6 +454,11 @@ function saveViewMap(data, cfg) {
 const CUSTOMFILTER_PREFIX = "bsp-tracker-customfilters";
 const CUSTOMFILTER_OPS = ["contains", "not_contains", "equals", "not_equals", "empty", "not_empty",
   "in_list", "not_in_list"];
+// "" = cor por omissão do botão-resumo (azul/info, igual a antes de existir
+// escolha); as restantes vêm da paleta --coltag-* (theme.css), à parte da
+// paleta de estado done/doing/blocked para nunca se confundirem (ver
+// colorRow/customFilterColorDot, customfilters.js, e .pill.customfilter-*, tables.css)
+const CUSTOMFILTER_COLORS = ["", "purple", "teal", "indigo", "sand", "slate"];
 
 function customFilterKey(data) {
   return `${CUSTOMFILTER_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
@@ -374,6 +507,7 @@ function loadCustomFilters(data) {
     .map(f => ({
       id: String(f.id),
       name: String(f.name || "").trim(),
+      color: CUSTOMFILTER_COLORS.includes(f.color) ? f.color : "",
       groups: customFilterGroupsFrom(f),
     }))
     .filter(f => f.groups.length);
@@ -385,6 +519,7 @@ function saveCustomFilters(data, filters) {
     .map(f => ({
       id: String((f && f.id) || "").trim(),
       name: String((f && f.name) || "").trim(),
+      color: CUSTOMFILTER_COLORS.includes(f && f.color) ? f.color : "",
       groups: ((f && f.groups) || []).map(cleanCustomGroup).filter(g => g.conditions.length),
     }))
     .filter(f => f.id && f.name && f.groups.length);
@@ -425,7 +560,18 @@ function customFilterListValues(data, filters) {
   return out;
 }
 
-function evalCustomCondition(meta, c, listValuesById) {
+function evalCustomCondition(meta, c, listValuesById, compoundById) {
+  // coluna composta (ver loadCompoundCats): bate certo se QUALQUER uma das
+  // colunas de origem bater (OU) — assim "Status TC + TP" apanha uma linha
+  // mesmo que só uma das duas vertentes se aplique. Reavalia-se a mesma
+  // condição, coluna a coluna, em vez de duplicar a lógica de comparação
+  // abaixo.
+  const compoundId = compoundColumnId(c.column);
+  if (compoundId) {
+    const cc = compoundById && compoundById[compoundId];
+    return !!cc && cc.columns.some(name =>
+      evalCustomCondition(meta, { ...c, column: name }, listValuesById, compoundById));
+  }
   const raw = String((meta && meta.orig && meta.orig[c.column]) || "");
   if (c.op === "empty") return !raw.trim();
   if (c.op === "not_empty") return !!raw.trim();
@@ -452,9 +598,9 @@ function evalCustomCondition(meta, c, listValuesById) {
 // um filtro de um único grupo dá o mesmo resultado que "todas em E" de antes
 // dos grupos existirem. Filtros diferentes continuam sempre em E entre si
 // (ver activeCustomFilters, mais abaixo)
-function evalCustomFilter(meta, f, listValuesById) {
+function evalCustomFilter(meta, f, listValuesById, compoundById) {
   const groups = f.groups || [];
-  return groups.some(g => (g.conditions || []).every(c => evalCustomCondition(meta, c, listValuesById)));
+  return groups.some(g => (g.conditions || []).every(c => evalCustomCondition(meta, c, listValuesById, compoundById)));
 }
 
 function buildCustomCompact(data) {
@@ -464,30 +610,86 @@ function buildCustomCompact(data) {
   const execOn = !!(cfg && cfg.exec);
   if (!catHeaders.length && !execOn) return null;
 
-  const headers = execOn ? [...catHeaders, t("hdr_exec")] : catHeaders;
+  // categorias compostas (ver loadCompoundCats, customfilters.js): só entram
+  // na tabela quando TODOS os nomes que referem existem mesmo entre as
+  // categorias já mapeadas nesta aba — sem isso não haveria de onde tirar o
+  // valor. O agrupamento em si é só leitura (não corresponde a uma célula do
+  // Excel), mas cada parte continua a ser a MESMA categoria de origem — por
+  // isso cada uma mantém o seu próprio cellCatSpan (editável, com a cor da
+  // lista predefinida se houver uma), só que agora todas dentro da mesma
+  // célula, separadas por quebra de linha. As colunas absorvidas por uma
+  // composta deixam de aparecer à parte NESTA tabela — continuam disponíveis
+  // nos filtros personalizados (ver compoundCatColumnsPool/evalCustomCondition),
+  // que não passam por aqui.
+  const compoundCats = loadCompoundCats(data).filter(cc => cc.columns.every(name => catHeaders.includes(name)));
+  const absorbed = new Set(compoundCats.flatMap(cc => cc.columns));
+  const visibleIdx = catHeaders.map((_, i) => i).filter(i => !absorbed.has(catHeaders[i]));
+  const headers = [...visibleIdx.map(i => catHeaders[i]), ...compoundCats.map(cc => cc.name), ...(execOn ? [t("hdr_exec")] : [])];
+  const compoundIdx = new Set(compoundCats.map((_, i) => visibleIdx.length + i));
   const execIdx = execOn ? headers.length - 1 : -1;
   const catRows = (cv && cv.rows) || [];
   // categorias com useList=true (ver openCellCatEditor): coluna real (0-based),
   // opções da lista e, por linha, se há alteração local por enviar + o valor
   // cru da folha (para o Push saber comparar, tal como meta.orig nas colunas fixas)
-  const useList = (cv && cv.useList) || [];
-  const catCols = (cv && cv.cols) || [];
-  const catLists = (cv && cv.lists) || [];
-  const catOptions = (cv && cv.options) || [];
-  const pendingRows = (cv && cv.pending) || [];
-  const baseRows = (cv && cv.base) || [];
+  // — tudo reindexado por visibleIdx, para acompanhar as colunas escondidas acima
+  const useListFull = (cv && cv.useList) || [];
+  const catColsFull = (cv && cv.cols) || [];
+  const catListsFull = (cv && cv.lists) || [];
+  const catOptionsFull = (cv && cv.options) || [];
+  const pendingRowsFull = (cv && cv.pending) || [];
+  const baseRowsFull = (cv && cv.base) || [];
+  // id da lista predefinida (ver loadPredefLists) usada por cada categoria
+  // mapeada, por posição — só o cliente conhece essa biblioteca (o servidor só
+  // devolve os valores já resolvidos em catOptionsFull), por isso resolve-se
+  // aqui a partir de cfg.categories, que está na mesma ordem/posição que
+  // catHeaders (ambos vêm do mesmo array enviado ao servidor em tabQuery).
+  // Serve para colorir o valor por cor definida por valor (ver
+  // predefListDraft/renderPredefListRows, viewmap.js) — sem lista fixa
+  // associada, ou sem cores definidas nela, o valor fica sem cor, como sempre.
+  const catCfgFull = (cfg && cfg.categories) || [];
+  const listIdFull = catHeaders.map((_, i) => {
+    const c = catCfgFull[i];
+    return (c && c.useList && c.listMode === "fixed" && c.listId) || "";
+  });
+  const colorsByListId = {};
+  loadPredefLists(data).forEach(l => { colorsByListId[l.id] = l.colors || {}; });
+  const colorFor = (origIdx, value) => {
+    const listId = listIdFull[origIdx];
+    const colors = listId && colorsByListId[listId];
+    return (colors && colors[String(value || "").trim()]) || "";
+  };
+
+  const useList = visibleIdx.map(i => useListFull[i]);
+  const catCols = visibleIdx.map(i => catColsFull[i]);
+  const catLists = visibleIdx.map(i => catListsFull[i]);
+  const catOptions = visibleIdx.map(i => catOptionsFull[i]);
+  const catListId = visibleIdx.map(i => listIdFull[i]);
   const rows = (data.row_meta || []).map((meta, ri) => {
-    const vals = (catRows[ri] || catHeaders.map(() => "")).slice();
+    const fullVals = (catRows[ri] || catHeaders.map(() => "")).slice();
+    const vals = visibleIdx.map(i => fullVals[i]);
+    const pendingFull = pendingRowsFull[ri] || [];
+    const baseFull = baseRowsFull[ri] || [];
+    compoundCats.forEach(cc => {
+      const parts = cc.columns.map(name => {
+        const origIdx = catHeaders.indexOf(name);
+        const val = String(fullVals[origIdx] || "").trim();
+        const span = cellCatSpan(
+          val || "—", catColsFull[origIdx], catOptionsFull[origIdx] || [], catListsFull[origIdx] || null,
+          !!pendingFull[origIdx], baseFull[origIdx] || "", meta, colorFor(origIdx, val));
+        return `<strong>${esc(name)}:</strong> ${span}`;
+      });
+      vals.push(parts.join("<br>"));
+    });
     if (execOn) vals.push(execSummary(meta));
     if (meta) {
-      meta.cellcatPending = pendingRows[ri] || [];
-      meta.cellcatBase = baseRows[ri] || [];
+      meta.cellcatPending = visibleIdx.map(i => pendingFull[i]);
+      meta.cellcatBase = visibleIdx.map(i => baseFull[i]);
     }
     vals.push(meta || null);
     return vals;
   });
 
-  return { headers, rows, custom: true, execIdx, useList, catCols, catLists, catOptions };
+  return { headers, rows, custom: true, execIdx, compoundIdx, useList, catCols, catLists, catOptions, catListId, listColors: colorsByListId };
 }
 
 let lastSelectorsSig = "";
@@ -524,23 +726,40 @@ function badgeHtml(text, col, meta, editable = meta && (col === "Status TC" || c
     `>${colTag}${highlightTerms(display)}${local ? " ✎" : ""}</span>`;
 }
 
-// categoria livre com lista predefinida (useList=true na vista mapeada à
-// medida, ver openCellCatEditor): texto clicável, tal como o Function/TC e o
-// "To Do" — sem cor por estado (statusClass), porque o valor não é
-// necessariamente um "estado". col0/options/list vêm de compact.catCols/
-// catOptions/catLists (build_cell_categories, cswaios/tasks.py), na mesma
-// posição que este cabeçalho.
+// categoria livre da vista mapeada à medida (ver openCellCatEditor): texto
+// clicável, tal como o Function/TC e o "To Do". Com useList=true fica
+// limitada a uma lista de valores predefinida (list/options não vazios); sem
+// lista, texto livre. col0/options/list vêm de compact.catCols/catOptions/
+// catLists (build_cell_categories, cswaios/tasks.py), na mesma posição que
+// este cabeçalho; a cor (se a lista tiver cores por valor, ver
+// predefListDraft/renderPredefListRows em viewmap.js) vem de
+// compact.catListId/listColors, resolvidos no cliente em buildCustomCompact.
 function cellCatHtml(text, colIdx, meta, compact) {
   const pending = !!(meta && meta.cellcatPending && meta.cellcatPending[colIdx]);
   const base = (meta && meta.cellcatBase && meta.cellcatBase[colIdx]) || "";
   const options = (compact.catOptions || [])[colIdx] || [];
   const col0 = (compact.catCols || [])[colIdx];
   const list = (compact.catLists || [])[colIdx] || null;
+  const listId = (compact.catListId || [])[colIdx] || "";
+  const colors = (compact.listColors || {})[listId] || {};
+  const color = colors[String(text || "").trim()] || "";
+  return cellCatSpan(text, col0, options, list, pending, base, meta, color);
+}
+
+// núcleo de cellCatHtml, com os valores já resolvidos (em vez de indexados em
+// `compact`) — usado também pelas partes de uma categoria composta
+// (buildCustomCompact), que se referem a uma coluna de origem que já não está
+// em visibleIdx (por isso não dá para indexar compact.catCols/etc. por
+// colIdx, tem de vir tudo resolvido pelo índice original em catHeaders).
+function cellCatSpan(text, col0, options, list, pending, base, meta, color = "") {
   const title = pending ? t("t_local") : t("t_edit_cellcat");
+  const label = color
+    ? `<span class="badge customfilter-${esc(color)}">${highlightTerms(text)}</span>`
+    : highlightTerms(text);
   return `<span class="cellcatText${pending ? " local" : ""}"` +
     ` data-catxlrow="${esc(meta.xlrow)}" data-catcol="${esc(col0)}" data-catbase="${esc(base)}"` +
     ` data-catoptions="${esc(JSON.stringify(options))}" data-catlist="${esc(JSON.stringify(list))}"` +
-    ` title="${esc(title)}">${highlightTerms(text)}${pending ? " ✎" : ""}</span>`;
+    ` title="${esc(title)}">${label}${pending ? " ✎" : ""}</span>`;
 }
 
 // a OBS do Excel é editável: escrever aqui fica como alteração local (✎) e
@@ -735,6 +954,7 @@ function render() {
   updateViewMapButton(data);
   updatePredefListButton(data);
   updateCustomFilterButton(data);
+  updateCompoundCatButton(data);
 
   if (data.error) {
     tbl.classList.add("hidden");
@@ -769,11 +989,14 @@ function render() {
   const compact = buildCustomCompact(data) || buildCompact(data);
   $("viewToggle").classList.toggle("hidden", !compact);
   const useCompact = compact && compactView;
-  // vista mapeada à medida: categorias livres, sempre só leitura (sem papel/lado)
+  // vista mapeada à medida: categorias livres, sem papel/lado (mas sempre editáveis, ver cellCatHtml)
   const isCellCompact = !!(useCompact && compact.custom);
   const isCanonicalCompact = useCompact && !isCellCompact;
-  if (isCellCompact && !(compact.useList || []).some(Boolean))
-    $("fileInfo").innerHTML += `<br><span class="notice">ℹ ${esc(t("viewmap_readonly"))}</span>`;
+  // qual vista está à vista agora, para a ordem de colunas arrastada pelo
+  // utilizador (ver colOf/resolveColOrder, mais abaixo, e o drop no thead) —
+  // cada vista tem o seu próprio conjunto de colunas, por isso cada uma
+  // guarda a sua própria ordem
+  currentColOrderKind = isCellCompact ? "custom" : isCanonicalCompact ? "canonical" : "full";
   // lista/caixas vale para as duas vistas (resumida e completa)
   $("taskMode").classList.remove("hidden");
   const headers = useCompact ? compact.headers : data.headers;
@@ -822,16 +1045,20 @@ function render() {
   const allCustomFilters = loadCustomFilters(data);
   const activeCustomFilters = allCustomFilters.filter(f => customFilterActive.has(f.id));
   const customListValues = customFilterListValues(data, allCustomFilters);
+  // categorias compostas (ver loadCompoundCats): resolvidas uma vez aqui, por
+  // id, para evalCustomCondition poder expandi-las nas colunas de origem
+  const compoundById = {};
+  loadCompoundCats(data).forEach(cc => { compoundById[cc.id] = cc; });
   const customFacetCounts = {};
   allCustomFilters.forEach(f => {
     const others = allCustomFilters.filter(o => o.id !== f.id && customFilterActive.has(o.id));
     const base = others.length
-      ? rows.filter(r => others.every(o => evalCustomFilter(metaFor(r), o, customListValues)))
+      ? rows.filter(r => others.every(o => evalCustomFilter(metaFor(r), o, customListValues, compoundById)))
       : rows;
-    customFacetCounts[f.id] = base.filter(r => evalCustomFilter(metaFor(r), f, customListValues)).length;
+    customFacetCounts[f.id] = base.filter(r => evalCustomFilter(metaFor(r), f, customListValues, compoundById)).length;
   });
   if (activeCustomFilters.length)
-    rows = rows.filter(r => activeCustomFilters.every(f => evalCustomFilter(metaFor(r), f, customListValues)));
+    rows = rows.filter(r => activeCustomFilters.every(f => evalCustomFilter(metaFor(r), f, customListValues, compoundById)));
 
   // bases facetadas: cada grupo de botões é contado com os filtros dos OUTROS
   // grupos aplicados (mas não os do próprio), para os números refletirem a seleção
@@ -888,7 +1115,7 @@ function render() {
   }
   if (allCustomFilters.length && searched.length) {
     summaryHtml += allCustomFilters.map(f =>
-      `<span class="${pillClasses("customfilter", customFilterActive.has(f.id), customFacetCounts[f.id] || 0)}" ` +
+      `<span class="${pillClasses(`customfilter${f.color ? " customfilter-" + f.color : ""}`, customFilterActive.has(f.id), customFacetCounts[f.id] || 0)}" ` +
       `data-customfilter="${esc(f.id)}">${esc(f.name)}: ${customFacetCounts[f.id] || 0}</span>`
     ).join("");
   }
@@ -911,7 +1138,15 @@ function render() {
   tbl.classList.remove("hidden");
   const _narrow = window.innerWidth <= 720;
   tbl.classList.toggle("cards", taskLayout === "cards" || _narrow);
-  $("thead").innerHTML = "<tr>" + headers.map(h => `<th>${esc(h)}</th>`).join("") + `<th class="todoActionCell">${esc(t("hdr_action"))}</th></tr>`;
+  // ordem de exibição das colunas (ver resolveColOrder/saveColOrder, e o
+  // dragstart/drop no thead, mais abaixo): colOf[i] é o índice ORIGINAL em
+  // headers/r[] que aparece na posição i do ecrã — arrastar um cabeçalho só
+  // muda esta ordem, nunca o que cada índice significa (ver i2 no bloco da
+  // tbody, à frente)
+  const colOf = resolveColOrder(data, currentColOrderKind, headers);
+  $("thead").innerHTML = "<tr>" + colOf.map(i2 =>
+    `<th draggable="true" data-colname="${esc(headers[i2])}" title="${esc(t("t_col_drag"))}">${esc(headers[i2])}</th>`
+  ).join("") + `<th class="todoActionCell">${esc(t("hdr_action"))}</th></tr>`;
   currentMeta = rows.map(metaFor);
   currentObs = rows.map(r =>
     isCanonicalCompact ? (String(r[3] === undefined ? "" : r[3]).split("\u001F")[1] || "") : "");
@@ -947,28 +1182,33 @@ function render() {
       : `<button type="button" class="todoActionBtn" data-todoadd="${ri}" title="${t("todo_add_click")}">${t("btn_add_todo")}</button>`;
   }
 
-  const colOf = headers.map((_, i) => i);
   $("tbody").innerHTML = rows.map((r, ri) =>
-    `<tr draggable="true" title="${t("t_drag")}">` + headers.map((_, i) => {
-      const i2 = colOf[i];
+    `<tr draggable="true" title="${t("t_drag")}">` + colOf.map(i2 => {
       const cell = (() => {
         const c = r[i2] !== undefined ? r[i2] : "";
-        // vista mapeada à medida: categorias livres, sempre texto simples —
-        // a única exceção é a Execução, se o utilizador a ligou nas Definições
-        // (mesma célula editável da vista do tracker, ver execCellHtml)
+        // vista mapeada à medida: todas as categorias livres são editáveis
+        // (dropdown com useList, texto livre sem — ver cellCatHtml/
+        // openCellCatEditor) — a única exceção é a Execução, se o utilizador
+        // a ligou nas Definições (mesma célula editável da vista do tracker,
+        // ver execCellHtml)
         if (isCellCompact) {
           if (i2 === compact.execIdx) {
             const m = currentMeta[ri] || {};
             const { inner, title } = execCellHtml(m);
             return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
           }
-          if ((compact.useList || [])[i2]) {
-            const m = currentMeta[ri] || {};
-            return `<td>${cellCatHtml(c, i2, m, compact)}</td>`;
-          }
-          return `<td${i2 === 0 ? ' class="fn"' : ""}>${i2 === 0 ? highlightTerms(c) : esc(c)}</td>`;
+          // categoria composta (ver buildCustomCompact): só mostra o valor já
+          // junto das colunas de origem, nunca editável (não corresponde a
+          // uma única célula do Excel para o cellCatHtml/openCellCatEditor
+          // poderem gravar). `c` já vem com o HTML pronto (nomes a negrito,
+          // valores escapados) de buildCustomCompact — não passa por
+          // highlightTerms, que voltaria a escapar as tags <strong>
+          if (compact.compoundIdx && compact.compoundIdx.has(i2))
+            return `<td class="compoundCatText" title="${esc(t("compoundcat_hint"))}">${c}</td>`;
+          const m = currentMeta[ri] || {};
+          return `<td${i2 === 0 ? ' class="fn"' : ""}>${cellCatHtml(c, i2, m, compact)}</td>`;
         }
-        if (useCompact ? i2 === 2 : isStatusHeader(headers[i]))
+        if (useCompact ? i2 === 2 : isStatusHeader(headers[i2]))
           return `<td>${statusCell(r, ri, i2)}</td>`;
         if (useCompact && i2 === 0) {
           const m = currentMeta[ri] || {};
@@ -995,7 +1235,7 @@ function render() {
         return `<td>${esc(c)}</td>`;
       })();
       // em ecrãs estreitos a tabela vira cartões: cada célula mostra o seu cabeçalho
-      return cell.replace("<td", `<td data-label="${esc(headers[i])}"`);
+      return cell.replace("<td", `<td data-label="${esc(headers[i2])}"`);
     }).join("") + `<td class="todoActionCell">${todoAddBtn(r, ri)}</td></tr>`
   ).join("");
   refreshItemBox();
@@ -1167,7 +1407,7 @@ function tbodyTap(e) {
   const badge = e.target.closest(".badge[data-col]");
   if (badge) return openStatusEditor(badge);
   const catText = e.target.closest(".cellcatText[data-catxlrow]");
-  if (catText) return openCellCatEditor(catText);
+  if (catText && !catText.dataset.editing) return openCellCatEditor(catText);
   const obs = e.target.closest("[data-obsxlrow]");
   if (obs && !obs.dataset.editing) return openObsEditor(obs);
   const todoTxt = e.target.closest("[data-todoxlrow]");
@@ -1196,6 +1436,42 @@ $("tbody").addEventListener("pointerup", tbodyTapOnce);
 // os mesmos editores também servem o painel da tarefa dentro de um item do TODO
 $("todoBody").addEventListener("click", tbodyTap);
 $("todoBoard").addEventListener("click", tbodyTap);
+
+// arrastar um cabeçalho de coluna para reordenar (ver colOf/resolveColOrder/
+// saveColOrder, mais acima): guarda-se por nome de coluna, nunca por posição,
+// para sobreviver a colunas que apareçam/desapareçam entre atualizações
+let _colDragName = "";
+$("thead").addEventListener("dragstart", e => {
+  const th = e.target.closest("th[data-colname]");
+  if (!th) return;
+  _colDragName = th.dataset.colname;
+  e.dataTransfer.effectAllowed = "move";
+  try { e.dataTransfer.setData("text/plain", _colDragName); } catch (err) { /* alguns browsers exigem setData mesmo sem a usar */ }
+  th.classList.add("colDragging");
+});
+$("thead").addEventListener("dragend", e => {
+  const th = e.target.closest("th[data-colname]");
+  if (th) th.classList.remove("colDragging");
+  _colDragName = "";
+});
+$("thead").addEventListener("dragover", e => {
+  if (!_colDragName || !e.target.closest("th[data-colname]")) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+});
+$("thead").addEventListener("drop", e => {
+  const th = e.target.closest("th[data-colname]");
+  if (!th || !_colDragName || !lastData) return;
+  e.preventDefault();
+  const toName = th.dataset.colname;
+  if (toName === _colDragName) return;
+  const names = [...$("thead").querySelectorAll("th[data-colname]")].map(el => el.dataset.colname);
+  const from = names.indexOf(_colDragName), to = names.indexOf(toName);
+  if (from < 0 || to < 0) return;
+  names.splice(to, 0, names.splice(from, 1)[0]);
+  saveColOrder(lastData, currentColOrderKind, names);
+  render();
+});
 
 $("ccrBody").addEventListener("click", e => {
   const add = e.target.closest("[data-todoaddccr]");
@@ -1492,10 +1768,36 @@ function openStatusEditor(badge) {
   sel.addEventListener("blur", () => { if (!done) { done = true; editorOpen = false; refreshTaskViews(); } });
 }
 
-// categoria livre com lista predefinida (useList=true, ver cellCatHtml): o
-// mesmo padrão do editor de estados (badge -> <select>), mas identificada por
-// posição na folha (xlrow+col0), não por Function/TC+To Do — ver
-// queue_cellcat_override/push_overrides, cswaios/tasks.py, para o porquê.
+// categoria livre da vista mapeada à medida (ver cellCatHtml): com lista
+// predefinida (useList=true), o mesmo padrão do editor de estados (badge ->
+// <select>); sem lista, texto livre tal como a OBS/Function/TC (input ->
+// editActions). Identificada por posição na folha (xlrow+col0), não por
+// Function/TC+To Do — ver queue_cellcat_override/push_overrides,
+// cswaios/tasks.py, para o porquê.
+async function _saveCellCat(meta, col0, base, list, value) {
+  editorOpen = false;
+  try {
+    const res = await fetch("/api/cellcat/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: lastData.file,
+        sheet: lastData.sheet,
+        xlrow: meta.xlrow,
+        col0: Number(col0),
+        value,
+        base,
+        list,
+      }),
+    });
+    const out = await res.json();
+    if (!out.ok) alert(`${t("err_save")} ` + (out.error || "?"));
+  } catch (err) {
+    alert("Não foi possível contactar o servidor: " + err);
+  }
+  load();
+}
+
 function openCellCatEditor(span) {
   const xlrow = span.dataset.catxlrow;
   const col0 = span.dataset.catcol;
@@ -1503,6 +1805,34 @@ function openCellCatEditor(span) {
   if (!meta) return;
   const base = span.dataset.catbase;
   const list = JSON.parse(span.dataset.catlist || "null");
+
+  if (!list) {
+    // sem lista predefinida: texto livre, igual ao editor do Function/TC
+    const atual = span.innerText.replace(" ✎", "").trim();
+    span.dataset.editing = "1";
+    editorOpen = true;
+    span.innerHTML = `<input type="text" class="noteText fnEdit" value="${esc(atual)}">` + editActions();
+    const inp = span.querySelector("input");
+    inp.focus();
+    inp.select();
+
+    span.querySelector(".actSave").addEventListener("click", e => {
+      e.stopPropagation();
+      _saveCellCat(meta, col0, base, list, inp.value);
+    });
+    span.querySelector(".actCancel").addEventListener("click", e => {
+      e.stopPropagation();
+      editorOpen = false;
+      refreshTaskViews();
+    });
+    span.querySelector(".actClear").addEventListener("click", e => {
+      e.stopPropagation();
+      if (span.classList.contains("local")) _saveCellCat(meta, col0, base, list, null);
+      else { editorOpen = false; refreshTaskViews(); }
+    });
+    return;
+  }
+
   let opts = [];
   try { opts = JSON.parse(span.dataset.catoptions || "[]"); } catch (e) { opts = []; }
   const displayed = span.innerText.replace(" ✎", "").trim();
@@ -1520,28 +1850,8 @@ function openCellCatEditor(span) {
   sel.addEventListener("change", async () => {
     if (done) return;
     done = true;
-    editorOpen = false;
     sel.disabled = true;
-    try {
-      const res = await fetch("/api/cellcat/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file: lastData.file,
-          sheet: lastData.sheet,
-          xlrow: meta.xlrow,
-          col0: Number(col0),
-          value: sel.value === "__clear__" ? null : sel.value,
-          base,
-          list,
-        }),
-      });
-      const out = await res.json();
-      if (!out.ok) alert(`${t("err_save")} ` + (out.error || "?"));
-    } catch (err) {
-      alert("Não foi possível contactar o servidor: " + err);
-    }
-    load();
+    _saveCellCat(meta, col0, base, list, sel.value === "__clear__" ? null : sel.value);
   });
   sel.addEventListener("blur", () => { if (!done) { done = true; editorOpen = false; refreshTaskViews(); } });
 }

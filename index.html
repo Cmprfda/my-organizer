@@ -148,6 +148,7 @@
                 <button class="secondary hidden" id="viewMapBtn"></button>
                 <button class="secondary hidden" id="predefListBtn"></button>
                 <button class="secondary hidden" id="customFilterBtn"></button>
+                <button class="secondary hidden" id="compoundCatBtn"></button>
                 <button class="secondary hidden" id="viewToggle">Vista completa</button>
                 <button class="secondary" id="toggleAll">Ver tudo</button>
                 <button class="secondary hidden" id="clearLocals"
@@ -532,6 +533,7 @@
       </div>
       <div id="predefListBody">
         <p class="setHint" id="predefListHint"></p>
+        <input type="text" class="viewMapSearch" id="predefListSearch">
         <div class="viewMapRows" id="predefListRows"></div>
         <div class="viewMapActions">
           <button type="button" id="predefListSave"></button>
@@ -549,9 +551,27 @@
       </div>
       <div id="customFilterBody">
         <p class="setHint" id="customFilterHint"></p>
+        <input type="text" class="viewMapSearch" id="customFilterSearch">
         <div class="viewMapRows" id="customFilterRows"></div>
         <div class="viewMapActions">
           <button type="button" id="customFilterSave"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="compoundCatOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Categorias compostas desta aba">
+    <div class="helpCard jiraLogCard">
+      <div class="helpHead">
+        <strong id="compoundCatTitle">Categorias compostas desta aba</strong>
+        <button type="button" class="ccr-x" id="compoundCatClose" title="Fechar">✕</button>
+      </div>
+      <div id="compoundCatBody">
+        <p class="setHint" id="compoundCatHint"></p>
+        <div class="viewMapRows" id="compoundCatRows"></div>
+        <div class="viewMapActions">
+          <button type="button" id="compoundCatSave"></button>
         </div>
       </div>
     </div>

@@ -449,9 +449,11 @@ function todoHas(kind, title, ref) {
 }
 
 // ---------- info da linha do Excel dentro do item do TODO ----------
-// O item só guarda o título e o "O que fazer" do momento em que foi criado;
-// papel, estados e execução são lidos do Excel a cada render, para
-// acompanharem a tarefa. O índice é recalculado quando chegam dados novos.
+// O item guarda título e "O que fazer" só como reserva (offline/livro
+// fechado); com a linha por perto, título/detalhe/papel/estados/execução são
+// todos lidos do Excel a cada render, para acompanharem a tarefa mesmo que a
+// célula mude depois de o TODO ter sido criado (ver liveTaskContent).
+// O índice é recalculado quando chegam dados novos.
 // O índice cobre TODOS os livros abertos, não só o que está à vista: um item
 // ligado a uma linha de outro livro tem de continuar a mostrar o estado dela.
 // `taskIndexByBook` guarda um índice por livro (o nome vem em ref.workbook) e
@@ -499,6 +501,20 @@ function taskRowFor(it) {
   // itens antigos foram guardados sem o `todo`: aceita-se a 1.ª linha com o mesmo nome
   for (const [key, row] of onde) if (key.split("")[0] === fn) return row;
   return null;
+}
+
+// título e "O que fazer" ao vivo, lidos da linha atual do Excel (elementos 0
+// e 3 da linha resumida — o mesmo "estado"/"resumo" que a tabela mostra,
+// já sem a OBS colada, que aparece à parte via todoTaskInfoHtml). null
+// quando não há linha (livro fechado, item de CCR): quem chama usa o
+// instantâneo antigo (it.title/it.detail) nesse caso.
+function liveTaskContent(it) {
+  const row = taskRowFor(it);
+  if (!row) return null;
+  return {
+    title: String(row[0] || "").trim() || it.title,
+    detail: String(row[3] || "").split("")[0].trim().slice(0, 300),
+  };
 }
 
 // avisa quando marcaste este item como Concluído mas a tarefa do Excel por
@@ -615,7 +631,10 @@ function todoLinkAt(key) {
 // título igual à origem, por isso não são clicáveis aqui)
 function todoTitleHtml(it) {
   const manual = (it.kind || "manual") === "manual";
-  if (!manual) return esc(it.title);
+  if (!manual) {
+    const live = liveTaskContent(it);
+    return esc(live ? live.title : it.title);
+  }
   return `<span class="todoTitleText" data-ttitle="${esc(it.id)}" title="${t("t_edit_title")}">${esc(it.title)}</span>`;
 }
 
@@ -705,7 +724,8 @@ function todoNoteHtml(it, kanban) {
   const manual = (it.kind || "manual") === "manual";
   const cls = kanban ? "todoCardDetail" : "obs";
   if (!manual) {
-    const detail = dedupeStaleObs(it, it.detail);
+    const live = liveTaskContent(it);
+    const detail = live ? live.detail : dedupeStaleObs(it, it.detail);
     return detail ? `<span class="${cls}">${esc(detail)}</span>` : "";
   }
   const body = it.detail ? esc(it.detail) : `<span class="addnote">${t("addnote")}</span>`;

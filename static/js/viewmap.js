@@ -24,6 +24,16 @@ function updatePredefListButton(data) {
   btn.title = t("predeflist_btn_hint");
 }
 
+// botão "Categorias compostas" na mesma barra: mesmas condições dos outros
+// dois — a biblioteca (loadCompoundCats/saveCompoundCats, tasks.js) também
+// existe independente de já haver algo a usá-la.
+function updateCompoundCatButton(data) {
+  const btn = $("compoundCatBtn");
+  btn.classList.toggle("hidden", !(data && !data.error && (data.headers || []).length));
+  btn.textContent = t("compoundcat_manage_btn");
+  btn.title = t("compoundcat_hint_modal");
+}
+
 function newCategoryDraft() {
   return {
     name: "", startCell: "", orientation: "horizontal", size: "",
@@ -197,7 +207,11 @@ $("viewMapSave").addEventListener("click", () => {
   saveViewMap(lastData, viewMapDraft);
   setViewMapOpen(false);
   clearFilters();
-  render();
+  // um render() só usaria o data.cell_view já em cache, de antes de guardar —
+  // se a categoria acabou de ligar "Lista editável" (ou mudou de lista), esse
+  // cell_view ainda não tem as opções/lista da célula: só um load() a sério
+  // manda o cellcats atualizado (ver tabQuery) e traz o cell_view certo
+  load();
   toast(t("viewmap_saved"), "ok");
 });
 
@@ -206,7 +220,7 @@ $("viewMapNext").addEventListener("click", () => {
   if (viewMapDraft) saveViewMap(lastData, viewMapDraft);
   setViewMapOpen(false);
   clearFilters();
-  render();
+  load();
   setSideMapOpen(true, true);
 });
 
@@ -233,10 +247,31 @@ document.addEventListener("keydown", e => {
 // listMode="range" de uma categoria). Independente do mapa de categorias —
 // uma categoria só referencia uma destas listas pelo id (listMode="fixed",
 // ver renderViewMapRows).
-let predefListDraft = null;   // [{id, name, mode, values, sheet, cell, orientation, size}, ...]; só vai para o localStorage no Gravar
+let predefListDraft = null;   // [{id, name, mode, values, colors, sheet, cell, orientation, size}, ...]; só vai para o localStorage no Gravar
+let predefListSearchTerm = "";   // filtra as linhas mostradas (ver renderPredefListRows) — nunca mexe no draft nem nos índices
+
+// cor por valor (ver loadPredefLists/savePredefLists, tasks.js): só para
+// listas mode="manual" — os valores de uma lista mode="range" só se conhecem
+// ao vivo do livro, no servidor, por isso não têm aqui uma cor para escolher.
+// Reaproveita a paleta CUSTOMFILTER_COLORS (tasks.js), com um botão extra
+// "sem cor" (a única forma de tirar uma cor já escolhida a um valor).
+function predefListColorRow(l, i, v) {
+  const current = (l.colors || {})[v] || "";
+  const noneBtn = `<button type="button" class="customFilterColorDot listValNone${!current ? " selected" : ""}"
+    data-i="${i}" data-value="${esc(v)}" data-color="" title="${esc(t("predeflist_color_none"))}"></button>`;
+  const colorBtns = CUSTOMFILTER_COLORS.filter(Boolean).map(col => `
+    <button type="button" class="customFilterColorDot customfilter-${col}${current === col ? " selected" : ""}"
+      data-i="${i}" data-value="${esc(v)}" data-color="${col}" title="${esc(t(`customfilter_color_${col}`))}"></button>
+  `).join("");
+  return `<div class="predefListColorRow"><span class="predefListColorLabel">${esc(v)}</span>${noneBtn}${colorBtns}</div>`;
+}
 
 function renderPredefListRows() {
   const lists = predefListDraft || [];
+  const term = norm(predefListSearchTerm);
+  const entries = lists
+    .map((l, i) => ({ l, i }))
+    .filter(({ l }) => !term || norm(l.name || "").includes(term));
   const row = (l, i) => `
     <div class="viewMapCatRow" data-i="${i}">
       <input type="text" class="viewMapCatField" data-i="${i}" data-field="name"
@@ -261,9 +296,14 @@ function renderPredefListRows() {
       <input type="text" class="viewMapCatField predefListValues" data-i="${i}" data-field="values"
         placeholder="${esc(t("predeflist_values_ph"))}" value="${esc((l.values || []).join(", "))}">`}
       <button type="button" class="mini viewMapCatRemove" data-i="${i}" title="${esc(t("predeflist_remove"))}">✕</button>
+      ${l.mode !== "range" && (l.values || []).length ? `
+      <div class="viewMapListCfg predefListColors" data-i="${i}">
+        ${l.values.map(v => predefListColorRow(l, i, v)).join("")}
+      </div>` : ""}
     </div>`;
   $("predefListRows").innerHTML =
-    (lists.length ? lists.map(row).join("") : `<p class="viewMapEmptyHint">${esc(t("viewmap_none"))}</p>`) +
+    (entries.length ? entries.map(({ l, i }) => row(l, i)).join("")
+      : `<p class="viewMapEmptyHint">${esc(t(lists.length ? "customfilter_search_none" : "viewmap_none"))}</p>`) +
     `<div class="viewMapCatActions">` +
     `<button type="button" class="mini" id="predefListAdd">${esc(t("predeflist_add"))}</button>` +
     `</div>`;
@@ -272,14 +312,22 @@ function renderPredefListRows() {
 function setPredefListOpen(open) {
   if (open && !lastData) return;
   if (open) {
-    predefListDraft = loadPredefLists(lastData).map(l => ({ ...l, values: [...l.values] }));
+    predefListDraft = loadPredefLists(lastData).map(l => ({ ...l, values: [...l.values], colors: { ...(l.colors || {}) } }));
+    predefListSearchTerm = "";
     $("predefListTitle").textContent = t("predeflist_title");
     $("predefListHint").textContent = t("predeflist_hint");
     $("predefListSave").textContent = t("viewmap_save");
+    $("predefListSearch").value = "";
+    $("predefListSearch").placeholder = t("predeflist_search_ph");
     renderPredefListRows();
   }
   $("predefListOverlay").classList.toggle("hidden", !open);
 }
+
+$("predefListSearch").addEventListener("input", e => {
+  predefListSearchTerm = e.target.value;
+  renderPredefListRows();
+});
 
 $("predefListRows").addEventListener("input", e => {
   const field = e.target.closest(".viewMapCatField");
@@ -295,14 +343,32 @@ $("predefListRows").addEventListener("input", e => {
   if (key === "mode") renderPredefListRows();
 });
 
+// só ao sair do campo (não a cada tecla, para não perder o foco a meio da
+// escrita): refaz as linhas de cor por valor, para acompanhar valores
+// novos/removidos na lista manual que se acabou de editar
+$("predefListRows").addEventListener("change", e => {
+  if (e.target.closest(".predefListValues")) renderPredefListRows();
+});
+
 $("predefListRows").addEventListener("click", e => {
   if (!predefListDraft) return;
   if (e.target.id === "predefListAdd") {
     predefListDraft.push({
       id: `pl${Date.now()}${Math.floor(Math.random() * 1000)}`, name: "", mode: "manual",
-      values: [], sheet: "", cell: "", orientation: "vertical", size: "",
+      values: [], colors: {}, sheet: "", cell: "", orientation: "vertical", size: "",
     });
     renderPredefListRows();
+    return;
+  }
+  const colorDot = e.target.closest(".predefListColorRow .customFilterColorDot");
+  if (colorDot) {
+    const l = predefListDraft[Number(colorDot.dataset.i)];
+    if (l) {
+      l.colors = l.colors || {};
+      const value = colorDot.dataset.value, color = colorDot.dataset.color;
+      if (color) l.colors[value] = color; else delete l.colors[value];
+      renderPredefListRows();
+    }
     return;
   }
   const remove = e.target.closest(".viewMapCatRemove");
@@ -321,6 +387,10 @@ $("predefListSave").addEventListener("click", () => {
   // de listId refletir o que acabou de mudar (listas renomeadas/removidas)
   if (viewMapDraft) renderViewMapRows();
   if (customFilterDraft) renderCustomFilterRows();
+  // qualquer categoria/filtro que já use uma destas listas (valores ou
+  // intervalo mudados) só fica com o dropdown/lista certos depois de um
+  // load() a sério — ver o mesmo motivo em viewMapSave/viewMapNext acima
+  load();
   toast(t("predeflist_saved"), "ok");
 });
 
@@ -333,5 +403,129 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("predefListOverlay").classList.contains("hidden")) {
     e.stopImmediatePropagation();
     setPredefListOpen(false);
+  }
+}, { capture: true });
+
+// ---------- "Categorias compostas desta aba" ----------
+// Junta duas ou mais colunas/categorias já existentes (ver
+// compoundCatColumnsPool) numa só, só para leitura (ver loadCompoundCats/
+// saveCompoundCats, tasks.js): aparece como coluna extra na vista mapeada à
+// medida (buildCustomCompact) e como opção de coluna nos filtros
+// personalizados (evalCustomCondition), sem nunca substituir as colunas de
+// origem.
+let compoundCatDraft = null;   // [{id, name, columns}, ...]; só vai para o localStorage no Gravar
+
+// nomes disponíveis para juntar: colunas reais da folha (customFilterColumns)
+// + nomes das categorias já mapeadas nesta aba (loadViewMap) — os dois sítios
+// onde uma categoria composta pode vir a aparecer
+function compoundCatColumnsPool(data) {
+  const out = [...customFilterColumns(data)];
+  const seen = new Set(out);
+  const cfg = loadViewMap(data);
+  (cfg && cfg.categories || []).forEach(c => {
+    const name = String(c.name || "").trim();
+    if (name && !seen.has(name)) { seen.add(name); out.push(name); }
+  });
+  return out;
+}
+
+function renderCompoundCatRows() {
+  const cats = compoundCatDraft || [];
+  const poolAll = compoundCatColumnsPool(lastData);
+  // uma coluna já usada por OUTRA categoria composta deixa de ser oferecida
+  // aqui (ver feedback do utilizador): evita juntar a mesma coluna de origem a
+  // duas compostas diferentes, o que duplicaria o valor sem nenhum ganho —
+  // a categoria dona da coluna continua a vê-la (e a poder tirá-la) na sua
+  // própria lista, só as OUTRAS é que deixam de a listar
+  const row = (cc, i) => {
+    const usedElsewhere = new Set(cats.flatMap((other, j) => (j === i ? [] : (other.columns || []))));
+    const pool = poolAll.filter(name => !usedElsewhere.has(name));
+    return `
+    <div class="viewMapCatRow" data-i="${i}">
+      <input type="text" class="viewMapCatField" data-i="${i}" data-field="name"
+        placeholder="${esc(t("compoundcat_name_ph"))}" value="${esc(cc.name || "")}">
+      <button type="button" class="mini viewMapCatRemove" data-i="${i}" title="${esc(t("compoundcat_remove"))}">✕</button>
+      <div class="viewMapListCfg">
+        <p class="viewMapEmptyHint">${esc(t("compoundcat_columns_hint"))}</p>
+        ${pool.map(name => `
+        <label class="viewMapUseList">
+          <input type="checkbox" class="compoundCatColOpt" data-i="${i}" data-col="${esc(name)}"${(cc.columns || []).includes(name) ? " checked" : ""}>
+          ${esc(name)}
+        </label>`).join("")}
+      </div>
+    </div>`;
+  };
+  $("compoundCatRows").innerHTML =
+    (cats.length ? cats.map(row).join("") : `<p class="viewMapEmptyHint">${esc(t("viewmap_none"))}</p>`) +
+    `<div class="viewMapCatActions">` +
+    `<button type="button" class="mini" id="compoundCatAdd">${esc(t("compoundcat_add"))}</button>` +
+    `</div>`;
+}
+
+function setCompoundCatOpen(open) {
+  if (open && !lastData) return;
+  if (open) {
+    compoundCatDraft = loadCompoundCats(lastData).map(cc => ({ ...cc, columns: [...cc.columns] }));
+    $("compoundCatTitle").textContent = t("compoundcat_title");
+    $("compoundCatHint").textContent = t("compoundcat_hint_modal");
+    $("compoundCatSave").textContent = t("viewmap_save");
+    renderCompoundCatRows();
+  }
+  $("compoundCatOverlay").classList.toggle("hidden", !open);
+}
+
+$("compoundCatRows").addEventListener("input", e => {
+  const field = e.target.closest(".viewMapCatField");
+  if (!field || !compoundCatDraft) return;
+  const cc = compoundCatDraft[Number(field.dataset.i)];
+  if (cc && field.dataset.field === "name") cc.name = field.value;
+});
+
+$("compoundCatRows").addEventListener("change", e => {
+  if (!compoundCatDraft || !e.target.classList.contains("compoundCatColOpt")) return;
+  const cc = compoundCatDraft[Number(e.target.dataset.i)];
+  if (!cc) return;
+  const set = new Set(cc.columns || []);
+  if (e.target.checked) set.add(e.target.dataset.col); else set.delete(e.target.dataset.col);
+  cc.columns = [...set];
+});
+
+$("compoundCatRows").addEventListener("click", e => {
+  if (!compoundCatDraft) return;
+  if (e.target.id === "compoundCatAdd") {
+    compoundCatDraft.push({ id: `cc${Date.now()}${Math.floor(Math.random() * 1000)}`, name: "", columns: [] });
+    renderCompoundCatRows();
+    return;
+  }
+  const remove = e.target.closest(".viewMapCatRemove");
+  if (remove) {
+    compoundCatDraft.splice(Number(remove.dataset.i), 1);
+    renderCompoundCatRows();
+  }
+});
+
+$("compoundCatSave").addEventListener("click", () => {
+  if (!lastData || !compoundCatDraft) return;
+  saveCompoundCats(lastData, compoundCatDraft);
+  setCompoundCatOpen(false);
+  // filtros personalizados abertos por baixo (botão na mesma barra): refaz as
+  // linhas para o <select> de coluna refletir compostas novas/renomeadas/
+  // removidas. Nunca precisa de load() a sério (ao contrário das listas
+  // predefinidas mode="range"): tudo o que uma composta usa já está em
+  // data.cell_view/row_meta, lidos antes — um render() chega.
+  if (customFilterDraft) renderCustomFilterRows();
+  render();
+  toast(t("compoundcat_saved"), "ok");
+});
+
+$("compoundCatBtn").addEventListener("click", () => setCompoundCatOpen(true));
+$("compoundCatClose").addEventListener("click", () => setCompoundCatOpen(false));
+$("compoundCatOverlay").addEventListener("click", e => {
+  if (e.target === $("compoundCatOverlay")) setCompoundCatOpen(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("compoundCatOverlay").classList.contains("hidden")) {
+    e.stopImmediatePropagation();
+    setCompoundCatOpen(false);
   }
 }, { capture: true });

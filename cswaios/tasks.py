@@ -486,15 +486,16 @@ def build_cell_categories(path, sheet_name, categories, row_meta):
     (tasks.py:311/321-325), porque só a grelha em bruto preserva a posição real
     das colunas.
 
-    Categorias normais continuam só de leitura. Uma categoria com useList=true
-    é editável através de uma lista de valores predefinida, vinda de uma de
-    duas fontes: um intervalo do próprio livro (listSheet+listCell+
-    listOrientation+listSize, listMode="range") ou uma lista fixa guardada na
-    biblioteca por aba do cliente (listMode="fixed", valores já resolvidos em
-    listValues, ver viewmap.js). A alteração fica local (✎) até ao Push, tal
-    como as colunas fixas do tracker, mas guardada com uma chave própria (ver
-    _cellcat_key) porque folhas genéricas não têm Function/TC nem To Do para
-    identificar a linha."""
+    Todas as categorias são editáveis (ver cellCatHtml/openCellCatEditor,
+    tasks.js): sem useList, como texto livre, tal como a OBS ou o Function/TC.
+    Uma categoria com useList=true fica antes limitada a uma lista de valores
+    predefinida, vinda de uma de duas fontes: um intervalo do próprio livro
+    (listSheet+listCell+listOrientation+listSize, listMode="range") ou uma
+    lista fixa guardada na biblioteca por aba do cliente (listMode="fixed",
+    valores já resolvidos em listValues, ver viewmap.js). A alteração fica
+    local (✎) até ao Push, tal como as colunas fixas do tracker, mas guardada
+    com uma chave própria (ver _cellcat_key) porque folhas genéricas não têm
+    Function/TC nem To Do para identificar a linha."""
     cached = _RAW_CACHE.get((path, normalize(sheet_name)))
     if not cached or not categories:
         return {"headers": [], "rows": []}
@@ -565,25 +566,27 @@ def build_cell_categories(path, sheet_name, categories, row_meta):
         r0 = xlrow - 1
         line, pending_line, base_line = [], [], []
         for col0, orientation, size, list_cfg in specs:
-            pending, base = False, ""
-            if list_cfg is not None:
-                base = cell_at(r0, col0)
-                key = _cellcat_key(path, real_sheet, xlrow, col0)
-                entry = overrides.get(key)
-                if entry and entry.get("base", "") == base:
-                    value, pending = str(entry.get("value", "")), True
-                elif entry:
+            base = cell_at(r0, col0)
+            # todas as categorias são editáveis, com ou sem lista predefinida
+            # (ver cellCatHtml/openCellCatEditor, tasks.js): sem lista, a
+            # alteração é texto livre, tal como a OBS ou o Function/TC
+            key = _cellcat_key(path, real_sheet, xlrow, col0)
+            entry = overrides.get(key)
+            pending = False
+            if entry and entry.get("base", "") == base:
+                value, pending = str(entry.get("value", "")), True
+            else:
+                if entry:
                     # a folha mudou desde a alteração local: descarta-a, tal
                     # como as colunas fixas do tracker fazem em read_sheet
                     overrides.pop(key, None)
                     overrides_stale = True
-                    value = base
+                if size > 1:
+                    vals = [cell_at(r0, col0 + k) for k in range(size)] if orientation == "horizontal" \
+                        else [cell_at(r0 + k, col0) for k in range(size)]
+                    value = " ".join(v for v in vals if v)
                 else:
                     value = base
-            else:
-                vals = [cell_at(r0, col0 + k) for k in range(size)] if orientation == "horizontal" \
-                    else [cell_at(r0 + k, col0) for k in range(size)]
-                value = " ".join(v for v in vals if v)
             line.append(value)
             pending_line.append(pending)
             base_line.append(base)

@@ -52,6 +52,15 @@
   color: var(--status-info-fg);
 }
 
+/* cor escolhida pelo utilizador (ver setCustomFilterOpen/customFilterDraft,
+   customfilters.js) — reaproveita a paleta --coltag-* (theme.css), pensada
+   à parte da paleta de estado para nunca se confundir com done/doing/blocked */
+.summary .pill.customfilter-purple { background: var(--coltag-purple-bg); color: var(--coltag-purple-fg); }
+.summary .pill.customfilter-teal { background: var(--coltag-teal-bg); color: var(--coltag-teal-fg); }
+.summary .pill.customfilter-indigo { background: var(--coltag-indigo-bg); color: var(--coltag-indigo-fg); }
+.summary .pill.customfilter-sand { background: var(--coltag-sand-bg); color: var(--coltag-sand-fg); }
+.summary .pill.customfilter-slate { background: var(--coltag-slate-bg); color: var(--coltag-slate-fg); }
+
 .summary .pill.active {
   background: var(--accent);
   color: #fff;
@@ -131,6 +140,17 @@ th {
   white-space: nowrap;
 }
 
+/* cabeçalhos arrastáveis, para reordenar as colunas (ver colOf/resolveColOrder,
+   tasks.js) — a coluna de ação ("todoActionCell") nunca tem data-colname, por
+   isso nunca fica arrastável nem recebe drop */
+th[data-colname] {
+  cursor: grab;
+}
+
+th[data-colname].colDragging {
+  opacity: .4;
+}
+
 tr:last-child td {
   border-bottom: none;
 }
@@ -169,6 +189,12 @@ td .fnText[data-fnxlrow],
 td .todoText[data-todoxlrow],
 td .cellcatText[data-catxlrow] {
   cursor: pointer;
+}
+
+/* categoria composta (ver buildCustomCompact, tasks.js): só leitura, nunca
+   clicável como as categorias normais acima */
+td .compoundCatText {
+  color: var(--muted);
 }
 
 td .fnText[data-fnxlrow]:hover,
@@ -222,6 +248,17 @@ td .todoText[data-editing] {
   background: var(--accent-soft);
   color: var(--accent-text);
 }
+
+/* valor de uma categoria mapeada vindo de uma lista predefinida com cor por
+   valor (ver predefListDraft/renderPredefListRows, viewmap.js) — mesma
+   paleta --coltag-* usada nos filtros personalizados (tables.css/layout.css),
+   pensada à parte da paleta de estado para nunca se confundir com done/doing/
+   blocked */
+.badge.customfilter-purple { background: var(--coltag-purple-bg); color: var(--coltag-purple-fg); }
+.badge.customfilter-teal { background: var(--coltag-teal-bg); color: var(--coltag-teal-fg); }
+.badge.customfilter-indigo { background: var(--coltag-indigo-bg); color: var(--coltag-indigo-fg); }
+.badge.customfilter-sand { background: var(--coltag-sand-bg); color: var(--coltag-sand-fg); }
+.badge.customfilter-slate { background: var(--coltag-slate-bg); color: var(--coltag-slate-fg); }
 
 /* vista mapeada à medida: identifica de que coluna do Excel veio um valor,
    quando o mesmo campo (Autor/Estado/O que fazer) junta várias colunas —

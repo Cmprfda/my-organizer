@@ -835,10 +835,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"ok": True, "updated": False}), "application/json")
             return
         if path == "/api/cellcat/update":
-            # categoria livre com lista predefinida (vista mapeada à medida):
-            # fica só local (✎) até ao Push, tal como /api/update — mas
-            # identificada por posição na folha, não por Function/TC+To Do
-            # (ver queue_cellcat_override, cswaios/tasks.py)
+            # categoria livre da vista mapeada à medida (com ou sem lista
+            # predefinida): fica só local (✎) até ao Push, tal como
+            # /api/update — mas identificada por posição na folha, não por
+            # Function/TC+To Do (ver queue_cellcat_override, cswaios/tasks.py)
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))

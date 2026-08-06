@@ -140,6 +140,7 @@ function tagClass(tag) {
 let currentMeta = [];      // metadados (chaves/originais) das linhas apresentadas
 let currentObs = [];       // OBS em vigor (com override local) de cada linha
 let currentStatuses = [];  // estados possíveis, para o editor
+let currentColOrderKind = "";   // vista à vista agora ("full"/"canonical"/"custom"), ver render()/resolveColOrder em tasks.js
 let editorOpen = false;    // suspende os refrescamentos enquanto se edita
 
 const $ = id => document.getElementById(id);
