@@ -99,9 +99,6 @@ let searchMode = localStorage.getItem("bsp-tracker-search-mode") === "or" ? "or"
 // muda sempre que se troca de separador ou se relê)
 let lastData = null;
 
-const SIDES = ["On my side", "On the other side", "Done"];
-const SIDE_CLASS = { "On my side": "side-my", "On the other side": "", "Done": "side-done" };
-
 // etiquetas rápidas para as notas de execução
 const EXEC_TAGS = ["A correr (target)", "A correr (Jenkins)", "A guardar logs", "Executado", "Falhou"];
 
@@ -140,7 +137,7 @@ function tagClass(tag) {
 let currentMeta = [];      // metadados (chaves/originais) das linhas apresentadas
 let currentObs = [];       // OBS em vigor (com override local) de cada linha
 let currentStatuses = [];  // estados possíveis, para o editor
-let currentColOrderKind = "";   // vista à vista agora ("full"/"canonical"/"custom"), ver render()/resolveColOrder em tasks.js
+let currentColOrderKind = "";   // vista à vista agora ("full"/"custom"), ver render()/resolveColOrder em tasks.js
 let currentColWidths = {};      // larguras à medida da vista atual, por nome de coluna, ver render()/colResizeHandle em tasks.js
 let editorOpen = false;    // suspende os refrescamentos enquanto se edita
 

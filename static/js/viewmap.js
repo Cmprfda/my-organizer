@@ -10,7 +10,7 @@ function updateViewMapButton(data) {
   if (!mostra) return;
   const hasView = hasResumedView(data);
   btn.textContent = hasView ? t("viewmap_btn_edit") : t("viewmap_btn_create");
-  btn.title = hasCanonicalCompact(data) ? t("viewmap_hint_canonical") : t("viewmap_hint");
+  btn.title = t("viewmap_hint");
 }
 
 // botão "Listas predefinidas" na mesma barra: mostra-se nas mesmas condições
@@ -148,7 +148,7 @@ function setViewMapOpen(open) {
     // clone profundo: editar o rascunho nunca mexe no mapa gravado antes do Gravar
     viewMapDraft = { categories: saved.categories.map(c => ({ ...c })), exec: !!saved.exec };
     $("viewMapTitle").textContent = t("viewmap_title");
-    $("viewMapHint").textContent = hasCanonicalCompact(lastData) ? t("viewmap_hint_canonical") : t("viewmap_hint");
+    $("viewMapHint").textContent = t("viewmap_hint");
     $("viewMapSave").textContent = t("viewmap_save");
     renderViewMapRows();
     viewMapDraft.categories.forEach((cat, i) => {

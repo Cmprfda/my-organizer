@@ -1,164 +1,10 @@
 // My Organizer — vista do Excel: leitura, tabela e editores
 
-// índices das colunas do tracker nesta folha (-1 = a coluna não existe)
-function compactIdx(data) {
-  const h = (data.headers || []).map(norm);
-  const col = name => h.findIndex(x => x === norm(name));
-  return {
-    fn: col("Function/TC"),
-    todo: col("To Do"),
-    authorTC: col("Author TC"), reviewerTC: col("Reviewer TC"), statusTC: col("Status TC"),
-    authorTP: col("Author TP"), reviewerTP: col("Reviewer TP"), statusTP: col("Status TP"),
-    obs: col("OBS"),
-  };
-}
-
-// Esta folha tem mesmo as colunas do tracker? Só nesse caso a vista resumida
-// normal (editável) existe — as outras folhas dependem do mapa de colunas
-// escolhido nas Definições (ver buildCustomCompact).
-function hasCanonicalCompact(data) {
-  if (!data || data.error || !(data.headers || []).length) return false;
-  const idx = compactIdx(data);
-  return idx.fn >= 0 && idx.authorTC >= 0 && idx.statusTC >= 0;
-}
-
-// Esta folha tem alguma vista resumida ativa — a do tracker ou uma personalizada
-// gravada nas Definições (ver viewmap.js) — só usado para o texto do botão
-// ("Criar" vs "Editar").
+// Esta folha tem alguma vista resumida ativa — personalizada, gravada nas
+// Definicoes (ver viewmap.js) — so usado para o texto do botao ("Criar" vs
+// "Editar").
 function hasResumedView(data) {
-  return hasCanonicalCompact(data) || !!loadViewMap(data);
-}
-
-/* Constrói a vista resumida a partir das colunas do tracker:
-   TCs/Funções · Papel (Autor/Reviewer de TC/TP) · Estado · O que fazer */
-function buildCompact(data) {
-  if (!hasCanonicalCompact(data)) return null;
-  const idx = compactIdx(data);
-
-  const me = norm(PERSON);
-  const meTokens = me.split(" ").filter(t => t.length >= 4);
-  const val = (row, i) => (i >= 0 && row[i]) ? String(row[i]).trim() : "";
-  // aceita "Carlos Andrade" mas também só "Carlos"/"Andrade" (nomes inconsistentes na folha)
-  const isMe = (row, i) => {
-    const c = norm(val(row, i));
-    return c.includes(me) || meTokens.includes(c);
-  };
-
-  // uma vertente (TC/TP) só conta se o estado dela for real:
-  // "N/A" ou vazio significa que não é suposto ser feita
-  const applicable = s => { const t = norm(s); return t !== "" && t !== "n/a"; };
-
-  // quem está na linha (autor/reviewer de cada vertente), para as linhas que
-  // não são minhas: sem isto ficava só "Mencionado", sem dizer de quem é
-  // (os nomes vêm do row_meta; a célula da linha serve de reserva, porque uma
-  // coluna toda vazia é retirada da resposta e deixa de ter índice aqui)
-  const peopleOf = (meta, row) => {
-    const p = (meta && meta.people) || {};
-    const quem = (k, i) => String(p[k] || val(row, i) || "").trim();
-    return [
-      [t("role_author_tc"), quem("author_tc", idx.authorTC)],
-      [t("role_reviewer_tc"), quem("reviewer_tc", idx.reviewerTC)],
-      [t("role_author_tp"), quem("author_tp", idx.authorTP)],
-      [t("role_reviewer_tp"), quem("reviewer_tp", idx.reviewerTP)],
-      // "N/A" na coluna do autor/reviewer quer dizer "ninguém", não um nome
-    ].filter(([, nome]) => nome && norm(nome) !== "n/a");
-  };
-
-  const rows = data.rows.map((row, ri) => {
-    // elementos 4+ não são colunas visíveis: side (filtros), meta e
-    // colunas de cada linha de estado (edição de estados)
-    const meta = (data.row_meta || [])[ri] || null;
-    const okTC = applicable(val(row, idx.statusTC));
-    const okTP = applicable(val(row, idx.statusTP));
-    const rolesTC = [];
-    if (okTC && isMe(row, idx.authorTC)) rolesTC.push(t("role_author"));
-    if (okTC && isMe(row, idx.reviewerTC)) rolesTC.push(t("role_reviewer"));
-    const rolesTP = [];
-    if (okTP && isMe(row, idx.authorTP)) rolesTP.push(t("role_author"));
-    if (okTP && isMe(row, idx.reviewerTP)) rolesTP.push(t("role_reviewer"));
-
-    const parts = [];
-    for (const role of [t("role_author"), t("role_reviewer")]) {
-      const scopes = [];
-      if (rolesTC.includes(role)) scopes.push("TC");
-      if (rolesTP.includes(role)) scopes.push("TP");
-      if (scopes.length) parts.push(`${role} ${scopes.join("+")}`);
-    }
-    let papel = parts.join(", ");
-    // chave de papel usada pelos filtros/contadores (elemento 9): continua a
-    // ser "Autor"/"Reviewer"/"Mencionado" mesmo quando a coluna passa a mostrar
-    // nomes de outras pessoas, para os botões do resumo não mudarem de sentido
-    let roleKey = papel;
-    const sTC = val(row, idx.statusTC), sTP = val(row, idx.statusTP);
-    if (!parts.length) {
-      const soVertentesNA = [idx.authorTC, idx.reviewerTC, idx.authorTP, idx.reviewerTP]
-        .some(i => isMe(row, i));
-      // nada é suposto ser feito nesta tarefa (só me toca em vertentes N/A) —
-      // em "Ver tudo" a linha fica na mesma, senão a vista escondia linhas
-      if (soVertentesNA && !showAll) return null;
-      // nomes/"sem responsável" só em "Ver tudo" — na vista pessoal mantém-se
-      // "Mencionado" como sempre foi, para não mudar o que já lá estava
-      if (showAll) {
-        const quem = peopleOf(meta, row);
-        if (quem.length) papel = quem.map(([r, nome]) => `${r}: ${nome}`).join("\n");
-        // ninguém atribuído numa linha que é mesmo para fazer: é preciso saber-se
-        else if (applicable(sTC) || applicable(sTP)) papel = t("role_unassigned");
-        else papel = t("role_mentioned");
-        roleKey = papel === t("role_unassigned") ? t("role_unassigned") : t("role_mentioned");
-      } else {
-        papel = t("role_mentioned");
-        roleKey = t("role_mentioned");
-      }
-    }
-
-    const lines = [], linesCols = [];
-    if (rolesTC.length && sTC && norm(sTC) !== "n/a") { lines.push("TC: " + sTC); linesCols.push("Status TC"); }
-    if (rolesTP.length && sTP && norm(sTP) !== "n/a") { lines.push("TP: " + sTP); linesCols.push("Status TP"); }
-    // linha que não é minha: mostra as vertentes que existem mesmo
-    if (!lines.length && !parts.length) {
-      if (applicable(sTC)) { lines.push("TC: " + sTC); linesCols.push("Status TC"); }
-      if (applicable(sTP)) { lines.push("TP: " + sTP); linesCols.push("Status TP"); }
-    }
-    if (!lines.length && sTC) { lines.push(sTC); linesCols.push("Status TC"); }
-    const estado = lines.length === 1 ? lines[0].replace(/^TC: |^TP: /, "") : lines.join("\n");
-
-    const sides = [];
-    if (rolesTC.length) sides.push(sideOf(rolesTC[0], sTC));
-    if (rolesTP.length) sides.push(sideOf(rolesTP[0], sTP));
-    const side = sides.includes("On my side") ? "On my side"
-      : sides.includes("On the other side") ? "On the other side"
-        : sides.includes("Done") ? "Done"
-          // só vertentes removidas: a linha não conta para nenhum dos lados
-          : sides.includes("Removed") ? null
-            : "On the other side";
-
-    let resumo = val(row, idx.todo);
-    // valor cru da coluna "To Do" (antes do resumo gerado e antes de lhe ser
-    // colada a OBS): é este que o editor grava, para nunca escrever na folha
-    // o texto que a app gerou sozinha
-    const rawTodo = resumo;
-    if (!resumo) {
-      // linhas de review costumam ter o "To Do" vazio — gera um resumo a partir do papel
-      const gen = [];
-      if (rolesTC.includes(t("role_reviewer"))) gen.push(`${t("review_tc")} ${val(row, idx.authorTC) || "?"}`);
-      if (rolesTP.includes(t("role_reviewer"))) gen.push(`${t("review_tp")} ${val(row, idx.authorTP) || "?"}`);
-      resumo = gen.join("\n") || "—";
-    }
-    const obs = val(row, idx.obs);
-    if (obs) resumo += "\u001F" + obs;   // separador interno para formatar a OBS à parte
-
-    const execDisplay = execSummary(meta);
-    // elementos 10/11: informação completa da linha (todas as pessoas e ambos os
-    // estados aplicáveis), usada só pelo bloco de info do TODO — a coluna "Papel"
-    // e o "Estado" da vista resumida continuam a ser os elementos 1/2
-    const peopleInfo = peopleOf(meta, row);
-    const statusAll = [];
-    if (applicable(sTC)) statusAll.push(["Status TC", "TC: " + sTC]);
-    if (applicable(sTP)) statusAll.push(["Status TP", "TP: " + sTP]);
-    return [val(row, idx.fn), papel, estado, resumo, execDisplay, side, meta, linesCols, rawTodo, roleKey, peopleInfo, statusAll];
-  }).filter(Boolean);
-
-  return { headers: compactHeaders(), rows };
+  return !!loadViewMap(data);
 }
 
 // resumo de texto da nota de execução (etiqueta + checklist + nota)
@@ -171,12 +17,9 @@ function execSummary(meta) {
   return [n.tag, feitos, n.note].filter(Boolean).join("\n");
 }
 
-const compactHeaders = () =>
-  [t("hdr_fn"), t("hdr_role"), t("hdr_status"), t("hdr_todo"), t("hdr_exec")];
-
 // negrito nas palavras que "explicam" porque a linha está à vista: os termos
 // de pesquisa ativos e o meu nome (mesmo sem pesquisa, é sempre a mim que a
-// vista pessoal filtra) — meTokens repete o limiar de buildCompact (isMe)
+// vista pessoal filtra)
 function highlightTerms(text) {
   const full = norm(PERSON);
   const tokens = full.split(" ").filter(w => w.length >= 4);
@@ -184,13 +27,14 @@ function highlightTerms(text) {
   return boldTerms(text, terms);
 }
 
-/* ---------- vista resumida à medida (qualquer folha, só leitura) ----------
-   Para folhas sem as colunas do tracker, o utilizador define nas Definições,
-   por categoria, a célula inicial do Excel, a orientação e o tamanho (ver
-   viewmap.js) — o servidor (build_cell_categories, cswaios/tasks.py) lê e
-   concatena as células e devolve o resultado em data.cell_view. Categorias são
-   livres (sem campo fixo Autor/Reviewer/Estado), por isso esta vista não tem
-   papel/lado (sideOf) nem estados editáveis: é sempre texto simples. */
+/* ---------- vista resumida à medida (qualquer folha) ----------
+   O utilizador define nas Definições, por categoria, a célula inicial do
+   Excel, a orientação e o tamanho (ver viewmap.js) — o servidor
+   (build_cell_categories, cswaios/tasks.py) lê e concatena as células e
+   devolve o resultado em data.cell_view. Categorias são livres (sem campo
+   fixo Autor/Reviewer/Estado), por isso esta vista não tem papel/lado nem
+   estados editáveis por omissão: cada categoria é sempre texto simples,
+   editável (com lista opcional) — ver cellCatHtml. */
 const VIEWMAP_PREFIX = "bsp-tracker-viewmap";
 const PREDEFLIST_PREFIX = "bsp-tracker-predeflists";
 const COMPOUNDCAT_PREFIX = "bsp-tracker-compoundcats";
@@ -211,7 +55,7 @@ function compoundCatKey(data) {
 
 // ordem de exibição das colunas da tabela de Tarefas (ver render()/colOf, mais
 // abaixo, e o dragstart/drop no thead): guarda só os NOMES dos cabeçalhos, por
-// livro+aba+vista ("full"/"canonical"/"custom", ver currentColOrderKind) —
+// livro+aba+vista ("full"/"custom", ver currentColOrderKind) —
 // cada vista tem o seu próprio conjunto de colunas, por isso cada uma tem a
 // sua própria ordem. Arrastar um cabeçalho nunca muda o que uma coluna
 // significa (o índice original continua o mesmo em headers/r[]), só a ORDEM
@@ -793,7 +637,7 @@ function categoryListColor(data, colName, value) {
 function badgeHtml(text, col, meta, editable = meta && (col === "Status TC" || col === "Status TP"), display = text, colTag = "") {
   const local = !!(meta && meta.over && meta.over[col]);
   const title = local ? t("t_local") : t("t_edit_status");
-  // o texto pode vir com o prefixo "TC: "/"TP: " (ver statusAll, buildCompact)
+  // o texto pode vir com o prefixo "TC: "/"TP: " (ver todoTaskInfoHtml, todo.js)
   // — a cor por valor tem de bater com o valor cru da folha, sem esse prefixo
   const rawValue = String(text || "").replace(/^(?:TC|TP):\s*/, "");
   const listColor = lastData ? categoryListColor(lastData, col, rawValue) : "";
@@ -1064,19 +908,16 @@ function render() {
       (web ? "" : ` <button class="mini" id="cycleNow">${t("btn_cycle")}</button>`) : "") +
     (data.notice ? `<br><span class="notice">ℹ ${esc(data.notice)}</span>` : "");
 
-  // vista resumida do tracker ou, para outras folhas, a que o utilizador
-  // definiu nas Definições por coordenadas de célula (ver viewmap.js)
-  const compact = buildCustomCompact(data) || buildCompact(data);
+  // vista mapeada à medida, para folhas onde o utilizador definiu categorias
+  // por coordenadas de célula nas Definições (ver viewmap.js)
+  const compact = buildCustomCompact(data);
   $("viewToggle").classList.toggle("hidden", !compact);
   const useCompact = compact && compactView;
-  // vista mapeada à medida: categorias livres, sem papel/lado (mas sempre editáveis, ver cellCatHtml)
-  const isCellCompact = !!(useCompact && compact.custom);
-  const isCanonicalCompact = useCompact && !isCellCompact;
   // qual vista está à vista agora, para a ordem de colunas arrastada pelo
   // utilizador (ver colOf/resolveColOrder, mais abaixo, e o drop no thead) —
   // cada vista tem o seu próprio conjunto de colunas, por isso cada uma
   // guarda a sua própria ordem
-  currentColOrderKind = isCellCompact ? "custom" : isCanonicalCompact ? "canonical" : "full";
+  currentColOrderKind = useCompact ? "custom" : "full";
   // lista/caixas vale para as duas vistas (resumida e completa)
   $("taskMode").classList.remove("hidden");
   const headers = useCompact ? compact.headers : data.headers;
@@ -1084,8 +925,7 @@ function render() {
   // meta (row_meta, com o orig por coluna real) de uma linha à vista, seja
   // qual for a vista ativa — usado tanto para os filtros personalizados como
   // para currentMeta, mais abaixo
-  const metaFor = r => isCellCompact ? (r[headers.length] || null)
-    : useCompact ? (r[6] || null)
+  const metaFor = r => useCompact ? (r[headers.length] || null)
     : ((data.row_meta || [])[data.rows.indexOf(r)] || null);
 
   const query = activeSearchTerms();
@@ -1099,29 +939,17 @@ function render() {
 
   // resumo: contagens calculadas antes do filtro de estado, para os botões não desaparecerem
   // (na vista mapeada à medida não há coluna de estado fixa: nunca conta como tal)
-  const statusIdx = isCellCompact ? -1 : headers.findIndex(isStatusHeader);
-  // a coluna do papel pode mostrar nomes de outras pessoas; quem manda nos
-  // filtros/contadores é a chave de papel (elemento 9), que continua a ser
-  // "Autor"/"Reviewer"/"Mencionado"/"Sem responsável" — só existe na vista do tracker
-  const roleIdx = isCanonicalCompact ? 9 : -1;
-  const exactRoles = [t("role_mentioned"), t("role_unassigned")];
-  const roleMatches = papel =>
-    [...roleFilters].some(f => exactRoles.includes(f) ? papel === f : String(papel).includes(f));
-  const sideIdx = isCanonicalCompact ? 5 : -1;
-  const roleActive = roleFilters.size && roleIdx >= 0;
-  const sideActive = sideFilters.size && sideIdx >= 0;
-  let rows = roleActive ? searched.filter(r => roleMatches(r[roleIdx])) : searched;
-  if (sideActive)
-    rows = rows.filter(r => sideFilters.has(r[sideIdx]));
+  const statusIdx = useCompact ? -1 : headers.findIndex(isStatusHeader);
+  let rows = searched;
   if (statusFilters.size && statusIdx >= 0 && !useCompact)
     rows = rows.filter(r => statusLines(r[statusIdx]).some(s => statusFilters.has(s)));
 
   // filtros personalizados (ver customfilters.js): sempre pela coluna real da
-  // folha (row_meta[].orig), por isso funcionam em qualquer vista — resumida
-  // do tracker, à medida por coordenadas ou tabela completa. Cada um ativo
-  // aplica-se em AND com os restantes (tal como papel+lado+estado já fazem
-  // entre si); a contagem de cada botão é facetada pelos OUTROS filtros
-  // personalizados ativos, mas já com papel/lado/estado aplicados.
+  // folha (row_meta[].orig), por isso funcionam em qualquer vista — à medida
+  // por coordenadas ou tabela completa. Cada um ativo aplica-se em AND com os
+  // restantes (tal como o estado já faz); a contagem de cada botão é
+  // facetada pelos OUTROS filtros personalizados ativos, mas já com o estado
+  // aplicado.
   const allCustomFilters = loadCustomFilters(data);
   const activeCustomFilters = allCustomFilters.filter(f => customFilterActive.has(f.id));
   const customListValues = customFilterListValues(data, allCustomFilters);
@@ -1140,48 +968,12 @@ function render() {
   if (activeCustomFilters.length)
     rows = rows.filter(r => activeCustomFilters.every(f => evalCustomFilter(metaFor(r), f, customListValues, compoundById)));
 
-  // bases facetadas: cada grupo de botões é contado com os filtros dos OUTROS
-  // grupos aplicados (mas não os do próprio), para os números refletirem a seleção
-  const baseForRole = sideActive ? searched.filter(r => sideFilters.has(r[sideIdx])) : searched;
-  const baseForSide = roleActive ? searched.filter(r => roleMatches(r[roleIdx])) : searched;
-
   let summaryHtml = `<span class="pill">${rows.length} ${rows.length === 1 ? t("tasks_one") : t("tasks_many")}` +
     (showAll ? ` ${t("of_all")}` : ` ${t("of_person")} ${esc(PERSON)}`) + `</span>`;
   const pillClasses = (extra, active, n) =>
     `pill${extra ? " " + extra : ""}${active ? " active" : ""}${!active && n === 0 ? " zero" : ""}`;
 
-  if (roleIdx >= 0 && searched.length) {
-    const countRoles = arr => {
-      const c = {
-        [t("role_author")]: 0, [t("role_reviewer")]: 0,
-        [t("role_mentioned")]: 0, [t("role_unassigned")]: 0,
-      };
-      arr.forEach(r => {
-        const p = String(r[roleIdx] === undefined ? "" : r[roleIdx]);
-        if (p === t("role_unassigned")) { c[t("role_unassigned")]++; return; }
-        if (p.includes(t("role_author"))) c[t("role_author")]++;
-        if (p.includes(t("role_reviewer"))) c[t("role_reviewer")]++;
-        if (p === t("role_mentioned")) c[t("role_mentioned")]++;
-      });
-      return c;
-    };
-    const avail = countRoles(searched), fac = countRoles(baseForRole);
-    summaryHtml += Object.keys(avail).filter(k => avail[k] > 0).map(k =>
-      `<span class="${pillClasses("", roleFilters.has(k), fac[k])}" data-role="${k}">${k}: ${fac[k]}</span>`
-    ).join("");
-  }
-  if (isCanonicalCompact && searched.length) {
-    const countSides = arr => {
-      const c = {};
-      arr.forEach(r => { c[r[sideIdx]] = (c[r[sideIdx]] || 0) + 1; });
-      return c;
-    };
-    const avail = countSides(searched), fac = countSides(baseForSide);
-    const sideLabel = { "On my side": t("side_my"), "On the other side": t("side_other"), "Done": t("side_done") };
-    summaryHtml += SIDES.filter(s => avail[s]).map(s =>
-      `<span class="${pillClasses(SIDE_CLASS[s], sideFilters.has(s), fac[s] || 0)}" data-side="${esc(s)}">${esc(sideLabel[s] || s)}: ${fac[s] || 0}</span>`
-    ).join("");
-  } else if (statusIdx >= 0 && searched.length) {
+  if (statusIdx >= 0 && searched.length) {
     const counts = {};
     searched.forEach(r => {
       // linhas sem estado não geram botão (não haveria nada para mostrar)
@@ -1218,9 +1010,9 @@ function render() {
   tbl.classList.remove("hidden");
   const _narrow = window.innerWidth <= 720;
   tbl.classList.toggle("cards", taskLayout === "cards" || _narrow);
-  // vista resumida (tracker ou à medida): a caixa encolhe à largura das
-  // colunas mostradas, em vez de esticar a 100% do painel e criar scroll
-  // horizontal (ver .tablebox.compactFit, tables.css)
+  // vista resumida à medida: a caixa encolhe à largura das colunas
+  // mostradas, em vez de esticar a 100% do painel e criar scroll horizontal
+  // (ver .tablebox.compactFit, tables.css)
   tbl.classList.toggle("compactFit", useCompact);
   // ordem de exibição das colunas (ver resolveColOrder/saveColOrder, e o
   // dragstart/drop no thead, mais abaixo): colOf[i] é o índice ORIGINAL em
@@ -1245,26 +1037,13 @@ function render() {
     `${esc(headers[i2])}<span class="colResizeHandle" data-resize="${esc(headers[i2])}" draggable="false"></span></th>`
   ).join("") + `<th class="todoActionCell">${esc(t("hdr_action"))}</th></tr>`;
   currentMeta = rows.map(metaFor);
-  currentObs = rows.map(r =>
-    isCanonicalCompact ? (String(r[3] === undefined ? "" : r[3]).split("\u001F")[1] || "") : "");
+  currentObs = rows.map(() => "");
   currentStatuses = data.statuses || [];
 
   function statusCell(r, ri, i) {
     const meta = currentMeta[ri];
-    if (isCanonicalCompact) {
-      const lines = String(r[2]).split("\n").filter(l => l.trim());
-      const cols = r[7] || [];
-      return lines.map((l, k) => badgeHtml(l, cols[k], meta)).join("<br>");
-    }
     const c = r[i] ? String(r[i]) : "";
     return c ? badgeHtml(c, headers[i], meta) : "";
-  }
-
-  // "O que fazer" + OBS da linha (a OBS vem colada ao resumo pelo separador \u001F)
-  function todoObsHtml(r, ri) {
-    const [todo, obs] = String(r[3] === undefined ? "" : r[3]).split("\u001F");
-    const rawTodo = r[8] || "";
-    return `${todoTextHtml(todo, rawTodo, currentMeta[ri])}${obsHtml(obs || "", currentMeta[ri])}`;
   }
 
   // o botão "+ TODO" só existe enquanto a linha não estiver na TODO list
@@ -1286,9 +1065,8 @@ function render() {
         // vista mapeada à medida: todas as categorias livres são editáveis
         // (dropdown com useList, texto livre sem — ver cellCatHtml/
         // openCellCatEditor) — a única exceção é a Execução, se o utilizador
-        // a ligou nas Definições (mesma célula editável da vista do tracker,
-        // ver execCellHtml)
-        if (isCellCompact) {
+        // a ligou nas Definições
+        if (useCompact) {
           if (i2 === compact.execIdx) {
             const m = currentMeta[ri] || {};
             const { inner, title } = execCellHtml(m);
@@ -1305,30 +1083,8 @@ function render() {
           const m = currentMeta[ri] || {};
           return `<td${i2 === 0 ? ' class="fn"' : ""}>${cellCatHtml(c, i2, m, compact)}</td>`;
         }
-        if (useCompact ? i2 === 2 : isStatusHeader(headers[i2]))
+        if (isStatusHeader(headers[i2]))
           return `<td>${statusCell(r, ri, i2)}</td>`;
-        if (useCompact && i2 === 0) {
-          const m = currentMeta[ri] || {};
-          const linked = notesForTask(m.fn || c, m.todo || "");
-          const flag = linked.length
-            ? `<button type="button" class="taskNoteFlag" data-tasklink-fn="${esc(m.fn || c)}" data-tasklink-todo="${esc(m.todo || "")}" title="${esc(t("t_open_linked_note"))}">📌</button>`
-            : "";
-          return `<td class="fn">${fnHtml(c, m)}${flag}</td>`;
-        }
-        if (useCompact && i2 === 1) {
-          // ninguém atribuído: a célula fica marcada, para saltar à vista
-          const semDono = r[9] === t("role_unassigned");
-          return `<td class="role${semDono ? " unassigned" : ""}"` +
-            `${semDono ? ` title="${esc(t("t_unassigned"))}"` : ""}>${highlightTerms(c)}</td>`;
-        }
-        if (useCompact && i2 === 4) {
-          const m = currentMeta[ri] || {};
-          const { inner, title } = execCellHtml(m);
-          return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
-        }
-        if (useCompact && i2 === 3) {
-          return `<td>${todoObsHtml(r, ri)}</td>`;
-        }
         return `<td>${esc(c)}</td>`;
       })();
       // em ecrãs estreitos a tabela vira cartões: cada célula mostra o seu cabeçalho

@@ -1084,20 +1084,12 @@ $("notesHead").addEventListener("click", e => {
 });
 
 function noteLinkOptions() {
-  // tarefas do Excel (se estiver carregado) + itens da lista TODO -- para se
-  // poder ligar uma nota a qualquer um dos dois, com ou sem Excel disponivel
-  const compact = lastData && !lastData.error && lastData.headers ? buildCompact(lastData) : null;
-  const tasks = (compact ? compact.rows : []).map(r => {
-    const meta = r[6] || {};
-    return {
-      kind: "task", fn: meta.fn || r[0], todo: meta.todo || "",
-      label: r[0], sub: String(r[3] || "").split("\u001F")[0].split("\n")[0],
-    };
-  });
-  const todoItems = todos.map(it => ({
+  // itens da lista TODO -- ligar uma nota a uma tarefa do Excel deixou de
+  // ser possivel diretamente (a vista resumida do tracker foi removida);
+  // liga-se antes ao item do TODO correspondente, se existir
+  return todos.map(it => ({
     kind: "todo", todoId: it.id, label: it.title, sub: t("note_link_todo_sub"),
   }));
-  return tasks.concat(todoItems);
 }
 
 let noteLinkRows = [];

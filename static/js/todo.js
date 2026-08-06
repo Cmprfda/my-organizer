@@ -475,17 +475,6 @@ function taskIndex() {
   workbookTabs.forEach(tab => {
     const data = tab.lastData;
     if (!data || data.error) return;
-    const compact = buildCompact(data);
-    if (compact) {
-    const doLivro = new Map();
-    compact.rows.forEach(r => {
-      const meta = r[6] || {};
-      const key = `${meta.fn || r[0]}${meta.todo || ""}`;
-      if (!doLivro.has(key)) doLivro.set(key, r);
-      if (!taskIndexMap.has(key)) taskIndexMap.set(key, r);
-    });
-    taskIndexByBook.set(tab.name || "", doLivro);
-    }
     const custom = buildCustomCompact(data);
     if (custom) {
       const doLivroCustom = new Map();
