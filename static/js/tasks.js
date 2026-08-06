@@ -53,6 +53,105 @@ function compoundCatKey(data) {
   return `${COMPOUNDCAT_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
 }
 
+// Exemplo pré-carregado, só na folha por omissão (ver DEFAULT_SHEET,
+// cswaios/config.py): estas bibliotecas vivem no localStorage de cada browser
+// e nunca são partilhadas entre colegas (ver loadPredefLists/loadCompoundCats/
+// loadCustomFilters) — isto dá um ponto de partida visível a quem abre a
+// aba por acaso pela primeira vez. Deixa de aparecer assim que o utilizador
+// gravar a sua própria versão (mesmo vazia) através do editor respetivo.
+const SEED_EXAMPLES = {
+  "PRJ_CFG1_reworks_julho": {
+    viewmap: {
+      exec: true,
+      categories: [
+        { name: "", startCell: "A1", orientation: "horizontal", size: "", useList: false, listMode: "range", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "" },
+        { name: "", startCell: "B1", orientation: "horizontal", size: "", useList: false, listMode: "range", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "" },
+        { name: "", startCell: "C1", orientation: "horizontal", size: "", useList: false, listMode: "range", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "" },
+        { name: "", startCell: "D1", orientation: "horizontal", size: "", useList: false, listMode: "range", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "" },
+        { name: "", startCell: "E1", orientation: "horizontal", size: "", useList: true, listMode: "fixed", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "seed-estado" },
+        { name: "", startCell: "G1", orientation: "horizontal", size: "", useList: false, listMode: "range", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "" },
+        { name: "", startCell: "H1", orientation: "horizontal", size: "", useList: false, listMode: "range", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "" },
+        { name: "", startCell: "I1", orientation: "horizontal", size: "", useList: true, listMode: "fixed", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "seed-estado" },
+        { name: "", startCell: "K1", orientation: "horizontal", size: "", useList: false, listMode: "range", listSheet: "", listCell: "", listOrientation: "vertical", listSize: "", listId: "" },
+      ],
+    },
+    predefLists: [
+      { id: "seed-estado", name: "Estado", mode: "range",
+        values: ["Ready to start", "In progress", "Blocked", "Ready for review", "In review",
+          "Ready for rework", "In rework", "Done by us (Informal Review)", "Reviewed", "Removed", "Not ready to start"],
+        colors: {}, sheet: "Admin", cell: "B9", orientation: "vertical", size: 11 },
+      { id: "seed-lado-autor", name: "Lado do autor", mode: "manual",
+        values: ["Ready to start", "In progress", "Ready for rework", "In rework", "Not ready to start"],
+        colors: {}, sheet: "", cell: "", orientation: "vertical", size: "" },
+      { id: "seed-lado-reviewer", name: "Lado do reviewer", mode: "manual",
+        values: ["Ready for review", "In review"], colors: {}, sheet: "", cell: "", orientation: "vertical", size: "" },
+      { id: "seed-feito", name: "Feito", mode: "manual",
+        values: ["Done by us"], colors: {}, sheet: "", cell: "", orientation: "vertical", size: "" },
+      { id: "seed-bloqueado", name: "Bloqueado", mode: "manual",
+        values: ["Blocked"], colors: {}, sheet: "", cell: "", orientation: "vertical", size: "" },
+    ],
+    compoundCats: [
+      { id: "seed-estado-tctp", name: "Estado (TC+TP)", columns: ["Status TC", "Status TP"] },
+      { id: "seed-autor-tctp", name: "Autor (TC+TP)", columns: ["Author TC", "Author TP"] },
+      { id: "seed-reviewer-tctp", name: "Reviewer (TC+TP)", columns: ["Reviewer TC", "Reviewer TP"] },
+      { id: "seed-o-que-fazer", name: "O que fazer", columns: ["To Do", "OBS"] },
+    ],
+    customFilters: [
+      { id: "seed-do-meu-lado", name: "Do meu lado", color: "purple",
+        groups: [
+          { conditions: [
+            { column: "Author TC", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TC", op: "in_list", value: "", usePerson: false, listId: "seed-lado-autor" },
+          ] },
+          { conditions: [
+            { column: "Author TP", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TP", op: "in_list", value: "", usePerson: false, listId: "seed-lado-autor" },
+          ] },
+          { conditions: [
+            { column: "Reviewer TP", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TP", op: "in_list", value: "", usePerson: false, listId: "seed-lado-reviewer" },
+          ] },
+          { conditions: [
+            { column: "Reviewer TC", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TC", op: "in_list", value: "", usePerson: false, listId: "seed-lado-reviewer" },
+          ] },
+        ] },
+      { id: "seed-do-outro-lado", name: "Do outro lado", color: "",
+        groups: [
+          { conditions: [
+            { column: "Author TC", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TC", op: "in_list", value: "", usePerson: false, listId: "seed-lado-reviewer" },
+          ] },
+          { conditions: [
+            { column: "Author TP", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TP", op: "in_list", value: "", usePerson: false, listId: "seed-lado-reviewer" },
+          ] },
+          { conditions: [
+            { column: "Reviewer TP", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TP", op: "in_list", value: "", usePerson: false, listId: "seed-lado-autor" },
+          ] },
+          { conditions: [
+            { column: "Reviewer TC", op: "contains", value: "", usePerson: true, listId: "" },
+            { column: "Status TC", op: "in_list", value: "", usePerson: false, listId: "seed-lado-autor" },
+          ] },
+        ] },
+      { id: "seed-feito-filter", name: "Feito", color: "teal",
+        groups: [
+          { conditions: [
+            { column: "Status TC", op: "contains", value: "Done by us", usePerson: false, listId: "" },
+            { column: "Status TP", op: "contains", value: "Done by us", usePerson: false, listId: "" },
+          ] },
+        ] },
+    ],
+  },
+};
+
+function seedExampleFor(kind, data) {
+  const sheetSeed = SEED_EXAMPLES[(data && data.sheet) || ""];
+  const value = sheetSeed && sheetSeed[kind];
+  return value ? JSON.parse(JSON.stringify(value)) : null;
+}
+
 // ordem de exibição das colunas da tabela de Tarefas (ver render()/colOf, mais
 // abaixo, e o dragstart/drop no thead): guarda só os NOMES dos cabeçalhos, por
 // livro+aba+vista ("full"/"custom", ver currentColOrderKind) —
@@ -171,11 +270,16 @@ function fittedColWidths(names, availWidth) {
 // referidos baterem certo com categorias mesmo definidas nessa vista.
 function loadCompoundCats(data) {
   if (!data || !data.sheet) return [];
+  const stored = localStorage.getItem(compoundCatKey(data));
   let raw;
-  try {
-    raw = JSON.parse(localStorage.getItem(compoundCatKey(data)) || "null");
-  } catch (e) {
-    return [];
+  if (stored === null) {
+    raw = seedExampleFor("compoundCats", data);
+  } else {
+    try {
+      raw = JSON.parse(stored);
+    } catch (e) {
+      return [];
+    }
   }
   if (!Array.isArray(raw)) return [];
   return raw
@@ -225,11 +329,16 @@ const compoundColumnId = v => (String(v || "").startsWith(COMPOUNDCOL_PREFIX) ? 
 // mais abaixo, para como isso é traduzido no pedido ao servidor.
 function loadPredefLists(data) {
   if (!data || !data.sheet) return [];
+  const stored = localStorage.getItem(predefListKey(data));
   let raw;
-  try {
-    raw = JSON.parse(localStorage.getItem(predefListKey(data)) || "null");
-  } catch (e) {
-    return [];
+  if (stored === null) {
+    raw = seedExampleFor("predefLists", data);
+  } else {
+    try {
+      raw = JSON.parse(stored);
+    } catch (e) {
+      return [];
+    }
   }
   if (!Array.isArray(raw)) return [];
   return raw
@@ -291,11 +400,16 @@ function savePredefLists(data, lists) {
 // são descartados: não há como migrar um nome de coluna para uma coordenada.
 function loadViewMap(data) {
   if (!data || !data.sheet) return null;
+  const stored = localStorage.getItem(viewMapKey(data));
   let raw;
-  try {
-    raw = JSON.parse(localStorage.getItem(viewMapKey(data)) || "null");
-  } catch (e) {
-    return null;
+  if (stored === null) {
+    raw = seedExampleFor("viewmap", data);
+  } else {
+    try {
+      raw = JSON.parse(stored);
+    } catch (e) {
+      return null;
+    }
   }
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.categories)) return null;
   const categories = raw.categories.filter(c => c && typeof c === "object" && c.startCell).map(c => {
@@ -396,11 +510,16 @@ function customFilterGroupsFrom(f) {
 
 function loadCustomFilters(data) {
   if (!data || !data.sheet) return [];
+  const stored = localStorage.getItem(customFilterKey(data));
   let raw;
-  try {
-    raw = JSON.parse(localStorage.getItem(customFilterKey(data)) || "null");
-  } catch (e) {
-    return [];
+  if (stored === null) {
+    raw = seedExampleFor("customFilters", data);
+  } else {
+    try {
+      raw = JSON.parse(stored);
+    } catch (e) {
+      return [];
+    }
   }
   if (!Array.isArray(raw)) return [];
   return raw
