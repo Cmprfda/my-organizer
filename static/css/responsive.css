@@ -1,7 +1,10 @@
 /* My Organizer — ecrãs estreitos, toast e utilitários */
 
-/* ---------- ecrãs estreitos (telemóvel na vertical) ---------- */
-@media (max-width: 720px) {
+/* ---------- ecrãs estreitos (telemóvel na vertical, ou janela desktop
+   estreitada) — largura alinhada com os outros breakpoints de empilhamento
+   da app (900/980px em views.css/todo.css), para trocar para o layout
+   vertical antes de as colunas da tabela ficarem ilegíveis ---------- */
+@media (max-width: 900px) {
   .wrap {
     /* espaço em baixo para a pílula de separadores flutuante */
     padding: 10px 10px calc(84px + env(safe-area-inset-bottom, 0px));

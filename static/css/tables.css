@@ -108,6 +108,19 @@ select.statusEdit {
   -webkit-overflow-scrolling: touch;
 }
 
+/* o cabeçalho (th) é sticky e tem o seu próprio fundo com blur (mais abaixo) —
+   isso promove-o à sua própria camada de composição, que o overflow-x:auto
+   da .tablebox já não recorta, deixando os cantos de cima quadrados por cima
+   da moldura arredondada da caixa. Arredondar os próprios cantos do th
+   resolve, já que aí o recorte é feito pelo elemento com o blur, não pelo pai */
+.tablebox:not(.cards) thead th:first-child {
+  border-top-left-radius: var(--ios-radius-card);
+}
+
+.tablebox:not(.cards) thead th:last-child {
+  border-top-right-radius: var(--ios-radius-card);
+}
+
 /* vista resumida (tracker ou à medida, ver useCompact/tbl.classList.toggle
    em tasks.js): a caixa encolhe à largura das colunas mostradas em vez de
    esticar a 100% do painel — sem scroll horizontal, mesmo depois de o
@@ -121,6 +134,24 @@ select.statusEdit {
 .tablebox.compactFit:not(.cards) table {
   width: auto;
   max-width: 100%;
+}
+
+/* mesmo em compactFit, se as colunas ainda não couberem no painel numa janela
+   larga — à largura natural (ver o fallback em tasks.js/render(), depois de
+   montar o tbody) ou por larguras à medida gravadas que já não cobrem todas
+   as colunas da vista atual (ex.: categoria nova numa vista mapeada, depois
+   de fittedColWidths/colsFixed) — a resposta é scroll horizontal em vez de
+   espremer as colunas ou saltar para cartões. Janela muito estreita continua
+   a preferir cartões (_narrow, tasks.js), que chega primeiro e nunca deixa
+   esta classe ser aplicada */
+.tablebox.compactFit.overflowScroll:not(.cards) {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.tablebox.compactFit.overflowScroll:not(.cards) table {
+  width: max-content;
+  max-width: none;
 }
 
 table {

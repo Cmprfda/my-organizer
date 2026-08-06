@@ -1335,6 +1335,36 @@ function render() {
       return cell.replace("<td", `<td data-label="${esc(headers[i2])}"`);
     }).join("") + `<td class="todoActionCell">${todoAddBtn(r, ri)}</td></tr>`
   ).join("");
+  // colunas de mais para a caixa: mede a largura que a tabela pediria sem a
+  // compressão do compactFit (ver .tablebox.compactFit, tables.css) contra a
+  // largura do painel que envolve a tablebox — que, ao contrário dela, não
+  // encolhe/estica com o conteúdo. Corre também com larguras à medida
+  // gravadas (hasCustomWidths): fittedColWidths só conhece as colunas que já
+  // existiam quando foram gravadas, por isso uma coluna nova na vista (ex.:
+  // categoria acrescentada depois) pode continuar sem largura própria e
+  // empurrar a tabela para além da caixa. Em janela larga (aqui nunca é
+  // _narrow — essa já forçou "cards" acima, e o guard de baixo salta o
+  // bloco) a resposta é scroll horizontal (.overflowScroll, tables.css), não
+  // cartões: só em janela muito estreita é que os cartões substituem o
+  // scroll.
+  tbl.classList.remove("overflowScroll");
+  if (!tbl.classList.contains("cards")) {
+    const table = $("tasksTable");
+    // largura=auto (a normal) não chega para medir uma tabela colsFixed: com
+    // table-layout:fixed, width:auto resolve sempre à largura do contentor
+    // disponível (por definição da norma), nunca "excede" por si só, só
+    // espreme a(s) coluna(s) sem largura gravada até ficarem ilegíveis.
+    // width:max-content força o browser a devolver a largura que o
+    // conteúdo pediria mesmo assim — só essa revela a necessidade real.
+    const prevWidth = table.style.width;
+    const prevMaxWidth = table.style.maxWidth;
+    table.style.width = "max-content";
+    table.style.maxWidth = "none";
+    const needed = table.scrollWidth;
+    table.style.width = prevWidth;
+    table.style.maxWidth = prevMaxWidth;
+    if (needed > tbl.parentElement.clientWidth) tbl.classList.add("overflowScroll");
+  }
   refreshItemBox();
 }
 
