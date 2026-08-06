@@ -15,8 +15,7 @@ from .config import APP_VERSION, HERE, SHARE_URL
 from .excel import find_tracker_files
 from .graph import GraphError, graph_login_start, graph_logout, graph_state
 from .logs import LOG_FILE, log_event
-from .store import load_overrides
-from .tasks import _split_key, known_files, push_overrides
+from .tasks import known_files, pending_overrides_summary, push_overrides
 from .updates import GITHUB_REPO, _parse_version, check_update, find_releases_dir, github_latest
 
 def _running_port(args=None):
@@ -135,22 +134,17 @@ def cmd_status(args):
     print(f"Ficheiros:  {len(files)} encontrado(s) localmente")
     for f in files[:3]:
         print(f"   - {f}")
-    overrides = load_overrides()
-    pending = sum(len(v) for v in overrides.values() if isinstance(v, dict))
+    details = pending_overrides_summary()
+    pending = len(details)
     print(f"Pendentes:  {pending} alteracao(oes) de estado por enviar" +
           (" (corre: app.py push)" if pending else ""))
-    for key, entry in overrides.items():
-        if not isinstance(entry, dict):
-            continue
-        _, _, fn, _ = _split_key(key)
-        for col, o in entry.items():
-            print(f"   - {fn} | {col} -> {o.get('value', '')}")
+    for d in details:
+        print(f"   - {d['task']} | {d['field']} -> {d['value']}")
     return 0
 
 
 def cmd_push(args):
-    overrides = load_overrides()
-    pending = sum(len(v) for v in overrides.values() if isinstance(v, dict))
+    pending = len(pending_overrides_summary())
     if not pending:
         print("Nao ha alteracoes locais para enviar.")
         return 0

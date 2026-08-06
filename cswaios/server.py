@@ -32,8 +32,8 @@ from .notepad import image_file, image_type, load_notepad
 from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
                     save_overrides)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
-                    forget_web_cache, known_headers, push_overrides,
-                    queue_cellcat_override)
+                    forget_web_cache, known_headers, pending_overrides_summary,
+                    push_overrides, queue_cellcat_override)
 from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
                     normalize_ref, normalize_todo_item, save_todo, sort_todos_by_priority,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
@@ -159,8 +159,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({
                 "ok": True, "version": APP_VERSION,
                 "mode": "dev" if config.DEV_MODE else "stable", "home": HERE,
-                "pending": sum(len(v) for v in load_overrides().values()
-                               if isinstance(v, dict)),
+                "pending": len(pending_overrides_summary()),
             }), "application/json")
         elif parsed.path == "/api/jira/config":
             cfg = load_jira_config()

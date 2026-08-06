@@ -794,6 +794,36 @@ def push_overrides(target):
     return target, pushed, failed
 
 
+def pending_overrides_summary():
+    """Lista legível de cada alteração local (✎) por enviar — uma entrada por
+    campo, não por linha — para o cliente poder mostrar o que vai mesmo ser
+    enviado no próximo Push, em vez de só um número.
+    Duas formas de chave partilham o mesmo `overrides.json` (ver
+    _cellcat_key/_wb_key): a de categoria livre (vista mapeada) guarda um único
+    {value,base[,list]} por célula, já as colunas fixas do tracker guardam um
+    dict por coluna alterada nessa linha — por isso não se pode confiar em
+    len(entry) sem saber qual é."""
+    out = []
+    for key, entry in load_overrides().items():
+        if not isinstance(entry, dict) or not entry:
+            continue
+        wb_id, sheet, xlrow, col0 = _split_cellcat_key(key)
+        if wb_id is not None:
+            headers = known_headers(wb_id, sheet)
+            col_i = int(col0)
+            field = headers[col_i] if headers and 0 <= col_i < len(headers) else f"Coluna {col_i + 1}"
+            out.append({"sheet": sheet, "task": f"Linha {xlrow}", "field": field,
+                        "value": entry.get("value", "")})
+            continue
+        _, sheet, fn, todo = _split_key(key)
+        task = fn if not todo or todo == fn else f"{fn} — {todo}"
+        for col, sub in entry.items():
+            if isinstance(sub, dict):
+                out.append({"sheet": sheet, "task": task, "field": col,
+                            "value": sub.get("value", "")})
+    return out
+
+
 def _with_app_state(result):
     """Junta a qualquer resposta o estado que não depende do Excel (CCRs, TODO,
     pendentes, versão da app) — para essas vistas funcionarem à mesma quando
@@ -802,7 +832,8 @@ def _with_app_state(result):
     # TODO é totalmente manual: colunas/estado só mudam por ação explícita
     # do utilizador (drag/drop, checkbox, botões de cronómetro).
     result["todo"] = load_todo()
-    result["pending"] = sum(len(v) for v in load_overrides().values() if isinstance(v, dict))
+    result["pending_details"] = pending_overrides_summary()
+    result["pending"] = len(result["pending_details"])
     ip = lan_ip()
     if ip:
         result["lan_url"] = f"http://{ip}:{config.SERVER_PORT}"

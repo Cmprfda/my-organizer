@@ -946,6 +946,13 @@ function renderVersionBadge(data) {
     `csw.ai.os ${esc(v)}`;
 }
 
+// lista legível das alterações locais (✎) por enviar, para o title do botão
+// "Enviar (N)" — o número por si só não diz o que vai mesmo ser enviado.
+function pendingSummary(details) {
+  if (!details || !details.length) return "";
+  return details.map(d => `${d.sheet} · ${d.task} · ${d.field}: ${d.value}`).join("\n");
+}
+
 function render() {
   if (editorOpen) return;  // não destruir um editor de nota/estado a meio
   const data = lastData;
@@ -969,13 +976,15 @@ function render() {
   $("fetchBtn").classList.toggle("hidden", web);
   const pending = data.pending || 0;
   const pushLabel = pending ? `${t("btn_push")} (${pending})` : t("btn_refresh");
+  const pushTitle = pending ? pendingSummary(data.pending_details) : "";
   $("refresh").textContent = pushLabel;
+  $("refresh").title = pushTitle;
   $("reloadOnly").classList.toggle("hidden", !pending);
   $("clearLocals").classList.toggle("hidden", !pending);
   // o mesmo botão na página Por fazer, para não ser preciso voltar às Tarefas
   // só para enviar (só aparece quando há mesmo algo por enviar)
   $("refreshTodo").textContent = pushLabel;
-  $("refreshTodo").title = t("t_push_todo");
+  $("refreshTodo").title = pending ? pushTitle : t("t_push_todo");
   $("refreshTodo").classList.toggle("hidden", !pending);
 
   // sem nenhum livro aberto o painel das tarefas não tem nada que mostrar
