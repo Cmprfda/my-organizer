@@ -150,13 +150,6 @@ function setViewMapOpen(open) {
     $("viewMapTitle").textContent = t("viewmap_title");
     $("viewMapHint").textContent = hasCanonicalCompact(lastData) ? t("viewmap_hint_canonical") : t("viewmap_hint");
     $("viewMapSave").textContent = t("viewmap_save");
-    // só a seta: a legenda completa fica no tooltip/aria-label
-    $("viewMapNext").textContent = "→";
-    $("viewMapNext").title = t("viewmap_next");
-    $("viewMapNext").setAttribute("aria-label", t("viewmap_next"));
-    // Lados só faz sentido para a vista do tracker (Autor/Reviewer/Estado
-    // fixos) — a vista por coordenadas tem categorias livres, sem esses campos
-    $("viewMapNext").classList.toggle("hidden", !hasCanonicalCompact(lastData));
     renderViewMapRows();
     viewMapDraft.categories.forEach((cat, i) => {
       if (!cat.name && cat.startCell) scheduleViewMapPreview(i);
@@ -215,15 +208,6 @@ $("viewMapSave").addEventListener("click", () => {
   toast(t("viewmap_saved"), "ok");
 });
 
-$("viewMapNext").addEventListener("click", () => {
-  if (!lastData) return;
-  if (viewMapDraft) saveViewMap(lastData, viewMapDraft);
-  setViewMapOpen(false);
-  clearFilters();
-  load();
-  setSideMapOpen(true, true);
-});
-
 $("viewMapBtn").addEventListener("click", () => setViewMapOpen(true));
 $("viewMapClose").addEventListener("click", () => setViewMapOpen(false));
 $("viewMapOverlay").addEventListener("click", e => {
@@ -250,9 +234,17 @@ document.addEventListener("keydown", e => {
 let predefListDraft = null;   // [{id, name, mode, values, colors, sheet, cell, orientation, size}, ...]; só vai para o localStorage no Gravar
 let predefListSearchTerm = "";   // filtra as linhas mostradas (ver renderPredefListRows) — nunca mexe no draft nem nos índices
 
-// cor por valor (ver loadPredefLists/savePredefLists, tasks.js): só para
-// listas mode="manual" — os valores de uma lista mode="range" só se conhecem
-// ao vivo do livro, no servidor, por isso não têm aqui uma cor para escolher.
+// estado transitório do botão "Carregar valores" de uma lista mode="range"
+// (ver predefListFetchRangeValues abaixo): por id de lista, nunca gravado —
+// limpo sempre que o menu abre ou o utilizador edita a folha/célula/etc.
+let predefListLoadStatus = {};
+
+// cor por valor (ver loadPredefLists/savePredefLists, tasks.js): funciona
+// tanto para mode="manual" (valores escritos à mão) como mode="range" — para
+// esta última, l.values é só um retrato dos valores lidos ao vivo do livro da
+// última vez que se carregaram (botão "Carregar valores"), nunca a fonte de
+// verdade da lista em si (essa continua a ler-se ao vivo, ver build_payload,
+// cswaios/tasks.py); serve apenas para saber a que valores atribuir cor.
 // Reaproveita a paleta CUSTOMFILTER_COLORS (tasks.js), com um botão extra
 // "sem cor" (a única forma de tirar uma cor já escolhida a um valor).
 function predefListColorRow(l, i, v) {
@@ -292,11 +284,14 @@ function renderPredefListRows() {
         </select>
         <input type="number" min="1" class="viewMapCatField" data-i="${i}" data-field="size"
           placeholder="${esc(t("viewmap_list_size_ph"))}" value="${esc(l.size || "")}">
+        <button type="button" class="mini predefListLoadValues" data-i="${i}"
+          ${predefListLoadStatus[l.id] === "loading" ? "disabled" : ""}>${esc(t("predeflist_load_values"))}</button>
+        ${predefListLoadStatus[l.id] ? `<span class="viewMapEmptyHint predefListLoadHint">${esc(predefListLoadHintText(l))}</span>` : ""}
       </div>` : `
       <input type="text" class="viewMapCatField predefListValues" data-i="${i}" data-field="values"
         placeholder="${esc(t("predeflist_values_ph"))}" value="${esc((l.values || []).join(", "))}">`}
       <button type="button" class="mini viewMapCatRemove" data-i="${i}" title="${esc(t("predeflist_remove"))}">✕</button>
-      ${l.mode !== "range" && (l.values || []).length ? `
+      ${(l.values || []).length ? `
       <div class="viewMapListCfg predefListColors" data-i="${i}">
         ${l.values.map(v => predefListColorRow(l, i, v)).join("")}
       </div>` : ""}
@@ -309,11 +304,48 @@ function renderPredefListRows() {
     `</div>`;
 }
 
+// texto de estado do botão "Carregar valores" de uma linha mode="range" (ver
+// predefListLoadStatus acima e predefListFetchRangeValues abaixo)
+function predefListLoadHintText(l) {
+  const status = predefListLoadStatus[l.id];
+  if (status === "loading") return t("predeflist_values_loading");
+  if (status === "error") return t("predeflist_values_error");
+  if (status === "empty") return t("predeflist_values_none");
+  if (status === "ok") return t("predeflist_values_count").replace("{n}", String((l.values || []).length));
+  return "";
+}
+
+// lê ao vivo, no servidor, os valores atuais do intervalo configurado numa
+// linha mode="range" (ver _read_list_options/build_payload, cswaios/tasks.py)
+// — o mesmo mecanismo já usado para os filtros personalizados in_list/
+// not_in_list sobre uma lista "range" (ver customFilterListValues, tasks.js),
+// só que aqui pedido isoladamente, a pedido do botão, e não a cada refresh.
+async function predefListFetchRangeValues(l) {
+  const tab = activeTab();
+  const q = new URLSearchParams();
+  q.set("person", PERSON);
+  q.set("all", "0");
+  q.set("sheet", (tab && tab.sheet) || (lastData && lastData.sheet) || "");
+  q.set("file", tabFile(tab));
+  q.set("cycle", "0");
+  q.set("fresh", "0");
+  q.set("lang", LANG);
+  q.set("source", tabSource(tab));
+  if (tab && tab.kind === "onedrive" && tab.name) q.set("book_name", tab.name);
+  q.set("filterlists", JSON.stringify([
+    { id: l.id, sheet: l.sheet, cell: l.cell, orientation: l.orientation, size: l.size },
+  ]));
+  const res = await fetch(`/api/tasks?${q}`);
+  const data = await res.json();
+  return (data && data.filter_lists && data.filter_lists[l.id]) || [];
+}
+
 function setPredefListOpen(open) {
   if (open && !lastData) return;
   if (open) {
     predefListDraft = loadPredefLists(lastData).map(l => ({ ...l, values: [...l.values], colors: { ...(l.colors || {}) } }));
     predefListSearchTerm = "";
+    predefListLoadStatus = {};
     $("predefListTitle").textContent = t("predeflist_title");
     $("predefListHint").textContent = t("predeflist_hint");
     $("predefListSave").textContent = t("viewmap_save");
@@ -340,23 +372,49 @@ $("predefListRows").addEventListener("input", e => {
   } else {
     l[key] = field.value;
   }
+  // muda a fonte do intervalo: o último "Carregar valores" já não é de fiar
+  if (key === "sheet" || key === "cell" || key === "orientation" || key === "size") {
+    delete predefListLoadStatus[l.id];
+  }
   if (key === "mode") renderPredefListRows();
 });
 
 // só ao sair do campo (não a cada tecla, para não perder o foco a meio da
 // escrita): refaz as linhas de cor por valor, para acompanhar valores
-// novos/removidos na lista manual que se acabou de editar
+// novos/removidos na lista manual que se acabou de editar, ou a dica de
+// "Carregar valores" que se acabou de invalidar (ver listener "input" acima)
 $("predefListRows").addEventListener("change", e => {
-  if (e.target.closest(".predefListValues")) renderPredefListRows();
+  if (e.target.closest(".predefListValues") || e.target.closest(".viewMapListCfg")) renderPredefListRows();
 });
 
-$("predefListRows").addEventListener("click", e => {
+$("predefListRows").addEventListener("click", async e => {
   if (!predefListDraft) return;
   if (e.target.id === "predefListAdd") {
     predefListDraft.push({
       id: `pl${Date.now()}${Math.floor(Math.random() * 1000)}`, name: "", mode: "manual",
       values: [], colors: {}, sheet: "", cell: "", orientation: "vertical", size: "",
     });
+    renderPredefListRows();
+    return;
+  }
+  const loadBtn = e.target.closest(".predefListLoadValues");
+  if (loadBtn) {
+    const l = predefListDraft[Number(loadBtn.dataset.i)];
+    if (!l || !String(l.sheet || "").trim() || !String(l.cell || "").trim()) return;
+    predefListLoadStatus[l.id] = "loading";
+    renderPredefListRows();
+    try {
+      const values = await predefListFetchRangeValues(l);
+      // a lista pode ter sido removida ou trocada de modo enquanto se
+      // aguardava a resposta do servidor — o draft já não a tem por este id
+      const stillThere = (predefListDraft || []).find(x => x.id === l.id);
+      if (stillThere && stillThere.mode === "range") {
+        stillThere.values = values;
+        predefListLoadStatus[l.id] = values.length ? "ok" : "empty";
+      }
+    } catch (err) {
+      predefListLoadStatus[l.id] = "error";
+    }
     renderPredefListRows();
     return;
   }

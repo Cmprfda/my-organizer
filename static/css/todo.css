@@ -244,6 +244,15 @@ tr.todoRow.ccr-done.flagged td {
   cursor: pointer;
 }
 
+/* categoria composta da vista mapeada a medida (ver todoCustomTaskInfoHtml,
+   todo.js) - mesmo estilo so-leitura do compoundCatText da tabela */
+.todoTaskInfo .todoTaskInfoCat {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 /* prioridade do item: badge sempre à vista ao lado do estado (clique sobe,
    botão direito desce). "Normal" fica de propósito sem cor — só o que fugir ao
    normal deve saltar à vista; "Urgente" usa tinta sólida como o aviso 🚩. */

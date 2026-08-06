@@ -24,8 +24,7 @@ function hasCanonicalCompact(data) {
 
 // Esta folha tem alguma vista resumida ativa — a do tracker ou uma personalizada
 // gravada nas Definições (ver viewmap.js) — só usado para o texto do botão
-// ("Criar" vs "Editar"). "Lados" continua exclusivo da vista do tracker,
-// ver hasCanonicalCompact em setViewMapOpen (viewmap.js).
+// ("Criar" vs "Editar").
 function hasResumedView(data) {
   return hasCanonicalCompact(data) || !!loadViewMap(data);
 }
@@ -196,6 +195,7 @@ const VIEWMAP_PREFIX = "bsp-tracker-viewmap";
 const PREDEFLIST_PREFIX = "bsp-tracker-predeflists";
 const COMPOUNDCAT_PREFIX = "bsp-tracker-compoundcats";
 const COLORDER_PREFIX = "bsp-tracker-colorder";
+const COLWIDTH_PREFIX = "bsp-tracker-colwidth";
 
 function viewMapKey(data) {
   return `${VIEWMAP_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
@@ -255,6 +255,63 @@ function resolveColOrder(data, kind, headers) {
   });
   headers.forEach((_, i) => { if (!used.has(i)) order.push(i); });
   return order;
+}
+
+// larguras de coluna escolhidas a arrastar o puxador no cabeçalho (ver
+// colResizeHandle/pointerdown no thead, mais abaixo): guardadas por nome de
+// coluna, tal como colOrder, e só por livro+aba+vista (kind) — antes de
+// qualquer arrasto não há larguras gravadas, e a tabela usa o layout
+// automático de sempre
+function colWidthKey(data, kind) {
+  return `${COLWIDTH_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}:${kind}`;
+}
+
+function loadColWidths(data, kind) {
+  if (!data || !data.sheet) return {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(colWidthKey(data, kind)) || "null");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveColWidths(data, kind, widths) {
+  if (!data || !data.sheet) return;
+  localStorage.setItem(colWidthKey(data, kind), JSON.stringify(widths));
+}
+
+// limites usados a arrastar o puxador de coluna (ver colResizeHandle, mais
+// abaixo) e a ajustar as larguras à caixa da tabela (ver fittedColWidths):
+// COL_MIN_WIDTH é o mínimo de qualquer coluna à medida; ACTION_COL_MIN_WIDTH
+// é o espaço reservado para a coluna de ação (nunca tem largura à medida,
+// ver colgroup em render())
+const COL_MIN_WIDTH = 40;
+const ACTION_COL_MIN_WIDTH = 70;
+
+// a tabela nunca deve ultrapassar a largura da sua caixa (tablebox), mesmo
+// com larguras à medida gravadas de uma janela mais larga ou de colunas
+// visíveis diferentes — encolhe-as proporcionalmente (sem nenhuma abaixo de
+// COL_MIN_WIDTH) até caberem, sem tocar nas larguras gravadas em si
+function fittedColWidths(names, availWidth) {
+  const vals = names.map(n => currentColWidths[n] || null);
+  const known = vals.filter(w => w != null);
+  if (!known.length || !availWidth) return vals;
+  let total = known.reduce((a, b) => a + b, 0);
+  let overflow = total + ACTION_COL_MIN_WIDTH - availWidth;
+  let guard = 0;
+  while (overflow > 0.5 && guard++ < 8) {
+    const idxs = vals.map((w, i) => (w != null && w > COL_MIN_WIDTH) ? i : -1).filter(i => i >= 0);
+    const shrinkableTotal = idxs.reduce((a, i) => a + (vals[i] - COL_MIN_WIDTH), 0);
+    if (!idxs.length || shrinkableTotal <= 0) break;
+    for (const i of idxs) {
+      const share = (vals[i] - COL_MIN_WIDTH) / shrinkableTotal;
+      vals[i] = Math.max(COL_MIN_WIDTH, vals[i] - overflow * share);
+    }
+    total = vals.filter(w => w != null).reduce((a, b) => a + b, 0);
+    overflow = total + ACTION_COL_MIN_WIDTH - availWidth;
+  }
+  return vals;
 }
 
 // categorias compostas desta aba (ver customfilters.js): [{id, name, columns:
@@ -712,13 +769,36 @@ function refreshTaskViews() {
   if (currentView === "todo") renderTodo();
 }
 
+// cor por valor de uma lista predefinida (ver colorFor em buildCustomCompact)
+// associada a uma categoria mapeada com o mesmo NOME desta coluna — deixa um
+// badge de Status TC/TP fora da vista mapeada (ex.: o painel do Por fazer,
+// ver badgeHtml) usar a mesma cor que a vista mapeada desta folha já usa
+// para esse valor, para as duas nunca discordarem. Sem categoria homónima,
+// ou sem lista fixa com cores associada, devolve "" (sem cor definida).
+function categoryListColor(data, colName, value) {
+  const cv = data && data.cell_view;
+  const catHeaders = (cv && cv.headers) || [];
+  const idx = catHeaders.indexOf(colName);
+  if (idx < 0) return "";
+  const cat = ((loadViewMap(data) || {}).categories || [])[idx];
+  if (!cat || !cat.useList || cat.listMode !== "fixed" || !cat.listId) return "";
+  const list = loadPredefLists(data).find(l => l.id === cat.listId);
+  const colors = (list && list.colors) || {};
+  return colors[String(value || "").trim()] || "";
+}
+
 // display existe só para o texto visível: a classificação por cor
 // (statusClass) continua a usar o estado cru, para a anotação da coluna
 // ("in review (Status TP)") não estragar o reconhecimento do estado
 function badgeHtml(text, col, meta, editable = meta && (col === "Status TC" || col === "Status TP"), display = text, colTag = "") {
   const local = !!(meta && meta.over && meta.over[col]);
   const title = local ? t("t_local") : t("t_edit_status");
-  return `<span class="badge ${statusClass(text)}${local ? " local" : ""}"` +
+  // o texto pode vir com o prefixo "TC: "/"TP: " (ver statusAll, buildCompact)
+  // — a cor por valor tem de bater com o valor cru da folha, sem esse prefixo
+  const rawValue = String(text || "").replace(/^(?:TC|TP):\s*/, "");
+  const listColor = lastData ? categoryListColor(lastData, col, rawValue) : "";
+  const cls = listColor ? `customfilter-${listColor}` : statusClass(text);
+  return `<span class="badge ${cls}${local ? " local" : ""}"` +
     // data-rawstatus guarda o texto sem a anotação da coluna (ex.: sem "(Status TP)")
     // — openStatusEditor lê daqui, nunca do innerText do badge, senão o valor
     // gravado no Excel viria com a anotação colada por engano
@@ -1138,14 +1218,31 @@ function render() {
   tbl.classList.remove("hidden");
   const _narrow = window.innerWidth <= 720;
   tbl.classList.toggle("cards", taskLayout === "cards" || _narrow);
+  // vista resumida (tracker ou à medida): a caixa encolhe à largura das
+  // colunas mostradas, em vez de esticar a 100% do painel e criar scroll
+  // horizontal (ver .tablebox.compactFit, tables.css)
+  tbl.classList.toggle("compactFit", useCompact);
   // ordem de exibição das colunas (ver resolveColOrder/saveColOrder, e o
   // dragstart/drop no thead, mais abaixo): colOf[i] é o índice ORIGINAL em
   // headers/r[] que aparece na posição i do ecrã — arrastar um cabeçalho só
   // muda esta ordem, nunca o que cada índice significa (ver i2 no bloco da
   // tbody, à frente)
   const colOf = resolveColOrder(data, currentColOrderKind, headers);
+  // larguras à medida (ver colResizeHandle/pointerdown, mais abaixo): sem
+  // nenhuma gravada ainda, a tabela fica no layout automático de sempre
+  currentColWidths = loadColWidths(data, currentColOrderKind);
+  const hasCustomWidths = Object.keys(currentColWidths).length > 0;
+  $("tasksTable").classList.toggle("colsFixed", hasCustomWidths);
+  const fitted = hasCustomWidths
+    ? fittedColWidths(colOf.map(i2 => headers[i2]), $("tablebox").clientWidth)
+    : [];
+  $("colgroup").innerHTML = colOf.map((i2, i) => {
+    const w = fitted[i];
+    return `<col${w ? ` style="width:${Math.round(w)}px"` : ""}>`;
+  }).join("") + "<col>";
   $("thead").innerHTML = "<tr>" + colOf.map(i2 =>
-    `<th draggable="true" data-colname="${esc(headers[i2])}" title="${esc(t("t_col_drag"))}">${esc(headers[i2])}</th>`
+    `<th draggable="true" data-colname="${esc(headers[i2])}" title="${esc(t("t_col_drag"))}">` +
+    `${esc(headers[i2])}<span class="colResizeHandle" data-resize="${esc(headers[i2])}" draggable="false"></span></th>`
   ).join("") + `<th class="todoActionCell">${esc(t("hdr_action"))}</th></tr>`;
   currentMeta = rows.map(metaFor);
   currentObs = rows.map(r =>
@@ -1471,6 +1568,67 @@ $("thead").addEventListener("drop", e => {
   names.splice(to, 0, names.splice(from, 1)[0]);
   saveColOrder(lastData, currentColOrderKind, names);
   render();
+});
+
+// arrastar o puxador no canto de um cabeçalho para definir a largura dessa
+// coluna (ver colWidthKey/loadColWidths/saveColWidths, mais acima): à
+// primeira vez que se arrasta nesta vista, "congela" a largura atual (auto)
+// de todas as colunas, para o layout deixar de saltar quando table-layout
+// passa a fixed — só depois disso a coluna arrastada muda de facto
+let _colResize = null;   // { name, th, startX, startWidth } enquanto se arrasta
+$("thead").addEventListener("pointerdown", e => {
+  const handle = e.target.closest(".colResizeHandle");
+  if (!handle) return;
+  const th = handle.closest("th[data-colname]");
+  if (!th) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (!Object.keys(currentColWidths).length) {
+    // colgroup e os <th data-colname> foram construídos pela mesma ordem
+    // (colOf, ver render()), por isso o índice i alinha um a um
+    [...$("thead").querySelectorAll("th[data-colname]")].forEach((el, i) => {
+      const w = Math.round(el.getBoundingClientRect().width);
+      currentColWidths[el.dataset.colname] = w;
+      const col = $("colgroup").children[i];
+      if (col) col.style.width = `${w}px`;
+    });
+    $("tasksTable").classList.add("colsFixed");
+  }
+  _colResize = { name: handle.dataset.resize, th, startX: e.clientX, startWidth: th.getBoundingClientRect().width };
+  handle.classList.add("resizing");
+  handle.setPointerCapture(e.pointerId);
+});
+$("thead").addEventListener("pointermove", e => {
+  if (!_colResize) return;
+  const cols = [...$("colgroup").children];
+  const i = [...$("thead").querySelectorAll("th[data-colname]")].indexOf(_colResize.th);
+  const col = cols[i];
+  if (!col) return;
+  // a coluna arrastada nunca pode crescer a ponto de a tabela ultrapassar a
+  // caixa (tablebox) — o espaço disponível é o que resta depois das outras
+  // colunas já fixadas (congeladas no pointerdown) e da coluna de ação
+  const othersWidth = cols.reduce((sum, c, ci) =>
+    sum + (ci !== i && c.style.width ? parseFloat(c.style.width) : 0), 0);
+  const avail = $("tablebox").clientWidth;
+  const maxWidth = avail ? Math.max(COL_MIN_WIDTH, avail - othersWidth - ACTION_COL_MIN_WIDTH) : Infinity;
+  const width = Math.min(maxWidth,
+    Math.max(COL_MIN_WIDTH, Math.round(_colResize.startWidth + (e.clientX - _colResize.startX))));
+  col.style.width = `${width}px`;
+});
+$("thead").addEventListener("pointerup", e => {
+  if (!_colResize || !lastData) { _colResize = null; return; }
+  const i = [...$("thead").querySelectorAll("th[data-colname]")].indexOf(_colResize.th);
+  const width = $("colgroup").children[i] && parseInt($("colgroup").children[i].style.width, 10);
+  if (width) currentColWidths[_colResize.name] = width;
+  saveColWidths(lastData, currentColOrderKind, currentColWidths);
+  const resizing = $("thead").querySelector(".colResizeHandle.resizing");
+  if (resizing) resizing.classList.remove("resizing");
+  _colResize = null;
+});
+$("thead").addEventListener("pointercancel", () => {
+  const resizing = $("thead").querySelector(".colResizeHandle.resizing");
+  if (resizing) resizing.classList.remove("resizing");
+  _colResize = null;
 });
 
 $("ccrBody").addEventListener("click", e => {

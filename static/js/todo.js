@@ -459,6 +459,7 @@ function todoHas(kind, title, ref) {
 // `taskIndexByBook` guarda um índice por livro (o nome vem em ref.workbook) e
 // `taskIndexMap` junta-os todos, para os itens antigos, que não sabem o livro.
 let taskIndexStamp = null, taskIndexMap = null, taskIndexByBook = null;
+let customIndexByBook = null;
 
 function taskIndex() {
   // impressão digital do que está lido em memória: só se refaz quando muda
@@ -470,10 +471,12 @@ function taskIndex() {
   taskIndexStamp = stamp;
   taskIndexMap = new Map();
   taskIndexByBook = new Map();
+  customIndexByBook = new Map();
   workbookTabs.forEach(tab => {
     const data = tab.lastData;
-    const compact = data && !data.error ? buildCompact(data) : null;
-    if (!compact) return;
+    if (!data || data.error) return;
+    const compact = buildCompact(data);
+    if (compact) {
     const doLivro = new Map();
     compact.rows.forEach(r => {
       const meta = r[6] || {};
@@ -482,8 +485,39 @@ function taskIndex() {
       if (!taskIndexMap.has(key)) taskIndexMap.set(key, r);
     });
     taskIndexByBook.set(tab.name || "", doLivro);
+    }
+    const custom = buildCustomCompact(data);
+    if (custom) {
+      const doLivroCustom = new Map();
+      (data.row_meta || []).forEach((meta, ri) => {
+        const key = `${meta.fn || ""}${meta.todo || ""}`;
+        if (!doLivroCustom.has(key)) {
+          doLivroCustom.set(key, {
+            row: custom.rows[ri], headers: custom.headers,
+            compoundIdx: custom.compoundIdx, execIdx: custom.execIdx,
+          });
+        }
+      });
+      customIndexByBook.set(tab.name || "", doLivroCustom);
+    }
   });
   return taskIndexMap;
+}
+
+function customRowFor(it) {
+  const src = it && todoSources(it).find(s => s.kind === "task");
+  if (!src) return null;
+  taskIndex();
+  if (!customIndexByBook || !customIndexByBook.size) return null;
+  const ref = src.ref || {};
+  const fn = ref.fn || String(src.title).trim();
+  const key = `${fn}${ref.todo || ""}`;
+  const onde = ref.workbook ? customIndexByBook.get(ref.workbook) : null;
+  if (onde) return onde.get(key) || null;
+  for (const map of customIndexByBook.values()) {
+    if (map.has(key)) return map.get(key);
+  }
+  return null;
 }
 
 function taskRowFor(it) {
@@ -532,7 +566,31 @@ function todoMySideFlag(it, corner) {
   return `<span class="${cls}" title="${esc(t("side_my"))}">🚩 ${esc(t("side_my"))}</span>`;
 }
 
+// categorias da vista mapeada a medida ja mostradas como titulo/nota do item
+// (ver todoTitleHtml/todoNoteHtml) - repeti-las aqui seria mostrar a mesma
+// informacao duas vezes
+const CUSTOM_INFO_SKIP = new Set([norm("Function/TC"), norm("To Do")]);
+
+function todoCustomTaskInfoHtml(entry) {
+  const { row, headers, compoundIdx, execIdx } = entry;
+  const parts = headers.map((h, i) => {
+    if (i === execIdx || CUSTOM_INFO_SKIP.has(norm(h))) return "";
+    const v = row[i];
+    if (v === undefined || v === null || v === "") return "";
+    if (compoundIdx && compoundIdx.has(i)) return `<div class="todoTaskInfoCat">${v}</div>`;
+    return `<span class="role">${esc(h)}: ${esc(String(v))}</span>`;
+  });
+  if (execIdx >= 0) {
+    const meta = row[headers.length] || {};
+    const { inner, title } = execCellHtml(meta);
+    parts.push(`<div class="execCell" data-xlrow="${esc(meta.xlrow || "")}" title="${esc(title)}">${inner}</div>`);
+  }
+  return `<div class="todoTaskInfo">${parts.filter(Boolean).join("")}</div>`;
+}
+
 function todoTaskInfoHtml(it) {
+  const custom = customRowFor(it);
+  if (custom) return todoCustomTaskInfoHtml(custom);
   const row = taskRowFor(it);
   if (!row) return "";
   const meta = row[6] || {};

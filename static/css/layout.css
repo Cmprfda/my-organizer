@@ -522,6 +522,10 @@ body.topShrunk .ios-top #helpBtn {
 
 .predefListValues { flex: 1 1 260px; }
 
+/* dica junto do botão "Carregar valores" de uma lista mode="range" (ver
+   predefListLoadHintText, viewmap.js): mesmo estilo do resto das dicas */
+.predefListLoadHint { flex: 1 1 100%; }
+
 /* janela "Filtros personalizados desta aba" (ver customfilters.js): mesmo
    layout de linhas, reaproveitando as classes viewMapCat* */
 #customFilterBody {
@@ -613,8 +617,9 @@ body.topShrunk .ios-top #helpBtn {
   border: 1.5px dashed var(--muted);
 }
 
-/* cor por valor de uma lista predefinida manual (ver renderPredefListRows,
-   viewmap.js): uma linha por valor, com o mesmo conjunto de pontos de cor */
+/* cor por valor de uma lista predefinida, manual ou de intervalo (ver
+   renderPredefListRows, viewmap.js): uma linha por valor, com o mesmo
+   conjunto de pontos de cor */
 .predefListColors {
   flex-direction: column;
   align-items: stretch;
@@ -630,51 +635,6 @@ body.topShrunk .ios-top #helpBtn {
   font-size: 13px;
   color: var(--text);
   min-width: 90px;
-}
-
-/* janela "Lados: Autor/Reviewer": mapa estado -> lado (ver sidemap.js) */
-#sideMapBody {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  -webkit-overflow-scrolling: touch;
-}
-
-#sideMapHint {
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-
-.sideMapSelects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.sideMapSelects label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.sideMapSelects select {
-  font: inherit;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--ios-radius-btn);
-  padding: 6px 8px;
-}
-
-#sideMapSave {
-  align-self: flex-start;
 }
 
 .settingsPanel .setRowUpdate {

@@ -108,6 +108,21 @@ select.statusEdit {
   -webkit-overflow-scrolling: touch;
 }
 
+/* vista resumida (tracker ou à medida, ver useCompact/tbl.classList.toggle
+   em tasks.js): a caixa encolhe à largura das colunas mostradas em vez de
+   esticar a 100% do painel — sem scroll horizontal, mesmo depois de o
+   utilizador estreitar/alargar colunas à mão (colResizeHandle) */
+.tablebox.compactFit:not(.cards) {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: visible;
+}
+
+.tablebox.compactFit:not(.cards) table {
+  width: auto;
+  max-width: 100%;
+}
+
 table {
   border-collapse: collapse;
   width: 100%;
@@ -122,8 +137,18 @@ td {
   vertical-align: top;
 }
 
+/* quebra sempre ativa (não só com colsFixed, mais abaixo): sem isto, uma só
+   célula com uma palavra sem espaços mas muito longa (ex.: um nome de função
+   grande, sem "/" nem "_" para quebrar) força table-layout:auto a alargar a
+   coluna toda para caber esse valor sozinho — mesmo com todas as outras
+   linhas curtas. overflow-wrap sozinho não chega: só entra no cálculo da
+   largura mínima da coluna, não na largura "preferida" que table-layout:auto
+   usa para decidir a largura de cada coluna — por isso word-break também é
+   preciso aqui. */
 td {
   white-space: pre-line;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 th {
@@ -149,6 +174,47 @@ th[data-colname] {
 
 th[data-colname].colDragging {
   opacity: .4;
+}
+
+/* largura à medida por coluna (ver colWidthKey/colResizeHandle, tasks.js):
+   só passa a table-layout: fixed depois do primeiro arrasto, para não
+   estreitar/alargar colunas sem o utilizador pedir */
+#tasksTable.colsFixed {
+  table-layout: fixed;
+}
+
+/* só o cabeçalho é de uma linha (white-space: nowrap, acima) — as células
+   continuam a quebrar linha normalmente (white-space: pre-line) */
+#tasksTable.colsFixed th[data-colname] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* badges têm white-space: nowrap (abaixo) para ficarem numa "pílula" de uma
+   linha — mas numa coluna estreitada à mão (colsFixed) isso faz o texto
+   ultrapassar a célula e sobrepor-se à coluna seguinte, em vez de simplesmente
+   quebrar linha. Só aqui (largura fixa) é que vale a pena deixar o badge
+   quebrar dentro da célula. */
+#tasksTable.colsFixed td .badge {
+  white-space: normal;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.colResizeHandle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.colResizeHandle:hover,
+.colResizeHandle.resizing {
+  background: var(--accent-soft);
 }
 
 tr:last-child td {

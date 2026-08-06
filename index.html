@@ -170,7 +170,8 @@
           <div class="summary" id="summary"></div>
 
           <div class="tablebox hidden" id="tablebox">
-            <table>
+            <table id="tasksTable">
+              <colgroup id="colgroup"></colgroup>
               <thead id="thead"></thead>
               <tbody id="tbody"></tbody>
             </table>
@@ -518,7 +519,6 @@
         <div class="viewMapRows" id="viewMapRows"></div>
         <div class="viewMapActions">
           <button type="button" id="viewMapSave"></button>
-          <button type="button" class="secondary hidden" id="viewMapNext"></button>
         </div>
       </div>
     </div>
@@ -577,24 +577,6 @@
     </div>
   </div>
 
-  <div id="sideMapOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
-    aria-label="Lados: Autor / Reviewer">
-    <div class="helpCard jiraLogCard">
-      <div class="helpHead">
-        <strong id="sideMapTitle">Lados: Autor / Reviewer</strong>
-        <button type="button" class="ccr-x" id="sideMapClose" title="Fechar">✕</button>
-      </div>
-      <div id="sideMapBody">
-        <p class="setHint" id="sideMapHint"></p>
-        <div class="viewMapRows" id="sideMapRows"></div>
-        <div class="viewMapActions">
-          <button type="button" class="secondary hidden" id="sideMapBack"></button>
-          <button type="button" id="sideMapSave"></button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <datalist id="jiraSuggestions"></datalist>
 
   <div id="jiraLogOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
@@ -638,7 +620,6 @@
   <script src="/static/js/feedback.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/viewmap.js"></script>
-  <script src="/static/js/sidemap.js"></script>
   <script src="/static/js/customfilters.js"></script>
   <script src="/static/js/picker.js"></script>
   <script src="/static/js/workbooks.js"></script>

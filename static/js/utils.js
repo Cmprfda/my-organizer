@@ -88,9 +88,10 @@ function autoSideOf(role, status) {
   return reviewing ? "On the other side" : "On my side";
 }
 
-/* Overrides do lado por estado, escolhidos em Definições → Lados (ver sidemap.js).
-   Mapa: { [estado normalizado]: { author?: "my"|"other"|"done", reviewer?: ... } }
-   Sem overrides gravados, sideOf() devolve exatamente o mesmo que autoSideOf(). */
+/* Overrides do lado por estado, gravados por versões anteriores da app
+   (o ecrã que os editava foi removido). Mapa: { [estado normalizado]:
+   { author?: "my"|"other"|"done", reviewer?: ... } }. Sem overrides
+   gravados, sideOf() devolve exatamente o mesmo que autoSideOf(). */
 const SIDE_OVERRIDE_KEY = "bsp-tracker-side-map";
 // "na": mesmo sentinel que autoSideOf() devolve para removidas/canceladas —
 // não conta para nenhum lado
@@ -105,21 +106,7 @@ function loadSideOverrides() {
   }
 }
 
-let SIDE_OVERRIDES = loadSideOverrides();
-
-// grava só as entradas não vazias, como loadViewMap/saveViewMap (tasks.js)
-function saveSideOverrides(map) {
-  const limpo = {};
-  Object.entries(map || {}).forEach(([status, roles]) => {
-    const entry = {};
-    if (roles && SIDE_OVERRIDE_RESULT[roles.author]) entry.author = roles.author;
-    if (roles && SIDE_OVERRIDE_RESULT[roles.reviewer]) entry.reviewer = roles.reviewer;
-    if (Object.keys(entry).length) limpo[status] = entry;
-  });
-  if (Object.keys(limpo).length) localStorage.setItem(SIDE_OVERRIDE_KEY, JSON.stringify(limpo));
-  else localStorage.removeItem(SIDE_OVERRIDE_KEY);
-  SIDE_OVERRIDES = limpo;
-}
+const SIDE_OVERRIDES = loadSideOverrides();
 
 function sideOf(role, status) {
   const t = norm(status);
