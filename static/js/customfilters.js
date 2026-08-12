@@ -129,6 +129,11 @@ function setCustomFilterOpen(open) {
     $("customFilterTitle").textContent = t("customfilter_title");
     $("customFilterHint").textContent = t("customfilter_hint");
     $("customFilterSave").textContent = t("viewmap_save");
+    // interruptor desta aba, comum a todos os filtros (ver
+    // loadCustomFilterHideCols/customFilterHiddenCols, tasks.js)
+    $("customFilterHideCols").checked = loadCustomFilterHideCols(lastData);
+    $("customFilterHideColsLabel").textContent = t("customfilter_hide_cols");
+    $("customFilterHideColsRow").title = t("customfilter_hide_cols_hint");
     $("customFilterSearch").value = "";
     $("customFilterSearch").placeholder = t("customfilter_search_ph");
     renderCustomFilterRows();
@@ -225,6 +230,7 @@ $("customFilterRows").addEventListener("click", e => {
 $("customFilterSave").addEventListener("click", () => {
   if (!lastData || !customFilterDraft) return;
   saveCustomFilters(lastData, customFilterDraft);
+  saveCustomFilterHideCols(lastData, $("customFilterHideCols").checked);
   // só larga os ids de filtros removidos nesta edição — os que continuam a
   // existir mantêm-se ligados/desligados como estavam antes do Gravar
   const validIds = new Set(customFilterDraft.map(f => f.id));

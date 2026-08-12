@@ -623,7 +623,63 @@ function evalCustomFilter(meta, f, listValuesById, compoundById) {
   return groups.some(g => (g.conditions || []).every(c => evalCustomCondition(meta, c, listValuesById, compoundById)));
 }
 
-function buildCustomCompact(data) {
+/* "Esconder as colunas dos filtros ligados": um interruptor por livro+aba (a
+   checkbox no topo da janela dos filtros personalizados, ver customfilters.js).
+   Ligado, as colunas que um filtro LIGADO testa saem da tabela — o valor delas
+   já é conhecido (ex.: com "Do outro lado" ligado, o estado de todas as linhas
+   à vista está do outro lado), por isso só ocupam espaço — e ficam à vista
+   apenas as OUTRAS. Vale para qualquer botão-resumo: os do utilizador e os que
+   vêm sempre com a folha ("Do meu lado", "Do outro lado", "Feito"), que são
+   filtros personalizados pré-carregados (ver SEED_EXAMPLES), mais os botões de
+   estado (ver statusFilters em render()). A caixa de detalhe de um item mostra
+   sempre o item inteiro, mesmo com colunas escondidas (ver currentBoxCells). */
+const CUSTOMFILTER_HIDECOLS_PREFIX = "bsp-tracker-customfilters-hidecols";
+
+function customFilterHideColsKey(data) {
+  return `${CUSTOMFILTER_HIDECOLS_PREFIX}:${(data && data.file) || ""}:${(data && data.sheet) || ""}`;
+}
+
+function loadCustomFilterHideCols(data) {
+  if (!data || !data.sheet) return false;
+  return localStorage.getItem(customFilterHideColsKey(data)) === "1";
+}
+
+function saveCustomFilterHideCols(data, on) {
+  if (!data || !data.sheet) return;
+  if (on) localStorage.setItem(customFilterHideColsKey(data), "1");
+  else localStorage.removeItem(customFilterHideColsKey(data));
+}
+
+// colunas a esconder da tabela: as que os filtros LIGADOS testam, se o
+// interruptor acima estiver ligado. Nomes verbatim, os mesmos que aparecem em
+// headers/compact.headers, por isso serve as duas vistas (completa e mapeada à
+// medida). Uma condição sobre uma coluna composta (ver loadCompoundCats)
+// esconde a composta e as suas colunas de origem; e uma composta cujas origens
+// fiquem TODAS escondidas desaparece por inteiro (não sobrava nada para mostrar
+// na célula dela) — quando só parte fica escondida, a categoria mantém-se com
+// as outras partes (ver buildCustomCompact).
+function customFilterHiddenCols(data) {
+  const out = new Set();
+  if (!loadCustomFilterHideCols(data)) return out;
+  const filters = loadCustomFilters(data).filter(f => customFilterActive.has(f.id));
+  if (!filters.length) return out;
+  const compoundCats = loadCompoundCats(data);
+  filters.forEach(f => (f.groups || []).forEach(g => (g.conditions || []).forEach(c => {
+    const cid = compoundColumnId(c.column);
+    if (!cid) { out.add(c.column); return; }
+    const cc = compoundCats.find(x => x.id === cid);
+    if (cc) { out.add(cc.name); cc.columns.forEach(n => out.add(n)); }
+  })));
+  compoundCats.forEach(cc => { if (cc.columns.every(n => out.has(n))) out.add(cc.name); });
+  return out;
+}
+
+// hiddenCols: nomes a deixar de fora das células das categorias compostas (ver
+// customFilterHiddenCols) — as colunas em si (mapeadas à parte ou a própria
+// composta) saem depois, em render(), que trata as duas vistas do mesmo modo.
+// Sem argumento nada é escondido, que é o que o painel do Por fazer quer (ver
+// todo.js).
+function buildCustomCompact(data, hiddenCols) {
   const cv = data && data.cell_view;
   const cfg = loadViewMap(data);
   const catHeaders = (cv && cv.headers) || [];
@@ -643,6 +699,7 @@ function buildCustomCompact(data) {
   // que não passam por aqui.
   const compoundCats = loadCompoundCats(data).filter(cc => cc.columns.every(name => catHeaders.includes(name)));
   const absorbed = new Set(compoundCats.flatMap(cc => cc.columns));
+  const hidden = hiddenCols || new Set();
   const visibleIdx = catHeaders.map((_, i) => i).filter(i => !absorbed.has(catHeaders[i]));
   const headers = [...visibleIdx.map(i => catHeaders[i]), ...compoundCats.map(cc => cc.name), ...(execOn ? [t("hdr_exec")] : [])];
   const compoundIdx = new Set(compoundCats.map((_, i) => visibleIdx.length + i));
@@ -684,9 +741,14 @@ function buildCustomCompact(data) {
   const catLists = visibleIdx.map(i => catListsFull[i]);
   const catOptions = visibleIdx.map(i => catOptionsFull[i]);
   const catListId = visibleIdx.map(i => listIdFull[i]);
-  const rows = (data.row_meta || []).map((meta, ri) => {
+  // com um filtro a esconder colunas, cada linha sai em dois sabores: o da
+  // TABELA (sem as partes escondidas) e o COMPLETO, que é o que a caixa de
+  // detalhe mostra (ver currentBoxCells em render() e itembox.js) — fullOf liga
+  // um ao outro pela própria linha, que sobrevive à pesquisa e aos filtros
+  const pairs = (data.row_meta || []).map((meta, ri) => {
     const fullVals = (catRows[ri] || catHeaders.map(() => "")).slice();
     const vals = visibleIdx.map(i => fullVals[i]);
+    const valsFull = hidden.size ? vals.slice() : null;
     const pendingFull = pendingRowsFull[ri] || [];
     const baseFull = baseRowsFull[ri] || [];
     compoundCats.forEach(cc => {
@@ -696,20 +758,31 @@ function buildCustomCompact(data) {
         const span = cellCatSpan(
           val || "—", catColsFull[origIdx], catOptionsFull[origIdx] || [], catListsFull[origIdx] || null,
           !!pendingFull[origIdx], baseFull[origIdx] || "", meta, colorFor(origIdx, val));
-        return `<strong>${esc(name)}:</strong> ${span}`;
+        return { name, html: `<strong>${esc(name)}:</strong> ${span}` };
       });
-      vals.push(parts.join("<br>"));
+      // uma parte escondida por um filtro ativo (ver customFilterHiddenCols)
+      // sai só de dentro desta célula: as restantes partes da mesma composta
+      // continuam à vista, cada uma com o seu cellCatSpan editável
+      vals.push(parts.filter(p => !hidden.has(p.name)).map(p => p.html).join("<br>"));
+      if (valsFull) valsFull.push(parts.map(p => p.html).join("<br>"));
     });
-    if (execOn) vals.push(execSummary(meta));
+    if (execOn) {
+      const exec = execSummary(meta);
+      vals.push(exec);
+      if (valsFull) valsFull.push(exec);
+    }
     if (meta) {
       meta.cellcatPending = visibleIdx.map(i => pendingFull[i]);
       meta.cellcatBase = visibleIdx.map(i => baseFull[i]);
     }
     vals.push(meta || null);
-    return vals;
+    if (valsFull) valsFull.push(meta || null);
+    return { vals, valsFull };
   });
+  const rows = pairs.map(p => p.vals);
+  const fullOf = hidden.size ? new Map(pairs.map(p => [p.vals, p.valsFull])) : null;
 
-  return { headers, rows, custom: true, execIdx, compoundIdx, useList, catCols, catLists, catOptions, catListId, listColors: colorsByListId };
+  return { headers, rows, fullOf, custom: true, execIdx, compoundIdx, useList, catCols, catLists, catOptions, catListId, listColors: colorsByListId };
 }
 
 let lastSelectorsSig = "";
@@ -1036,9 +1109,13 @@ function render() {
       (web ? "" : ` <button class="mini" id="cycleNow">${t("btn_cycle")}</button>`) : "") +
     (data.notice ? `<br><span class="notice">ℹ ${esc(data.notice)}</span>` : "");
 
+  // colunas escondidas por causa dos filtros ligados (ver
+  // customFilterHiddenCols): resolvidas aqui porque a vista mapeada precisa
+  // delas ao montar as células das categorias compostas
+  const hiddenCols = customFilterHiddenCols(data);
   // vista mapeada à medida, para folhas onde o utilizador definiu categorias
   // por coordenadas de célula nas Definições (ver viewmap.js)
-  const compact = buildCustomCompact(data);
+  const compact = buildCustomCompact(data, hiddenCols);
   $("viewToggle").classList.toggle("hidden", !compact);
   const useCompact = compact && compactView;
   // qual vista está à vista agora, para a ordem de colunas arrastada pelo
@@ -1069,8 +1146,15 @@ function render() {
   // (na vista mapeada à medida não há coluna de estado fixa: nunca conta como tal)
   const statusIdx = useCompact ? -1 : headers.findIndex(isStatusHeader);
   let rows = searched;
-  if (statusFilters.size && statusIdx >= 0 && !useCompact)
+  if (statusFilters.size && statusIdx >= 0 && !useCompact) {
     rows = rows.filter(r => statusLines(r[statusIdx]).some(s => statusFilters.has(s)));
+    // um botão de estado ligado também torna a coluna de estado redundante (ver
+    // customFilterHiddenCols). Junta-se aqui, e não lá, porque só agora se sabe
+    // qual é a coluna de estado desta vista — e isso não muda nada para as
+    // categorias compostas, que só existem na vista mapeada, onde não há
+    // botões de estado (statusIdx = -1).
+    if (loadCustomFilterHideCols(data)) hiddenCols.add(headers[statusIdx]);
+  }
 
   // filtros personalizados (ver customfilters.js): sempre pela coluna real da
   // folha (row_meta[].orig), por isso funcionam em qualquer vista — à medida
@@ -1147,7 +1231,19 @@ function render() {
   // headers/r[] que aparece na posição i do ecrã — arrastar um cabeçalho só
   // muda esta ordem, nunca o que cada índice significa (ver i2 no bloco da
   // tbody, à frente)
-  const colOf = resolveColOrder(data, currentColOrderKind, headers);
+  const colAll = resolveColOrder(data, currentColOrderKind, headers);
+  // com o interruptor ligado, as colunas que um filtro ligado testa saem da
+  // tabela (ver customFilterHiddenCols). A 1.ª coluna nunca sai — é o nome do
+  // item (título do cartão, e é dela que sai o título de um "+ Por fazer", ver
+  // addTodoFromTaskRow em todo.js), sem ela as linhas ficavam anónimas.
+  const colVisible = hiddenCols.size
+    ? colAll.filter((i2, i) => i === 0 || !hiddenCols.has(headers[i2]))
+    : colAll;
+  const hiding = colVisible.length < colAll.length;
+  const colOf = hiding ? colVisible : colAll;
+  // a ordem completa fica à mão para arrastar um cabeçalho com colunas
+  // escondidas não as empurrar para o fim (ver o drop no thead)
+  currentColNamesAll = colAll.map(i2 => headers[i2]);
   // larguras à medida (ver colResizeHandle/pointerdown, mais abaixo): sem
   // nenhuma gravada ainda, a tabela fica no layout automático de sempre
   currentColWidths = loadColWidths(data, currentColOrderKind);
@@ -1191,39 +1287,56 @@ function render() {
       : `<button type="button" class="todoActionBtn" data-todoadd="${ri}" title="${t("todo_add_click")}">${t("btn_add_todo")}</button>`;
   }
 
-  $("tbody").innerHTML = rows.map((r, ri) =>
-    `<tr draggable="true" title="${t("t_drag")}">` + colOf.map(i2 => {
-      const cell = (() => {
-        const c = r[i2] !== undefined ? r[i2] : "";
-        // vista mapeada à medida: todas as categorias livres são editáveis
-        // (dropdown com useList, texto livre sem — ver cellCatHtml/
-        // openCellCatEditor) — a única exceção é a Execução, se o utilizador
-        // a ligou nas Definições
-        if (useCompact) {
-          if (i2 === compact.execIdx) {
-            const m = currentMeta[ri] || {};
-            const { inner, title } = execCellHtml(m);
-            return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
-          }
-          // categoria composta (ver buildCustomCompact): só mostra o valor já
-          // junto das colunas de origem, nunca editável (não corresponde a
-          // uma única célula do Excel para o cellCatHtml/openCellCatEditor
-          // poderem gravar). `c` já vem com o HTML pronto (nomes a negrito,
-          // valores escapados) de buildCustomCompact — não passa por
-          // highlightTerms, que voltaria a escapar as tags <strong>
-          if (compact.compoundIdx && compact.compoundIdx.has(i2))
-            return `<td class="compoundCatText" title="${esc(t("compoundcat_hint"))}">${c}</td>`;
+  // HTML de uma célula. A mesma conta serve a tabela e a caixa de detalhe: com
+  // um filtro a esconder colunas, a caixa é montada a partir da linha COMPLETA
+  // (ver currentBoxCells, mais abaixo), que a tabela não tem.
+  function cellHtmlOf(r, ri, i2) {
+    const cell = (() => {
+      const c = r[i2] !== undefined ? r[i2] : "";
+      // vista mapeada à medida: todas as categorias livres são editáveis
+      // (dropdown com useList, texto livre sem — ver cellCatHtml/
+      // openCellCatEditor) — a única exceção é a Execução, se o utilizador
+      // a ligou nas Definições
+      if (useCompact) {
+        if (i2 === compact.execIdx) {
           const m = currentMeta[ri] || {};
-          return `<td${i2 === 0 ? ' class="fn"' : ""}>${cellCatHtml(c, i2, m, compact)}</td>`;
+          const { inner, title } = execCellHtml(m);
+          return `<td class="execCell" data-xlrow="${esc(m.xlrow || "")}" title="${esc(title)}">${inner}</td>`;
         }
-        if (isStatusHeader(headers[i2]))
-          return `<td>${statusCell(r, ri, i2)}</td>`;
-        return `<td>${esc(c)}</td>`;
-      })();
-      // em ecrãs estreitos a tabela vira cartões: cada célula mostra o seu cabeçalho
-      return cell.replace("<td", `<td data-label="${esc(headers[i2])}"`);
-    }).join("") + `<td class="todoActionCell">${todoAddBtn(r, ri)}</td></tr>`
+        // categoria composta (ver buildCustomCompact): só mostra o valor já
+        // junto das colunas de origem, nunca editável (não corresponde a
+        // uma única célula do Excel para o cellCatHtml/openCellCatEditor
+        // poderem gravar). `c` já vem com o HTML pronto (nomes a negrito,
+        // valores escapados) de buildCustomCompact — não passa por
+        // highlightTerms, que voltaria a escapar as tags <strong>
+        if (compact.compoundIdx && compact.compoundIdx.has(i2))
+          return `<td class="compoundCatText" title="${esc(t("compoundcat_hint"))}">${c}</td>`;
+        const m = currentMeta[ri] || {};
+        return `<td${i2 === 0 ? ' class="fn"' : ""}>${cellCatHtml(c, i2, m, compact)}</td>`;
+      }
+      if (isStatusHeader(headers[i2]))
+        return `<td>${statusCell(r, ri, i2)}</td>`;
+      return `<td>${esc(c)}</td>`;
+    })();
+    // em ecrãs estreitos a tabela vira cartões: cada célula mostra o seu cabeçalho
+    return cell.replace("<td", `<td data-label="${esc(headers[i2])}"`);
+  }
+
+  $("tbody").innerHTML = rows.map((r, ri) =>
+    `<tr draggable="true" title="${t("t_drag")}">` +
+    colOf.map(i2 => cellHtmlOf(r, ri, i2)).join("") +
+    `<td class="todoActionCell">${todoAddBtn(r, ri)}</td></tr>`
   ).join("");
+  // caixa de detalhe de um item (ver itemBoxFields, itembox.js): mostra sempre
+  // o item INTEIRO, mesmo com um filtro a esconder colunas da tabela. Como
+  // essas células não existem no DOM, guarda-se aqui a linha completa (todas as
+  // colunas, e cada categoria composta com todas as partes — ver fullOf em
+  // buildCustomCompact), pela ordem de exibição. Sem nada escondido fica null e
+  // a caixa continua a ler a linha da tabela, como sempre.
+  currentBoxCells = !hiding ? null : rows.map((r, ri) => {
+    const full = (compact && compact.fullOf && compact.fullOf.get(r)) || r;
+    return colAll.map(i2 => ({ label: headers[i2], html: cellHtmlOf(full, ri, i2) }));
+  });
   // colunas de mais para a caixa: mede a largura que a tabela pediria sem a
   // compressão do compactFit (ver .tablebox.compactFit, tables.css) contra a
   // largura do painel que envolve a tablebox — que, ao contrário dela, não
@@ -1485,6 +1598,13 @@ $("thead").addEventListener("drop", e => {
   const from = names.indexOf(_colDragName), to = names.indexOf(toName);
   if (from < 0 || to < 0) return;
   names.splice(to, 0, names.splice(from, 1)[0]);
+  // um filtro ligado pode ter tirado colunas do thead (ver
+  // customFilterHiddenCols): elas não estão em `names`, e gravar só o que está
+  // à vista mandá-las-ia para o fim da ordem quando o filtro se desligasse —
+  // por isso voltam para o lugar que tinham na ordem completa deste render
+  currentColNamesAll.forEach((n, i) => {
+    if (!names.includes(n)) names.splice(Math.min(i, names.length), 0, n);
+  });
   saveColOrder(lastData, currentColOrderKind, names);
   render();
 });

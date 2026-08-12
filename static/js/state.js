@@ -139,6 +139,8 @@ let currentObs = [];       // OBS em vigor (com override local) de cada linha
 let currentStatuses = [];  // estados possíveis, para o editor
 let currentColOrderKind = "";   // vista à vista agora ("full"/"custom"), ver render()/resolveColOrder em tasks.js
 let currentColWidths = {};      // larguras à medida da vista atual, por nome de coluna, ver render()/colResizeHandle em tasks.js
+let currentColNamesAll = [];    // nomes das colunas da vista atual pela ordem de exibição, ANTES de esconder as dos filtros ligados (ver render()/customFilterHiddenCols em tasks.js)
+let currentBoxCells = null;     // linha COMPLETA de cada tarefa à vista ([{label, html}, ...]) quando um filtro esconde colunas — a caixa de detalhe mostra o item inteiro (ver render() em tasks.js e itemBoxFields em itembox.js)
 let editorOpen = false;    // suspende os refrescamentos enquanto se edita
 
 const $ = id => document.getElementById(id);

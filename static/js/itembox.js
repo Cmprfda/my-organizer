@@ -133,12 +133,45 @@ function todoBoxFields(el) {
   return out;
 }
 
+// Linha das tarefas com um filtro personalizado a esconder colunas (ver
+// customFilterHiddenCols/currentBoxCells, tasks.js): a tabela só tem as colunas
+// à vista, mas a caixa mostra sempre o item INTEIRO — os campos vêm então da
+// linha completa que o render() guardou, com o mesmo HTML de célula (classes e
+// data-*, por isso os editores funcionam aqui como nos que vêm da tabela). A
+// coluna de ações não é dado nenhum da folha: essa vem da própria linha.
+// Devolve null quando não há nada escondido, e a caixa segue o caminho normal.
+function taskBoxFieldsWhole(tr) {
+  const cells = currentBoxCells && currentBoxCells[[...tr.parentNode.children].indexOf(tr)];
+  if (!cells) return null;
+  const out = [];
+  const holder = document.createElement("tr");
+  cells.forEach(c => {
+    holder.innerHTML = c.html;
+    const node = holder.firstElementChild && boxCellNode(holder.firstElementChild);
+    if (node) out.push({ label: c.label, node });
+  });
+  const act = tr.querySelector("td.todoActionCell");
+  const node = act && boxCellNode(act);
+  if (node) {
+    const ths = [...(tr.closest("table") || tr).querySelectorAll("thead th")];
+    const th = ths[ths.length - 1];
+    out.push({ label: th ? th.textContent.trim() : "", node });
+  }
+  return out.length ? out : null;
+}
+
 // Campos da caixa: uma entrada por célula com conteúdo. A célula é clonada tal
 // como está (classes e data-*), para os editores das listas funcionarem aqui.
 function itemBoxFields(el) {
   const out = [];
   // itens Por fazer (lista e Kanban) são montados à parte, por partes
   if (el.dataset.tid) return todoBoxFields(el);
+  // um filtro personalizado pode ter escondido colunas da tabela (ver
+  // customFilterHiddenCols, tasks.js): a caixa mostra o item inteiro
+  if (el.closest("#tbody")) {
+    const whole = taskBoxFieldsWhole(el);
+    if (whole) return whole;
+  }
   const ths = [...(el.closest("table") || el).querySelectorAll("thead th")];
   [...el.children].forEach(td => {
     const node = boxCellNode(td);
