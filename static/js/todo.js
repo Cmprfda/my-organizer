@@ -458,7 +458,7 @@ function todoHas(kind, title, ref) {
 // ligado a uma linha de outro livro tem de continuar a mostrar o estado dela.
 // `taskIndexByBook` guarda um índice por livro (o nome vem em ref.workbook) e
 // `taskIndexMap` junta-os todos, para os itens antigos, que não sabem o livro.
-let taskIndexStamp = null, taskIndexMap = null, taskIndexByBook = null;
+let taskIndexStamp = null, taskIndexData = null, taskIndexMap = null, taskIndexByBook = null;
 let customIndexByBook = null;
 
 // chave de uma linha do Excel nos índices daqui: função + "o que fazer". Os
@@ -496,12 +496,21 @@ function lookupTaskRow(byBook, it) {
 }
 
 function taskIndex() {
-  // impressão digital do que está lido em memória: só se refaz quando muda
-  const stamp = workbookTabs.map(x => {
-    const d = x.lastData;
-    return `${x.id}:${d ? (d.digest || d.error || "?") : ""}:${(d && d.sheet) || ""}`;
-  }).join("|") + `#${showAll ? 1 : 0}#${PERSON}`;
-  if (stamp === taskIndexStamp && taskIndexMap) return taskIndexMap;
+  // só se refaz quando o que está lido em memória muda. O que se compara é a
+  // IDENTIDADE do objeto de cada leitura (o loadTab guarda sempre um objeto
+  // novo, vindo do /api/tasks — ver tasks.js), e já não o `digest` do conteúdo:
+  // o digest só cobre as linhas da folha (result["rows"], cswaios/tasks.py) e
+  // por isso NÃO mudava com uma alteração local numa categoria da vista mapeada
+  // — essa vive só no cell_view (ver build_cell_categories) — nem com uma nota
+  // de execução. Com o índice preso ao digest, o cartão do TODO continuava a
+  // mostrar o estado de antes da alteração (ex.: "In progress" no cartão e
+  // "Ready for review ✎" na tabela) até a folha mudar mesmo.
+  const lidos = workbookTabs.map(x => x.lastData);
+  const stamp = `#${showAll ? 1 : 0}#${PERSON}`;
+  const igual = taskIndexData && taskIndexData.length === lidos.length
+    && lidos.every((d, i) => d === taskIndexData[i]);
+  if (igual && stamp === taskIndexStamp && taskIndexMap) return taskIndexMap;
+  taskIndexData = lidos;
   taskIndexStamp = stamp;
   taskIndexMap = new Map();
   taskIndexByBook = new Map();
