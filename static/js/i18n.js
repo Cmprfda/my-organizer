@@ -74,6 +74,17 @@ const TR = {
   upd_found: ["Nova versão instalada. A reiniciar…", "New version installed. Restarting…"],
   upd_err: ["Erro ao verificar atualizações.", "Error checking for updates."],
   item_box: ["Detalhe", "Details"],
+  // nomes dos campos da caixa de detalhe de um item Por fazer — a lista e o
+  // Kanban não têm cabeçalhos de onde os tirar (ver todoBoxFields, itembox.js)
+  ibox_todo_title: ["Tarefa", "Task"],
+  ibox_todo_state: ["Estado", "Status"],
+  ibox_todo_prio: ["Prioridade", "Priority"],
+  ibox_todo_time: ["Tempo", "Time"],
+  ibox_todo_note: ["Detalhe", "Detail"],
+  ibox_todo_task: ["Da folha", "From the sheet"],
+  ibox_todo_links: ["Ligações", "Links"],
+  ibox_todo_subs: ["Passos", "Steps"],
+  ibox_todo_jira: ["Jira", "Jira"],
   copy_sel: ["Copiar seleção", "Copy selection"],
   copy_cell: ["Copiar célula", "Copy cell"],
   copy_row: ["Copiar linha", "Copy row"],

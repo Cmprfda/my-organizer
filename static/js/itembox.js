@@ -19,7 +19,7 @@ const BOX_ITEMS = "#tbody tr, #ccrBody tr, #todoBody tr, .todoCard";
 const BOX_STRIP = ".ccr-x, .srcBtn";
 
 // Partes decorativas que não fazem parte do nome do item
-const BOX_TITLE_STRIP = ".todoRowFlag, .todoCardFlag, .chip, .badge, .todoSubProgress";
+const BOX_TITLE_STRIP = ".todoRowFlag, .todoCardFlag, .chip, .badge, .todoSubProgress, .taskNoteFlag";
 
 // item que está na caixa, para a reconstruir depois de cada gravação
 let itemBoxRef = null;
@@ -37,29 +37,108 @@ function itemBoxTitle(el) {
     [...el.children].find(n => n.innerText.trim()) || el;
   // 1.ª linha do item, sem a bandeira nem as etiquetas de origem/progresso
   let line = src.innerText.trim().split("\n")[0].trim();
-  src.querySelectorAll(BOX_TITLE_STRIP).forEach(n => {
-    const txt = n.innerText.trim();
-    if (!txt) return;
-    if (line.startsWith(txt)) line = line.slice(txt.length).trim();
-    else if (line.endsWith(txt)) line = line.slice(0, -txt.length).trim();
-  });
+  const strips = [...src.querySelectorAll(BOX_TITLE_STRIP)]
+    .map(n => n.innerText.trim()).filter(Boolean);
+  // as decorações saem de fora para dentro e mais do que uma pode estar do
+  // mesmo lado (ex.: "…configurações 1/3 📌"): sem repetir a passagem, tirar o
+  // pino deixava o progresso colado ao nome
+  let cut = true;
+  while (cut) {
+    cut = false;
+    strips.forEach(txt => {
+      if (line.startsWith(txt)) { line = line.slice(txt.length).trim(); cut = true; }
+      else if (line.endsWith(txt)) { line = line.slice(0, -txt.length).trim(); cut = true; }
+    });
+  }
   return line.slice(0, 160) || t("item_box");
+}
+
+// ---------- campos de um item da lista Por fazer ----------
+// Um item Por fazer não tem de onde tirar nomes de campos: a tabela da lista
+// não tem cabeçalhos (as suas partes estão todas dentro da mesma célula) e o
+// Kanban não tem células nenhumas. Aqui as partes são procuradas uma a uma e
+// ganham o mesmo nome nos dois modos.
+
+// partes com nome próprio, todas filhas diretas do conteúdo do item (a célula
+// grande em lista, o cartão no Kanban) — procurar sem o ":scope >" apanharia
+// também a OBS da folha, que vive lá dentro da parte "Da folha"
+const TODO_BOX_PARTS = [
+  { key: "ibox_todo_note", sel: ".todoNote, .obs, .todoCardDetail" },
+  { key: "ibox_todo_task", sel: ".todoTaskInfo" },
+  { key: "ibox_todo_links", sel: ".todoLinkList" },
+  { key: "ibox_todo_subs", sel: ".todoSubList" },
+  { key: "ibox_todo_jira", sel: ".todoJiraList" },
+];
+
+// controlos do item: em lista estão em células próprias, no Kanban na barra do
+// fundo do cartão — nos dois casos fora da parte do nome
+const TODO_BOX_CTL = [
+  { key: "ibox_todo_state", sel: "input[data-tgl], .todoStatusBtn" },
+  { key: "ibox_todo_prio", sel: ".todoPrioBtn" },
+  { key: "ibox_todo_time", sel: ".todoTimerCell" },
+];
+
+// os ficheiros partilham o mesmo espaço global: nome próprio para não chocar
+const todoScopedSel = sel => sel.split(", ").map(s => ":scope > " + s).join(", ");
+
+function todoBoxNode(nodes) {
+  const wrap = document.createElement("div");
+  nodes.forEach(n => {
+    // peça sem nada dentro (ex.: o cronómetro de um item que nunca correu) não
+    // vale um campo; os botões e as caixas de marcar valem sempre, mesmo vazios
+    if (!n.innerHTML.trim() && !n.matches("input, button")) return;
+    const c = n.cloneNode(true);
+    c.querySelectorAll(BOX_STRIP).forEach(x => x.remove());
+    wrap.appendChild(c);
+  });
+  return wrap.innerHTML.trim() ? wrap : null;
+}
+
+function todoBoxFields(el) {
+  // o conteúdo do item: no Kanban é o próprio cartão, em lista é a única
+  // célula que não é de controlo
+  const content = el.matches(".todoCard") ? el
+    : [...el.children].find(n => !n.classList.contains("todoCtl")) || el;
+  const partSel = TODO_BOX_PARTS.map(p => todoScopedSel(p.sel)).join(", ");
+  const out = [];
+  // a linha do nome é o que sobra do conteúdo depois de tirar as partes com
+  // nome próprio e a barra dos controlos: bandeira, etiquetas de origem, nome
+  // (editável nas tarefas escritas à mão), progresso dos passos e pino da nota
+  const rest = content.cloneNode(true);
+  rest.querySelectorAll(partSel + ", :scope > .todoCardMeta").forEach(n => n.remove());
+  rest.querySelectorAll(BOX_STRIP).forEach(n => n.remove());
+  // no cartão a bandeira é uma faixa colada ao topo (margens negativas, largura
+  // toda): dentro da caixa passa a ser a mesma etiqueta pequena da lista
+  rest.querySelectorAll(".todoCardFlag").forEach(n => { n.className = "todoRowFlag"; });
+  if (rest.innerHTML.trim()) {
+    const wrap = document.createElement("div");
+    // as peças passam para um <div> em vez de irem dentro do <td> clonado, que
+    // fora da tabela continuaria a ser uma célula. Os espaços entre elas ficam
+    // para trás: o .itemValue respeita as quebras de linha (white-space:
+    // pre-line) e a indentação do HTML abria buracos no campo.
+    [...rest.childNodes].forEach(n => {
+      if (n.nodeType === Node.TEXT_NODE && !n.textContent.trim()) return;
+      wrap.appendChild(n);
+    });
+    out.push({ label: t("ibox_todo_title"), node: wrap, wide: true });
+  }
+  TODO_BOX_CTL.forEach(f => {
+    const node = todoBoxNode([...el.querySelectorAll(f.sel)]);
+    if (node) out.push({ label: t(f.key), node });
+  });
+  TODO_BOX_PARTS.forEach(f => {
+    const node = todoBoxNode([...content.querySelectorAll(todoScopedSel(f.sel))]);
+    if (node) out.push({ label: t(f.key), node });
+  });
+  return out;
 }
 
 // Campos da caixa: uma entrada por célula com conteúdo. A célula é clonada tal
 // como está (classes e data-*), para os editores das listas funcionarem aqui.
 function itemBoxFields(el) {
   const out = [];
-  if (el.matches(".todoCard")) {
-    // as partes de um cartão TODO são fatias empilhadas do mesmo cartão (não
-    // campos com nome): ficam sempre umas por baixo das outras, nunca em duas
-    // colunas como as células com cabeçalho
-    [...el.children].forEach(n => {
-      const node = boxCellNode(n);
-      if (node) out.push({ label: "", node, wide: true });
-    });
-    return out;
-  }
+  // itens Por fazer (lista e Kanban) são montados à parte, por partes
+  if (el.dataset.tid) return todoBoxFields(el);
   const ths = [...(el.closest("table") || el).querySelectorAll("thead th")];
   [...el.children].forEach(td => {
     const node = boxCellNode(td);
@@ -75,8 +154,10 @@ function itemBoxFields(el) {
 const BOX_EMPTY_VAL = /^(—|-|n\/?a|)$/i;
 
 // Um campo ocupa a largura toda quando o conteúdo não cabe bem numa coluna:
-// texto longo, listas/checklists, campos de escrita ou imagens.
-const BOX_RICH = "input, textarea, ul, ol, table, img";
+// texto longo, listas/checklists, campos de escrita ou imagens. Uma caixa de
+// marcar não conta — senão o estado de um item Por fazer, que é só a marca e o
+// botão da coluna, ficava sozinho a ocupar uma linha inteira.
+const BOX_RICH = 'input:not([type="checkbox"]):not([type="radio"]), textarea, ul, ol, table, img';
 
 function fieldIsEmpty(node) {
   // o nome de cada parte (ex.: "Status TC:") e o convite a escrever ("+ nota")
