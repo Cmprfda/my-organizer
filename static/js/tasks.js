@@ -1176,8 +1176,13 @@ function render() {
 
   // o botão "+ TODO" só existe enquanto a linha não estiver na TODO list
   function todoAddBtn(r, ri) {
-    const title = String(r[0] === undefined ? "" : r[0]).split("\n")[0].trim();
     const meta = currentMeta[ri] || {};
+    // na vista mapeada a 1.ª coluna é a que o utilizador lá pôs e pode vir
+    // vazia: o título do item cai então no Function/TC da linha (a mesma conta
+    // está em addTodoFromTaskRow, todo.js — as duas têm de dar o mesmo, senão
+    // o "+ TODO" não desaparecia da linha que já tem item)
+    const title = String(r[0] === undefined ? "" : r[0]).split("\n")[0].trim()
+      || String(meta.fn || "").trim();
     const ref = {
       workbook: activeBookName(), sheet: data.sheet || "",
       fn: meta.fn || title, todo: meta.todo || "",

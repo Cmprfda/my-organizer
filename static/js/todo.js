@@ -461,6 +461,40 @@ function todoHas(kind, title, ref) {
 let taskIndexStamp = null, taskIndexMap = null, taskIndexByBook = null;
 let customIndexByBook = null;
 
+// chave de uma linha do Excel nos índices daqui: função + "o que fazer". Os
+// dois valores passam pelo mesmo corte que o servidor faz à origem guardada no
+// item (normalize_ref, cswaios/todos.py), senão uma linha com um "To Do" longo
+// nunca voltava a bater certo com o item que dela nasceu — a folha traz a célula
+// inteira, o item só os primeiros 200 caracteres.
+function rowKeyOfTask(fn, todo) {
+  return `${todoText(fn)}\u001f${todoText(todo)}`;
+}
+
+// procura a linha de um item num índice por livro (o das linhas ao vivo ou o da
+// vista mapeada): primeiro no livro de onde o item veio, porque com vários
+// livros abertos a mesma função noutro livro dava a linha errada; sem livro
+// guardado (itens antigos) procura-se em todos. Sem chave exata aceita-se a 1.ª
+// linha com a mesma função, para os itens guardados antes de a chave incluir o
+// "o que fazer".
+function lookupTaskRow(byBook, it) {
+  const src = it && todoSources(it).find(s => s.kind === "task");
+  if (!src || !byBook || !byBook.size) return null;
+  const ref = src.ref || {};
+  const fn = ref.fn || String(src.title).trim();
+  const own = ref.workbook ? byBook.get(ref.workbook) : null;
+  const maps = own ? [own] : [...byBook.values()];
+  const key = rowKeyOfTask(fn, ref.todo);
+  for (const map of maps) {
+    const exact = map.get(key);
+    if (exact) return exact;
+  }
+  const prefix = rowKeyOfTask(fn, "");
+  for (const map of maps) {
+    for (const [k, row] of map) if (k.startsWith(prefix)) return row;
+  }
+  return null;
+}
+
 function taskIndex() {
   // impressão digital do que está lido em memória: só se refaz quando muda
   const stamp = workbookTabs.map(x => {
@@ -475,15 +509,34 @@ function taskIndex() {
   workbookTabs.forEach(tab => {
     const data = tab.lastData;
     if (!data || data.error) return;
+    // linha ao vivo: o row_meta traz o valor ATUAL das colunas fixas do tracker
+    // (meta.cur, ver read_sheet em cswaios/tasks.py), por isso serve qualquer
+    // folha do tracker, tenha ou não vista mapeada por cima
+    const doLivro = new Map();
+    (data.row_meta || []).forEach(meta => {
+      if (!meta) return;
+      const key = rowKeyOfTask(meta.fn, meta.todo);
+      if (!doLivro.has(key)) doLivro.set(key, { meta, data });
+      if (!taskIndexMap.has(key)) taskIndexMap.set(key, { meta, data });
+    });
+    taskIndexByBook.set(tab.name || "", doLivro);
     const custom = buildCustomCompact(data);
     if (custom) {
+      // o "To Do" desta folha pode estar absorvido por uma categoria composta
+      // (ver buildCustomCompact): aí o bloco da tarefa já o mostra e a nota do
+      // item não o repete (ver todoNoteHtml). Mapeado à parte, não: esse fica
+      // de fora do bloco (CUSTOM_INFO_SKIP) e aparece só na nota.
+      const catHeaders = (data.cell_view && data.cell_view.headers) || [];
+      const showsTodo = loadCompoundCats(data)
+        .filter(cc => cc.columns.every(name => catHeaders.includes(name)))
+        .some(cc => cc.columns.some(name => norm(name) === norm("To Do")));
       const doLivroCustom = new Map();
       (data.row_meta || []).forEach((meta, ri) => {
-        const key = `${meta.fn || ""}${meta.todo || ""}`;
+        const key = rowKeyOfTask(meta && meta.fn, meta && meta.todo);
         if (!doLivroCustom.has(key)) {
           doLivroCustom.set(key, {
             row: custom.rows[ri], headers: custom.headers,
-            compoundIdx: custom.compoundIdx, execIdx: custom.execIdx,
+            compoundIdx: custom.compoundIdx, execIdx: custom.execIdx, showsTodo,
           });
         }
       });
@@ -494,59 +547,52 @@ function taskIndex() {
 }
 
 function customRowFor(it) {
-  const src = it && todoSources(it).find(s => s.kind === "task");
-  if (!src) return null;
   taskIndex();
-  if (!customIndexByBook || !customIndexByBook.size) return null;
-  const ref = src.ref || {};
-  const fn = ref.fn || String(src.title).trim();
-  const key = `${fn}${ref.todo || ""}`;
-  const onde = ref.workbook ? customIndexByBook.get(ref.workbook) : null;
-  if (onde) return onde.get(key) || null;
-  for (const map of customIndexByBook.values()) {
-    if (map.has(key)) return map.get(key);
-  }
-  return null;
+  return lookupTaskRow(customIndexByBook, it);
 }
 
 function taskRowFor(it) {
-  const src = it && todoSources(it).find(s => s.kind === "task");
-  if (!src) return null;
-  const map = taskIndex();
-  if (!map || !map.size) return null;
-  const ref = src.ref || {};
-  const fn = ref.fn || String(src.title).trim();
-  // o item sabe de que livro veio e esse livro está aberto: só lá se procura,
-  // senão a mesma função noutro livro dava o estado errado
-  const onde = (ref.workbook && taskIndexByBook.get(ref.workbook)) || map;
-  const exact = onde.get(`${fn}${ref.todo || ""}`);
-  if (exact) return exact;
-  // itens antigos foram guardados sem o `todo`: aceita-se a 1.ª linha com o mesmo nome
-  for (const [key, row] of onde) if (key.split("")[0] === fn) return row;
-  return null;
+  taskIndex();
+  return lookupTaskRow(taskIndexByBook, it);
 }
 
-// título e "O que fazer" ao vivo, lidos da linha atual do Excel (elementos 0
-// e 3 da linha resumida — o mesmo "estado"/"resumo" que a tabela mostra,
-// já sem a OBS colada, que aparece à parte via todoTaskInfoHtml). null
-// quando não há linha (livro fechado, item de CCR): quem chama usa o
-// instantâneo antigo (it.title/it.detail) nesse caso.
+// título e "o que fazer" ao vivo, lidos da linha atual da folha (meta.cur, já
+// com qualquer alteração local aplicada): é isto que faz o item acompanhar a
+// tarefa mesmo que a célula mude depois de o TODO ter sido criado. null quando
+// não há linha (livro fechado, item de CCR) ou quando a folha não tem estas
+// colunas — aí quem chama usa o instantâneo antigo (it.title/it.detail).
 function liveTaskContent(it) {
   const row = taskRowFor(it);
-  if (!row) return null;
+  const cur = (row && row.meta && row.meta.cur) || null;
+  if (!cur || (cur["Function/TC"] === undefined && cur["To Do"] === undefined)) return null;
   return {
-    title: String(row[0] || "").trim() || it.title,
-    detail: String(row[3] || "").split("")[0].trim().slice(0, 300),
+    title: String(cur["Function/TC"] || "").trim() || it.title,
+    detail: String(cur["To Do"] || "").trim().slice(0, 300),
   };
+}
+
+// de que lado está a bola numa vertente (TC/TP) da linha, pela regra de sempre:
+// um estado de review está do lado do reviewer, os outros do lado do autor.
+// Serve só para o aviso do todoMySideFlag, aqui em baixo.
+function taskSideOf(role, status) {
+  const s = norm(status);
+  if (!s || s === "n/a" || /(remov|cancel)/.test(s)) return null;
+  if (/(done|conclu|closed|complet|finaliz)/.test(s)) return "done";
+  const reviewing = /review/.test(s);
+  return role === "reviewer" ? (reviewing ? "my" : "other") : (reviewing ? "other" : "my");
 }
 
 // avisa quando marcaste este item como Concluído mas a tarefa do Excel por
 // trás afinal ainda está do teu lado (ex.: voltou para "Ready for rework")
-// — só faz sentido como aviso quando já achavas que estava feito.
+// — só faz sentido como aviso quando já achavas que estava feito. Os estados
+// que são mesmo teus (por vertente e por papel) vêm do servidor em
+// meta.todo_sync_role, já sem as vertentes N/A.
 function todoIsFlagged(it) {
   if (todoColOf(it) !== "done") return false;
   const row = taskRowFor(it);
-  return !!row && row[5] === "On my side";
+  const roles = (row && row.meta && row.meta.todo_sync_role) || {};
+  return ["author", "reviewer"].some(role =>
+    (roles[role] || []).some(s => taskSideOf(role, s) === "my"));
 }
 
 function todoMySideFlag(it, corner) {
@@ -577,24 +623,36 @@ function todoCustomTaskInfoHtml(entry) {
   return `<div class="todoTaskInfo">${parts.filter(Boolean).join("")}</div>`;
 }
 
+// papéis da linha, pelos nomes reais das colunas do tracker — é assim que a
+// folha lhes chama e é assim que a vista mapeada os mostra
+const TASK_ROLE_COLS = [["author_tc", "Author TC"], ["reviewer_tc", "Reviewer TC"],
+  ["author_tp", "Author TP"], ["reviewer_tp", "Reviewer TP"]];
+
 function todoTaskInfoHtml(it) {
   const custom = customRowFor(it);
   if (custom) return todoCustomTaskInfoHtml(custom);
   const row = taskRowFor(it);
-  if (!row) return "";
-  const meta = row[6] || {};
-  // nomes de todos os autores/reviewers e ambos os estados aplicáveis (elementos
-  // 10/11 da linha resumida), para o bloco do TODO mostrar a linha completa
-  const people = row[10] || [];
-  const statuses = row[11] || [];
+  const meta = (row && row.meta) || null;
+  const cur = (meta && meta.cur) || {};
+  const people = (meta && meta.people) || {};
+  // sem linha, ou folha sem nada do tracker e sem vista mapeada: não há o que
+  // mostrar (o item fica só com o título/nota que guardou)
+  if (!meta || (!Object.keys(cur).length && !TASK_ROLE_COLS.some(([k]) => people[k]))) return "";
   const parts = [];
-  people.forEach(([label, nome]) => parts.push(`<span class="role">${esc(label)}: ${esc(nome)}</span>`));
-  statuses.forEach(([col, text]) => parts.push(badgeHtml(text, col, meta)));
-  const obsText = String(row[3] === undefined ? "" : row[3]).split("")[1] || "";
-  parts.push(obsHtml(obsText, meta));
+  // "N/A" na coluna do autor/reviewer quer dizer "ninguém", não um nome
+  TASK_ROLE_COLS.forEach(([key, label]) => {
+    const nome = String(people[key] || "").trim();
+    if (nome && norm(nome) !== "n/a") parts.push(`<span class="role">${esc(label)}: ${esc(nome)}</span>`);
+  });
+  // ambos os estados aplicáveis, cada um com a vertente à frente
+  [["Status TC", "TC"], ["Status TP", "TP"]].forEach(([col, tag]) => {
+    const v = String(cur[col] || "").trim();
+    if (v && norm(v) !== "n/a") parts.push(badgeHtml(`${tag}: ${v}`, col, meta));
+  });
+  parts.push(obsHtml(String(cur["OBS"] || "").trim(), meta));
   const { inner, title } = execCellHtml(meta);
   parts.push(`<div class="execCell" data-xlrow="${esc(meta.xlrow || "")}" title="${esc(title)}">${inner}</div>`);
-  return `<div class="todoTaskInfo">${parts.join("")}</div>`;
+  return `<div class="todoTaskInfo">${parts.filter(Boolean).join("")}</div>`;
 }
 
 // progresso das subtarefas (ex.: "2/5"), só aparece quando existem subtarefas
@@ -757,8 +815,7 @@ function openSubtaskEdit(el) {
 function dedupeStaleObs(it, detail) {
   if (!detail) return detail;
   const row = taskRowFor(it);
-  if (!row) return detail;
-  const obsText = String(row[3] === undefined ? "" : row[3]).split("")[1] || "";
+  const obsText = String((row && row.meta && row.meta.cur && row.meta.cur["OBS"]) || "").trim();
   if (!obsText) return detail;
   const marker = `${t("obs_prefix")} ${obsText}`;
   const i = detail.indexOf(marker);
@@ -771,6 +828,11 @@ function todoNoteHtml(it, kanban) {
   const manual = (it.kind || "manual") === "manual";
   const cls = kanban ? "todoCardDetail" : "obs";
   if (!manual) {
+    // a vista mapeada desta folha já mostra o "o que fazer" no bloco da tarefa
+    // (categoria composta, ver taskIndex): repeti-lo aqui era mostrar a mesma
+    // coisa duas vezes seguidas
+    const custom = customRowFor(it);
+    if (custom && custom.showsTodo) return "";
     const live = liveTaskContent(it);
     const detail = live ? live.detail : dedupeStaleObs(it, it.detail);
     return detail ? `<span class="${cls}">${esc(detail)}</span>` : "";
@@ -925,10 +987,15 @@ async function addTodoWithFeedback(body) {
   else toast(tf("todo_added", body.title), "ok");
 }
 
-// a célula "To Do" tem a OBS colada a seguir (obsHtml) só para a vista da
-// tabela — a OBS já aparece à parte e ao vivo via todoTaskInfoHtml, por isso
-// não deve entrar aqui: copiá-la tal e qual duplicaria a OBS no item criado
-function taskRowDetail(tr) {
+// Instantâneo do "o que fazer" guardado com o item (reserva para quando o livro
+// está fechado): sai sempre da coluna "To Do" da linha (meta.cur), nunca da 4.ª
+// célula da tabela — com a vista mapeada essa coluna é a que o utilizador lá
+// pôs (podia ser o Reviewer, por exemplo). Folha sem coluna "To Do": fica o
+// texto da 4.ª coluna, como antes, que é o melhor que há. A OBS nunca entra
+// aqui: aparece à parte e ao vivo (todoTaskInfoHtml), e copiá-la duplicava-a.
+function taskRowDetail(tr, meta) {
+  const cur = (meta && meta.cur) || {};
+  if (cur["To Do"] !== undefined) return String(cur["To Do"] || "").trim().slice(0, 300);
   const cell = tr && tr.cells[3] ? tr.cells[3].cloneNode(true) : null;
   if (cell) cell.querySelectorAll(".obs, .addnote").forEach(n => n.remove());
   return (cell ? cell.innerText : "").trim().slice(0, 300);
@@ -938,15 +1005,20 @@ function addTodoFromTaskRow(btn) {
   const tr = btn.closest("tr");
   const ri = +btn.dataset.todoadd;
   if (!tr || Number.isNaN(ri)) return;
-  const fn = tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "";
-  if (!fn) return;
-  const detail = taskRowDetail(tr);
   const meta = currentMeta[ri] || {};
+  // o título sai da 1.ª coluna da tabela, mas com a vista mapeada essa coluna
+  // pode ser outra qualquer (ou vir vazia): aí vale o Function/TC da linha,
+  // senão o botão não fazia nada. A mesma conta está no todoAddBtn (tasks.js),
+  // para o "+ TODO" desaparecer da linha que já tem item.
+  const fn = tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "";
+  const title = fn || String(meta.fn || "").trim();
+  if (!title) return;
+  const detail = taskRowDetail(tr, meta);
   const ref = {
     workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
-    fn: meta.fn || fn, todo: meta.todo || "",
+    fn: meta.fn || title, todo: meta.todo || "",
   };
-  addTodoWithFeedback({ action: "add", title: fn, kind: "task", detail, ref, col: todoDefaultCol() });
+  addTodoWithFeedback({ action: "add", title, kind: "task", detail, ref, col: todoDefaultCol() });
 }
 
 function addTodoFromCcr(id) {
@@ -1340,12 +1412,14 @@ function subtaskDrop(e) {
 $("tbody").addEventListener("dragstart", e => {
   const tr = e.target.closest("tr");
   if (!tr || !tr.cells.length) return;
-  const fn = tr.cells[0].innerText.split("\n")[0].trim();
+  // as chaves exatas da linha, para se poder voltar a ela mais tarde
+  const meta = currentMeta[[...$("tbody").rows].indexOf(tr)] || {};
+  // com a vista mapeada a 1.ª coluna pode não ser o Function/TC (ver
+  // addTodoFromTaskRow): sem texto nela, o título vem da própria linha
+  const fn = tr.cells[0].innerText.split("\n")[0].trim() || String(meta.fn || "").trim();
   if (!fn) return;
   // leva também o "O que fazer" como detalhe do item
-  const detail = taskRowDetail(tr);
-  // ...e as chaves exatas da linha, para se poder voltar a ela mais tarde
-  const meta = currentMeta[[...$("tbody").rows].indexOf(tr)] || {};
+  const detail = taskRowDetail(tr, meta);
   const ref = {
     workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
     fn: meta.fn || fn, todo: meta.todo || "",

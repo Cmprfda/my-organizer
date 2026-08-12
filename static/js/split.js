@@ -229,10 +229,12 @@ function payloadFromTouchDragTarget(target) {
 
   const taskRow = target.closest("#tbody tr");
   if (taskRow && taskRow.cells && taskRow.cells.length) {
-    const fn = taskRow.cells[0].innerText.split("\n")[0].trim();
-    if (!fn) return null;
-    const detail = taskRowDetail(taskRow);
     const meta = currentMeta[[...$("tbody").rows].indexOf(taskRow)] || {};
+    // com a vista mapeada a 1.ª coluna pode não ser o Function/TC (ver
+    // addTodoFromTaskRow, todo.js): sem texto nela, o título vem da linha
+    const fn = taskRow.cells[0].innerText.split("\n")[0].trim() || String(meta.fn || "").trim();
+    if (!fn) return null;
+    const detail = taskRowDetail(taskRow, meta);
     const ref = {
       workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
       fn: meta.fn || fn, todo: meta.todo || "",

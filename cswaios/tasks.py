@@ -32,6 +32,11 @@ from .todos import load_todo, save_todo
 # fallback quando o Excel tem o ficheiro bloqueado em exclusivo
 _LAST_GOOD = {}
 
+# colunas fixas do tracker, pelo nome canónico (ver col_by_name em read_sheet):
+# o valor atual destas vai em row_meta["cur"], para o cartão do TODO mostrar a
+# linha ao vivo mesmo com a folha fora da vista
+TRACKER_COLS = ("Function/TC", "To Do", "OBS", "Status TC", "Status TP")
+
 
 def forget_cache(path=None):
     """Esquece o que foi lido (de um ficheiro, ou de todos): a leitura seguinte
@@ -302,6 +307,14 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
             if not entry:
                 overrides.pop(okey)
 
+        # valor ATUAL das colunas fixas do tracker (já com qualquer alteração
+        # local aplicada, ao contrário do `orig`, que guarda sempre o valor cru
+        # da folha para o Push poder comparar): é daqui que o cartão do TODO lê
+        # o título/"o que fazer"/estados ao vivo, sem precisar da folha à vista
+        # (ver liveTaskContent, static/js/todo.js)
+        cur = {name: (cells[j] if j < len(cells) else "")
+               for name, j in col_by_name.items() if name in TRACKER_COLS}
+
         # quem está ligado à linha (autor/reviewer de cada vertente): texto cru
         # da folha, só para mostrar — não entra nos overrides nem na escrita
         people = {}
@@ -313,7 +326,7 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
             _, note = _override_entry(notes, path, real_sheet, fn_key, todo_key)
             data_rows.append(cells[:len(headers)])
             row_meta.append({"fn": fn_key, "todo": todo_key, "orig": orig, "over": over,
-                             "note": note, "xlrow": xlrow,
+                             "cur": cur, "note": note, "xlrow": xlrow,
                              "people": people,
                              "todo_sync_role": role_sync})
 

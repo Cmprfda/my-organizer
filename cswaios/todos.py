@@ -69,6 +69,18 @@ def normalize_ref(raw):
     return {k: str(v).strip()[:200] for k, v in raw.items() if k in TODO_REF_KEYS and v}
 
 
+def row_key_text(value):
+    """Um valor da chave da linha do Excel (função ou "o que fazer") pronto a
+    comparar com o que está guardado no `ref` do item.
+
+    A origem do item é guardada cortada a 200 caracteres (normalize_ref), mas a
+    folha traz a célula inteira: sem o mesmo corte dos dois lados, uma linha com
+    um "To Do" longo nunca voltava a bater certo com o item que dela nasceu — e
+    então nem o item mudava de coluna quando o estado da linha mudava. É a mesma
+    conta que o cliente faz em todoText (static/js/todo.js)."""
+    return str(value or "").strip()[:200].strip()
+
+
 def normalize_todo_link(raw):
     """Origem extra de um item: {kind, title, ref}."""
     if not isinstance(raw, dict):
@@ -227,8 +239,8 @@ def sync_todo_review_from_tasks(todos, row_meta, sheet_name):
     for meta in row_meta:
         if not isinstance(meta, dict):
             continue
-        fn = str(meta.get("fn") or "")
-        todo = str(meta.get("todo") or "")
+        fn = row_key_text(meta.get("fn"))
+        todo = row_key_text(meta.get("todo"))
         if not fn:
             continue
         role = meta.get("todo_sync_role") if isinstance(meta.get("todo_sync_role"), dict) else {}
@@ -258,7 +270,7 @@ def sync_todo_review_from_tasks(todos, row_meta, sheet_name):
             ref_sheet = str(ref.get("sheet") or "")
             if ref_sheet and normalize(ref_sheet) != sheet_norm:
                 continue
-            new_col = target_by_key.get((str(ref.get("fn") or ""), str(ref.get("todo") or "")))
+            new_col = target_by_key.get((row_key_text(ref.get("fn")), row_key_text(ref.get("todo"))))
             if new_col:
                 break
         if not new_col:
