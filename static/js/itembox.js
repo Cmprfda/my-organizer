@@ -51,9 +51,12 @@ function itemBoxTitle(el) {
 function itemBoxFields(el) {
   const out = [];
   if (el.matches(".todoCard")) {
+    // as partes de um cartão TODO são fatias empilhadas do mesmo cartão (não
+    // campos com nome): ficam sempre umas por baixo das outras, nunca em duas
+    // colunas como as células com cabeçalho
     [...el.children].forEach(n => {
       const node = boxCellNode(n);
-      if (node) out.push({ label: "", node });
+      if (node) out.push({ label: "", node, wide: true });
     });
     return out;
   }
@@ -67,6 +70,27 @@ function itemBoxFields(el) {
   return out;
 }
 
+// Valores que a folha usa para dizer "não há nada aqui" — um campo só com
+// estes fica esbatido, para os campos com conteúdo saltarem à vista.
+const BOX_EMPTY_VAL = /^(—|-|n\/?a|)$/i;
+
+// Um campo ocupa a largura toda quando o conteúdo não cabe bem numa coluna:
+// texto longo, listas/checklists, campos de escrita ou imagens.
+const BOX_RICH = "input, textarea, ul, ol, table, img";
+
+function fieldIsEmpty(node) {
+  // o nome de cada parte (ex.: "Status TC:") e o convite a escrever ("+ nota")
+  // não contam como conteúdo — só o valor que vem da folha é que diz se o
+  // campo está preenchido
+  const c = node.cloneNode(true);
+  c.querySelectorAll("strong, .addnote").forEach(n => n.remove());
+  // o clone está fora da página, por isso o innerText não vê os <br> das
+  // categorias compostas (cai no textContent): as partes têm de ser separadas
+  // à mão, senão "N/A" + "—" viravam uma linha só e nunca dava vazio
+  c.querySelectorAll("br").forEach(n => n.replaceWith("\n"));
+  return c.textContent.split("\n").every(l => BOX_EMPTY_VAL.test(l.trim()));
+}
+
 function fillItemBox(el) {
   const fields = itemBoxFields(el);
   if (!fields.length) return false;
@@ -76,6 +100,13 @@ function fillItemBox(el) {
   fields.forEach(f => {
     const wrap = document.createElement("div");
     wrap.className = "itemField";
+    const text = f.node.innerText.trim();
+    if (f.wide || text.length > 90 || f.node.querySelector(BOX_RICH))
+      wrap.classList.add("itemFieldWide");
+    if (fieldIsEmpty(f.node)) wrap.classList.add("itemFieldEmpty");
+    // sem nome (partes de um cartão TODO) não há campo para desenhar: ficam
+    // empilhadas como no cartão, sem caixa à volta
+    if (!f.label) wrap.classList.add("itemFieldPlain");
     if (f.label) {
       const lbl = document.createElement("span");
       lbl.className = "itemLabel";

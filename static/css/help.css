@@ -70,9 +70,31 @@
 }
 
 /* ---------- caixa de detalhe de um item (clicar numa linha/cartão) ---------- */
+/* a caixa de detalhe tapa mais o que está atrás do que as outras janelas: é
+   nela que se trabalha um item de cada vez */
+#itemOverlay {
+    background: rgba(12, 14, 17, .58);
+}
+
 .itemCard {
     width: min(880px, 96vw);
     max-height: min(88vh, 900px);
+}
+
+.itemCard .helpHead {
+    /* o título continua à vista enquanto se percorre um item comprido */
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface);
+}
+
+.itemCard .helpHead strong {
+    font-family: var(--font-display);
+    font-size: 17px;
+    letter-spacing: var(--tracking-tight);
+    /* nomes de TC longos não podem empurrar o ✕ para fora do cartão */
+    overflow-wrap: anywhere;
 }
 
 #itemBody {
@@ -82,17 +104,46 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: 4px 16px 16px;
+    padding: 14px 16px 16px;
     -webkit-overflow-scrolling: touch;
+    /* campos curtos (estados, autores, revisores) lado a lado: sem isto uma
+       tarefa com meia dúzia de categorias obrigava a rolar por uma coluna de
+       linhas quase vazias */
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+    align-content: start;
 }
 
 .itemField {
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-width: 0;
 }
 
-.itemField:last-child {
-    border-bottom: none;
+/* texto longo, checklists e campos de escrita ficam com a largura toda */
+.itemFieldWide {
+    grid-column: 1 / -1;
+}
+
+/* partes de um cartão TODO: sem nome, sem caixa — o cartão já é a caixa */
+.itemFieldPlain {
+    padding: 2px 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+}
+
+/* campo sem valor na folha (— ou N/A): fica presente, mas discreto */
+.itemFieldEmpty {
+    opacity: .55;
+}
+
+.itemFieldEmpty:hover,
+.itemFieldEmpty:focus-within {
+    opacity: 1;
 }
 
 .itemLabel {
@@ -103,7 +154,7 @@
     text-transform: uppercase;
     letter-spacing: var(--tracking-eyebrow);
     color: var(--muted);
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 
 .itemValue {
@@ -112,9 +163,23 @@
     padding: 0;
     border: none;
     font-size: 14px;
-    line-height: 1.5;
+    /* linhas mais soltas: uma categoria composta traz várias partes separadas
+       por <br> dentro do mesmo campo */
+    line-height: 1.75;
     white-space: pre-line;
     overflow-wrap: anywhere;
+}
+
+/* categorias compostas ("Status TC: ..."): o nome da parte é a etiqueta, o
+   valor é o que interessa — sem isto os dois vinham a negrito e o campo lia-se
+   todo com o mesmo peso */
+.itemValue strong {
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.itemValue .cellcatText {
+    font-weight: 600;
 }
 
 /* avisos: verde para o que correu bem, vermelho para o que falhou */
