@@ -342,12 +342,14 @@ body.topShrunk .ios-top #helpBtn {
   display: none;
 }
 
-/* Jira e o OneDrive extra: URL (+ token, no Jira) e Gravar não cabem numa
-   linha só como os outros .setNote, e os tipos url/password não são
-   apanhados pelas regras de forms.css. O OneDrive ganha a mesma disposição
-   quando a linha "Ligar automaticamente" está à vista. */
+/* Jira, o OneDrive extra e a conta do OneDrive: URL/email (+ token, no Jira) e
+   Gravar não cabem numa linha só como os outros .setNote, e os tipos
+   url/password/email não são apanhados pelas regras de forms.css. O OneDrive
+   ganha a mesma disposição quando a linha "Ligar automaticamente" está à
+   vista. */
 .settingsPanel #jiraBox,
 .settingsPanel #onedriveRootBox,
+.settingsPanel #graphEmailBox,
 .settingsPanel #graphBox {
   flex-wrap: wrap;
   justify-content: flex-start;
@@ -363,7 +365,8 @@ body.topShrunk .ios-top #helpBtn {
 }
 
 .settingsPanel #jiraBox input,
-.settingsPanel #onedriveRootBox input {
+.settingsPanel #onedriveRootBox input,
+.settingsPanel #graphEmailBox input {
   flex: 1 1 100%;
   min-width: 0;
   font: inherit;
@@ -375,12 +378,14 @@ body.topShrunk .ios-top #helpBtn {
 }
 
 .settingsPanel #jiraBox button,
-.settingsPanel #onedriveRootBox button {
+.settingsPanel #onedriveRootBox button,
+.settingsPanel #graphEmailBox button {
   margin-left: 0;
 }
 
 .settingsPanel #jiraBox #jiraState,
-.settingsPanel #onedriveRootBox #onedriveRootState {
+.settingsPanel #onedriveRootBox #onedriveRootState,
+.settingsPanel #graphEmailBox #graphEmailState {
   flex: 1 1 100%;
 }
 
