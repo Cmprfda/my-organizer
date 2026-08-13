@@ -190,8 +190,10 @@ applyTheme();
 // fonte dos dados: ficheiro local ou o livro no OneDrive lido pela API do
 // Excel (Microsoft Graph). O bloco só aparece se o servidor estiver configurado.
 let graphInfo = { configured: false, connected: false, code: "", url: "", pending: false, error: "",
-                  account_email: "", account_name: "", onedrive_url: "" };
+                  account_email: "", account_name: "", onedrive_url: "",
+                  has_session: false, had_login: false, login_email: "" };
 let graphPoll = null;
+let graphPollUntil = 0;
 // prova ao vivo (não só o prazo do token em cache) de que o pedido de 20 em 20
 // segundos ao OneDrive falhou por falta de rede — ver checkForChanges() em main.js
 let liveOffline = false;
@@ -203,6 +205,15 @@ let liveError = "";
 const GRAPH_AUTO_KEY = "bsp-tracker-onedrive-auto";
 let graphAutoReconnect = localStorage.getItem(GRAPH_AUTO_KEY) !== "0";
 let graphAutoReconnectAt = 0;
+// tentativas automáticas seguidas sem sucesso: cada uma espera mais do que a
+// anterior (5, 10, 20, 40 min) e ao fim de GRAPH_AUTO_MAX a app desiste até
+// haver um clique em "Ligar" ou uma ligação boa. Sem este travão, um separador
+// de login por resolver acumulava outro a cada 5 minutos — a app deixada aberta
+// numa aba de fundo enchia o browser de pedidos à Microsoft
+const GRAPH_AUTO_MAX = 4;
+const GRAPH_AUTO_WAIT_MIN = 5 * 60 * 1000;
+let graphAutoTries = 0;
+let graphAutoGaveUp = false;
 
 // conta Microsoft memorizada no servidor (só email/nome — o token nunca sai de
 // lá). Mostra-se para se saber qual é a identidade que vai ser reutilizada: o
@@ -227,6 +238,10 @@ function renderGraphState() {
   if (graphInfo.code) txt = tf("graph_code", graphInfo.url, graphInfo.code);
   else if (graphInfo.pending) txt = t("graph_wait");
   else if (graphInfo.connected) txt = t(graphInfo.method === "cli" ? "graph_on_cli" : "graph_on");
+  // sessão guardada mas o servidor não conseguiu renová-la agora: isto é falta
+  // de rede, não uma sessão terminada — dizer "desligado" fazia parecer que a
+  // app se desliga a toda a hora e convidava a um login que não é preciso
+  else if (graphInfo.has_session) txt = t("graph_on_offline");
   else txt = graphInfo.can_login ? t("graph_off") : `${t("graph_off")} — ${t("graph_need_cli")}`;
   // ponto verde/vermelho a acompanhar o texto do estado. Com sessão iniciada
   // mas o último pedido ao OneDrive falhado, isto tem de dizer o mesmo que o
@@ -242,15 +257,17 @@ function renderGraphState() {
   // sem client_id só há a via da Azure CLI, que se gere fora da app
   const usable = graphInfo.connected ? graphInfo.method !== "cli" : graphInfo.can_login;
   $("graphBtn").classList.toggle("hidden", graphInfo.pending || !usable);
-  // só faz sentido escolher "ligar sozinho" depois de já haver conta memorizada
-  // (a app nunca abre o browser sem ter havido primeiro um login manual)
-  const podeAuto = graphInfo.method !== "cli" && !!graphInfo.account_email;
+  // só faz sentido escolher "ligar sozinho" depois de um login feito neste PC
+  // (had_login) — o email escrito à mão nas Definições não conta: a app nunca
+  // abre o browser sem ter havido primeiro um login manual
+  const podeAuto = graphInfo.method !== "cli" && !!graphInfo.had_login;
   $("graphAutoRow").classList.toggle("hidden", !podeAuto);
   if (podeAuto) {
     $("graphAutoReconnect").checked = graphAutoReconnect;
     $("graphAutoReconnectTxt").textContent = t("graph_auto");
     $("graphAutoRow").title = tf("t_graph_auto", graphInfo.account_name || graphInfo.account_email);
   }
+  renderGraphEmailState();
   renderOnedriveRootState();
   maybeAutoReconnectGraph();
 }
@@ -263,30 +280,105 @@ async function startGraphLogin() {
   await graphAction("login");
   if (!graphInfo.pending) return;
   clearInterval(graphPoll);
+  // o pedido de login da Microsoft expira em 5 minutos: a partir daí perguntar
+  // pelo estado de 4 em 4 segundos é só ruído (a app numa aba de fundo ficava
+  // a bater no servidor para sempre)
+  graphPollUntil = Date.now() + 6 * 60 * 1000;
   graphPoll = setInterval(async () => {
     await graphAction("state");
-    if (graphInfo.connected || !graphInfo.pending) {
+    if (graphInfo.connected || !graphInfo.pending || Date.now() > graphPollUntil) {
       clearInterval(graphPoll);
       graphPoll = null;
-      if (graphInfo.connected) { toast(t("graph_on"), "ok"); loadAllTabs(); }
+      if (graphInfo.connected) {
+        // sessão boa: o contador de tentativas volta a zero
+        graphAutoTries = 0;
+        graphAutoReconnectAt = 0;
+        toast(t("graph_on"), "ok");
+        loadAllTabs();
+      } else if (graphInfo.pending) return;   // desistiu por tempo, sem alarido
       else toast(graphInfo.error || t("graph_off"), "err");
     }
   }, 4000);
 }
 
-// com a opção ligada e uma conta já conhecida, religa sozinho quando a sessão
-// cair — sem esperar por um clique. Um intervalo mínimo entre tentativas evita
-// abrir um separador novo a cada 20s enquanto o anterior ainda está por resolver
-// (ex.: o utilizador deixou-o aberto sem terminar o login).
+// com a opção ligada e um login já feito antes, religa sozinho quando a sessão
+// cair — sem esperar por um clique. As condições são estreitas de propósito: só
+// vale a pena abrir o browser quando a Microsoft já disse que a sessão morreu
+// (has_session=false) e há alguém à frente do ecrã para a resolver. Sem isto, um
+// pedido falhado por falta de rede aparecia como "desligado" e a app deixada
+// aberta sem ninguém abria um separador de login a cada 5 minutos.
 function maybeAutoReconnectGraph() {
-  if (!graphAutoReconnect || graphInfo.pending) return;
-  if (graphInfo.connected || graphInfo.method === "cli" || !graphInfo.account_email) return;
+  if (!graphAutoReconnect || graphInfo.pending || graphAutoGaveUp) return;
+  if (graphInfo.connected || graphInfo.method === "cli") return;
+  // nunca na primeira vez: só religa uma sessão que já existiu neste PC
+  if (!graphInfo.had_login) return;
+  // o servidor ainda tem sessão para renovar sozinho (o que falhou foi a rede,
+  // não a autenticação): abrir o browser não resolvia nada
+  if (graphInfo.has_session) return;
+  // app numa aba de fundo/minimizada: quem não está a usar a app não tem nada
+  // que apanhar separadores de login à espera dele. Fica para quando voltar
+  // (ver o visibilitychange abaixo)
+  if (document.visibilityState !== "visible") return;
   const agora = Date.now();
-  if (agora - graphAutoReconnectAt < 5 * 60 * 1000) return;
+  // cada tentativa falhada espera o dobro da anterior
+  const espera = GRAPH_AUTO_WAIT_MIN * Math.pow(2, Math.min(graphAutoTries, 3));
+  if (graphAutoReconnectAt && agora - graphAutoReconnectAt < espera) return;
+  if (graphAutoTries >= GRAPH_AUTO_MAX) {
+    graphAutoGaveUp = true;
+    toast(t("graph_auto_gave_up"), "err");
+    return;
+  }
   graphAutoReconnectAt = agora;
+  graphAutoTries += 1;
   toast(t("graph_auto_reconnecting"), "ok");
   startGraphLogin();
 }
+
+// de volta à app: se a sessão caiu enquanto ela estava de lado, a religação
+// automática acontece agora (com alguém a olhar), não às escondidas
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") maybeAutoReconnectGraph();
+});
+
+// conta Microsoft a usar no OneDrive, escrita à mão: num PC com várias contas a
+// lista da Microsoft aparecia sempre na errada. Isto só pré-escolhe a conta no
+// login (login_hint) — quem manda continua a ser a Microsoft, e a lista dela
+// permite sempre mudar. Vazio = a conta da última sessão.
+function renderGraphEmailState() {
+  $("graphEmailBox").classList.toggle("hidden", !graphInfo.configured);
+  if (!graphInfo.configured) return;
+  $("graphEmailInput").placeholder = t("graph_email_ph");
+  $("graphEmailSaveBtn").textContent = t("btn_save");
+  if (document.activeElement !== $("graphEmailInput")) {
+    $("graphEmailInput").value = graphInfo.login_email || "";
+  }
+  const set = !!graphInfo.login_email;
+  $("graphEmailState").innerHTML = `<span class="stateDot ${set ? "ok" : ""}"></span>` +
+    esc(set ? tf("graph_email_state_set", graphInfo.login_email) : t("graph_email_state_off"));
+}
+
+async function saveGraphEmail() {
+  const btn = $("graphEmailSaveBtn");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/graph", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_login_email",
+                             login_email: $("graphEmailInput").value.trim() }),
+    });
+    const out = await res.json();
+    if (out.error) throw new Error(out.error);
+    graphInfo = { ...graphInfo, ...out };
+    renderGraphState();
+    toast(t("graph_email_saved"), "ok");
+  } catch (err) {
+    toast(`${t("graph_email_save_err")} ${err.message || ""}`.trim(), "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("graphEmailSaveBtn").addEventListener("click", saveGraphEmail);
 
 // OneDrive/site extra a seguir na navegação (além do pessoal e do site fixo em
 // graph_config.json) — para quando o livro vive no OneDrive de outra pessoa.
@@ -333,8 +425,10 @@ function renderConnBadge() {
   const badge = $("connBadge"), dot = $("connDot"), txt = $("connText");
   // "pronto a ligar" só quando a sessão do OneDrive não está mesmo iniciada;
   // com sessão iniciada a culpa é do pedido/rede e dizer o contrário confunde
-  // quem acabou de se ligar
-  const semSessao = !!(graphInfo.configured && !graphInfo.connected);
+  // quem acabou de se ligar. Uma sessão guardada que o servidor não conseguiu
+  // renovar agora (has_session) também conta como iniciada: é rede que falta
+  const semSessao = !!(graphInfo.configured && !graphInfo.connected
+                       && !graphInfo.has_session);
   const webErr = () => (semSessao ? t("conn_web_off") : t("conn_web_err"));
   let estado, texto, extra = "";
   if (liveOffline) {
@@ -385,6 +479,11 @@ async function graphAction(action) {
 }
 
 $("graphBtn").addEventListener("click", async () => {
+  // um clique é sempre um recomeço: a app volta a poder religar sozinha depois
+  // de ter desistido (ver maybeAutoReconnectGraph)
+  graphAutoTries = 0;
+  graphAutoReconnectAt = 0;
+  graphAutoGaveUp = false;
   if (graphInfo.connected) {
     await graphAction("logout");
     // sair da conta afeta todos os livros do OneDrive abertos, não só o da frente
@@ -397,7 +496,13 @@ $("graphBtn").addEventListener("click", async () => {
 $("graphAutoReconnect").addEventListener("change", () => {
   graphAutoReconnect = $("graphAutoReconnect").checked;
   localStorage.setItem(GRAPH_AUTO_KEY, graphAutoReconnect ? "1" : "0");
-  if (graphAutoReconnect) { graphAutoReconnectAt = 0; maybeAutoReconnectGraph(); }
+  // voltar a ligar a opção é um recomeço, tal como um clique em "Ligar"
+  if (graphAutoReconnect) {
+    graphAutoReconnectAt = 0;
+    graphAutoTries = 0;
+    graphAutoGaveUp = false;
+    maybeAutoReconnectGraph();
+  }
 });
 
 

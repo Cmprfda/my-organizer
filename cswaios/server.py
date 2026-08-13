@@ -23,7 +23,8 @@ from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, flush_pending,
                        report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
-                    graph_logout, graph_pick, graph_state, save_onedrive_root)
+                    graph_logout, graph_pick, graph_state, save_login_email,
+                    save_onedrive_root)
 from .jira import (fetch_issue, load_jira_config, log_work, save_jira_config,
                    search_issues)
 from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
@@ -245,6 +246,13 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, json.dumps({"ok": True, "book": book,
                                                 **graph_state()}), "application/json")
                     return
+                elif action == "set_login_email":
+                    # conta Microsoft a pré-escolher no login, escrita à mão nas
+                    # Definições (ex.: o PC tem várias contas e a lista da
+                    # Microsoft aparecia sempre na errada)
+                    save_login_email(str(payload.get("login_email") or ""))
+                    log_event(f"{ip} definiu a conta do OneDrive")
+                    state = graph_state()
                 elif action == "set_onedrive_root":
                     # OneDrive/site extra a seguir na navegação, escolhido pelo
                     # utilizador nas Definições (ex.: o livro vive no OneDrive

@@ -696,9 +696,11 @@ function toggleSubtasksEdit(id) {
 }
 
 // issue do Jira ligada ao item (no máximo uma): só o código, clicável para
-// abrir no Jira, + ação de registar mais tempo (sem mostrar o esforço já
-// registado aqui — isso vê-se na página Jira). Sem issue ligada mostra o campo
-// para ligar uma, com sugestões das chaves já conhecidas da app.
+// abrir no Jira, + ação de registar mais tempo. Nada da issue em si (resumo,
+// epic, esforço registado) — isso vê-se na página Jira, aqui só atrapalhava o
+// item. O resumo fica no tooltip do código, à mão de quem o quiser confirmar.
+// Sem issue ligada mostra o campo para ligar uma, com sugestões das chaves já
+// conhecidas da app.
 function todoJiraHtml(it) {
   const issue = (Array.isArray(it.jiraIssues) ? it.jiraIssues : [])[0];
   if (!issue) {
@@ -708,7 +710,6 @@ function todoJiraHtml(it) {
   const label = issue.parentSummary && issue.summary ? `${issue.parentSummary} — ${issue.summary}` : (issue.summary || issue.key);
   return `<ul class="todoJiraList"><li class="todoJiraItem">
     ${jiraKeyBadgeHtml(issue.key, label)}
-    ${jiraEpicHtml(jiraEpicOf(issue.key, issue))}
     <button type="button" class="mini" data-tjiralog="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("jira_log_action"))}">⏱+</button>
     <button type="button" class="srcBtn" data-tjiragoto="${esc(issue.key)}" title="${esc(t("jira_goto_action"))}">↗</button>
     <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>

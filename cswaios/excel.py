@@ -105,7 +105,11 @@ try {
   if ($a -ne $b) {
     throw "a linha $($p.xlrow) da folha mudou entretanto (esperava '$b', encontrei '$a') - atualiza a app e tenta de novo"
   }
-  $ws.Cells($p.xlrow, $p.xlcol).Value2 = [string]$p.value
+  $cell = $ws.Cells($p.xlrow, $p.xlcol)
+  $cell.Value2 = [string]$p.value
+  # texto com mudanças de linha só se lê na folha com "moldar texto" ligado:
+  # sem isto o Excel guardava as linhas mas mostrava-as todas colada numa só
+  if (([string]$p.value).Contains([string][char]10)) { $cell.WrapText = $true }
   $wb.Save()
   if ($own) { $wb.Close($true); $own.Quit() }
   Write-Output 'OK'
@@ -123,6 +127,10 @@ def write_status_to_excel(path, sheet, xlrow, xlcol, fncol, fn, value):
     preserva gráficos/validações e faz upload via OneDrive. Usa o livro já
     aberto se existir; senão abre uma instância invisível só para isto.
     Devolve (ok, mensagem)."""
+    # dentro de uma célula o Excel muda de linha com \n; um \r a acompanhar
+    # aparece na folha como um quadradinho no meio do texto
+    if isinstance(value, str):
+        value = value.replace("\r\n", "\n").replace("\r", "\n")
     if is_graph_path(path):
         # fonte web: o Excel/COM não se aplica, escreve-se pela API do Excel
         drive_id, item_id = graph_ids_from_path(path)

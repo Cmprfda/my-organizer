@@ -1756,6 +1756,7 @@ function openObsEditor(span) {
     `<textarea class="noteText" rows="3" placeholder="${t("ph_obs")}">${esc(atual)}</textarea>` +
     editActions();
   const txt = span.querySelector("textarea");
+  autoGrowEditor(txt, () => grava(txt.value));
   txt.focus();
 
   async function grava(valor) {
@@ -1812,6 +1813,7 @@ function openTodoTextEditor(span) {
     `<textarea class="noteText" rows="3" placeholder="${t("ph_todo")}">${esc(atual)}</textarea>` +
     editActions();
   const txt = span.querySelector("textarea");
+  autoGrowEditor(txt, () => grava(txt.value));
   txt.focus();
 
   async function grava(valor) {
@@ -2004,12 +2006,16 @@ function openCellCatEditor(span) {
   const list = JSON.parse(span.dataset.catlist || "null");
 
   if (!list) {
-    // sem lista predefinida: texto livre, igual ao editor do Function/TC
+    // sem lista predefinida: texto livre em várias linhas, igual ao editor da
+    // OBS/"To Do" (era um <input> de uma linha, e numa coluna de texto corrido
+    // — a OBS e o "o que fazer" da vista resumida — não havia forma de escrever
+    // um parágrafo: o Enter não fazia nada)
     const atual = span.innerText.replace(" ✎", "").trim();
     span.dataset.editing = "1";
     editorOpen = true;
-    span.innerHTML = `<input type="text" class="noteText fnEdit" value="${esc(atual)}">` + editActions();
-    const inp = span.querySelector("input");
+    span.innerHTML = `<textarea class="noteText" rows="3">${esc(atual)}</textarea>` + editActions();
+    const inp = span.querySelector("textarea");
+    autoGrowEditor(inp, () => _saveCellCat(meta, col0, base, list, inp.value));
     inp.focus();
     inp.select();
 

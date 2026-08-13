@@ -68,6 +68,27 @@ function editActions() {
     `</div>`;
 }
 
+// Editor de texto livre de uma célula do Excel (OBS, "o que fazer", categorias
+// da vista resumida): cresce à medida do que se escreve, para uma nota de várias
+// linhas se ver toda em vez de rolar dentro de três linhas fixas. O Enter faz
+// linha nova e nunca sai daqui (há tratadores de teclado por cima, na caixa de
+// detalhe e nas listas, que não têm nada que ver este Enter); Ctrl/⌘+Enter é o
+// atalho para gravar, equivalente ao ✓.
+function autoGrowEditor(el, onSave) {
+  const grow = () => {
+    el.style.height = "auto";
+    // +2px: sem isto o texto encosta ao fundo e aparece uma barra de rolagem
+    el.style.height = `${Math.min(el.scrollHeight + 2, 320)}px`;
+  };
+  el.addEventListener("input", grow);
+  el.addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    if ((e.ctrlKey || e.metaKey) && onSave) { e.preventDefault(); onSave(); return; }
+    e.stopPropagation();
+  });
+  grow();
+}
+
 function statusLines(value) {
   return String(value || "").split("\n")
     .map(l => l.replace(/^TC: |^TP: /, "").trim())

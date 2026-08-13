@@ -3,6 +3,7 @@
 
 import base64
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -217,6 +218,13 @@ def _http_json(url, data=None, headers=None, method=None, as_json=False):
         return out
     except urllib.error.URLError as exc:
         raise GraphError(f"sem ligação: {exc.reason}")
+    except (OSError, http.client.HTTPException) as exc:
+        # a ligação morreu com o pedido já a caminho (SSL cortado a meio,
+        # ligação reposta pelo outro lado, timeout a ler a resposta). Não é um
+        # URLError: sem isto subia crua até quem pediu os dados, que respondia
+        # "erro interno" em vez de "sem rede" — era assim que uma falha de rede
+        # de um segundo dava erro 500 em /api/tasks
+        raise GraphError(f"sem ligação: {exc}")
     return json.loads(raw) if raw.strip() else {}
 
 
@@ -284,10 +292,64 @@ def _graph_forget_tokens():
 def remembered_account():
     """Conta Microsoft usada da última vez (email/nome), se for conhecida.
     Não prova que a sessão esteja viva — só serve para a mostrar na interface
-    e para pré-preencher o login seguinte."""
+    e para pré-preencher o login seguinte. Sem nenhuma sessão anterior vale o
+    email escrito à mão nas Definições (`login_email`): é justamente quem nunca
+    se ligou aqui que ganha em ver a lista de contas já escolhida."""
     tokens = _graph_load_tokens()
-    return {"email": str(tokens.get("account_email") or ""),
-            "name": str(tokens.get("account_name") or "")}
+    email = str(tokens.get("account_email") or "")
+    if not email:
+        email = str(graph_config().get("login_email") or "")
+    return {"email": email, "name": str(tokens.get("account_name") or "")}
+
+
+def login_hint():
+    """Conta a pré-escolher no login. O email escrito à mão nas Definições
+    ganha ao da última sessão: é uma escolha explícita de quem quer autenticar
+    com outra conta (a lista da Microsoft continua a permitir mudar)."""
+    return (str(graph_config().get("login_email") or "")
+            or remembered_account()["email"])
+
+
+def had_login():
+    """True se alguma vez houve um login desta app neste computador (ficou
+    sessão ou, ao menos, a conta que a fez). É o que distingue "a sessão caiu,
+    posso religar sozinho" de "nunca ninguém se ligou" — a app nunca abre o
+    browser por si na primeira vez."""
+    tokens = _graph_load_tokens()
+    return bool(tokens.get("refresh_token") or tokens.get("account_email"))
+
+
+def has_session():
+    """True enquanto houver refresh token guardado: a sessão renova-se sozinha
+    no servidor e não é preciso pedir nada ao utilizador. Um pedido falhado por
+    falta de rede deixa isto a True — só uma sessão revogada/expirada pela
+    Microsoft (`_graph_own_token`) é que o apaga."""
+    return bool(_graph_load_tokens().get("refresh_token"))
+
+
+def save_login_email(email):
+    """Grava (ou remove, com vazio) o email da conta Microsoft a usar no login,
+    escolhido nas Definições. Serve para o `login_hint`: a lista de contas da
+    Microsoft aparece já com esta escolhida, sem obrigar a procurá-la. Não é um
+    segredo nem dá acesso a nada por si — os tokens continuam à parte."""
+    email = str(email or "").strip()
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise ValueError("email inválido")
+    try:
+        with open(GRAPH_CONFIG_FILE, encoding="utf-8-sig") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    if email:
+        cfg["login_email"] = email
+    else:
+        cfg.pop("login_email", None)
+    with open(GRAPH_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=4)
+    log_event(f"conta do OneDrive definida nas Definições: {email or '(removida)'}")
+    return email
 
 
 def _graph_account_info(cfg, token):
@@ -482,7 +544,7 @@ def _graph_login_browser(cfg):
               "scope": cfg["scopes"], "state": state,
               "code_challenge": challenge, "code_challenge_method": "S256",
               "prompt": "select_account"}
-    hint = remembered_account()["email"]
+    hint = login_hint()
     if hint:
         # continua a mostrar a lista de contas (permite trocar de conta), mas
         # já com esta escolhida
@@ -615,7 +677,13 @@ def graph_state():
              "code": "", "url": "", "pending": False, "error": "",
              "book": book.get("name", "") if book else "",
              "book_path": book.get("path", "") if book else "",
-             "has_book": has_book(), "onedrive_url": cfg.get("onedrive_url", "")}
+             "has_book": has_book(), "onedrive_url": cfg.get("onedrive_url", ""),
+             # sessão guardada (renova-se sozinha) e login já feito alguma vez:
+             # é com isto que a interface decide se vale a pena religar sozinha
+             # — sem estas duas, uma falha de rede passava por "sessão caída" e
+             # abria o browser outra vez (ver maybeAutoReconnectGraph)
+             "has_session": has_session(), "had_login": had_login(),
+             "login_email": cfg.get("login_email", "")}
     if not cfg:
         return state
     try:
@@ -746,6 +814,8 @@ def share_upload(drive, item, name, data, cfg=None):
         raise GraphError(f"Graph {exc.code}: {detail}")
     except urllib.error.URLError as exc:
         raise GraphError(f"sem ligação: {exc.reason}")
+    except (OSError, http.client.HTTPException) as exc:
+        raise GraphError(f"sem ligação: {exc}")
     return json.loads(raw) if raw.strip() else {}
 
 
@@ -1145,6 +1215,16 @@ def graph_write_status(sheet, xlrow, xlcol, fncol, fn, value, drive_id="", item_
         graph_workbook(f"/worksheets('{quoted}')/range(address='{target}')",
                        method="PATCH", body={"values": [[str(value)]]},
                        drive_id=drive_id, item_id=item_id)
+        if "\n" in str(value):
+            # tal como na escrita pelo Excel/COM: sem "moldar texto" as linhas
+            # ficam lá mas a folha mostra-as todas numa só. Falhar aqui não
+            # estraga a escrita — o valor já está gravado
+            try:
+                graph_workbook(f"/worksheets('{quoted}')/range(address='{target}')/format",
+                               method="PATCH", body={"wrapText": True},
+                               drive_id=drive_id, item_id=item_id)
+            except GraphError as exc:
+                log_event(f"não consegui ligar o moldar texto em {target} ({exc})")
         return True, "OK (OneDrive)"
     except GraphError as exc:
         return False, str(exc)
