@@ -750,6 +750,49 @@
     color: var(--accent);
 }
 
+/* ---------- menu do botão direito de uma tabela (linhas e colunas) ----------
+   Mesmo aspeto do menu de copiar (copymenu.css) e acima dele: aqui é este que
+   manda quando o clique cai dentro de uma tabela. */
+.noteTablePop {
+    position: fixed;
+    z-index: 91;
+    display: flex;
+    flex-direction: column;
+    min-width: 190px;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    box-shadow: var(--ios-shadow-lg);
+}
+
+.noteTablePop button {
+    appearance: none;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    padding: 7px 10px;
+    border-radius: var(--ios-radius-btn);
+    cursor: pointer;
+}
+
+.noteTablePop button:hover:not(:disabled),
+.noteTablePop button:focus-visible:not(:disabled) {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+/* o que não se pode fazer aqui (apagar o cabeçalho, a última coluna) fica à
+   vista mas apagado: o menu é sempre o mesmo, seja onde for o clique */
+.noteTablePop button:disabled {
+    opacity: .4;
+    cursor: default;
+}
+
 .noteDrawLayer .c-yellow { stroke: var(--status-doing-fg); }
 .noteDrawLayer .c-blue { stroke: var(--status-info-fg); }
 .noteDrawLayer .c-green { stroke: var(--status-done-fg); }

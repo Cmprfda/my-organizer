@@ -2890,6 +2890,191 @@ async function insertNoteTable() {
   });
 }
 
+// ---------- juntar e tirar linhas/colunas ----------
+// A tabela é texto: mexer na grelha é reescrever as linhas "| a | b |" que ela
+// ocupa no texto da caixa. Quem chama isto é o menu do botão direito.
+
+// as células de uma linha tal como estão escritas (com o enchimento à volta) e
+// o que a linha tem fora delas, para se voltar a escrever igual
+function noteRowParts(line) {
+  const first = line.indexOf("|"), last = line.lastIndexOf("|");
+  return {
+    pre: line.slice(0, first + 1),
+    parts: line.slice(first + 1, last).split("|"),
+    post: line.slice(last),
+  };
+}
+
+function noteRowJoin(row) {
+  return row.pre + row.parts.join("|") + row.post;
+}
+
+// junta uma coluna na posição `c` a todas as linhas da tabela: o cabeçalho
+// ganha um nome, a linha de separação a sua grelha e as linhas de dados uma
+// célula vazia da mesma largura. As linhas mais curtas (as que a vista enche
+// sozinha) ganham primeiro as células que lhes faltavam, para a coluna nova
+// entrar no mesmo lugar em todas elas.
+function noteTableAddCol(rows, c, label) {
+  const head = noteRowParts(rows[0]);
+  const width = Math.max(3, label.length);
+  return rows.map((line, i) => {
+    const row = noteRowParts(line);
+    while (row.parts.length < c) {
+      const pad = head.parts[row.parts.length];
+      row.parts.push(" ".repeat(Math.max(1, pad ? pad.length : 1)));
+    }
+    row.parts.splice(c, 0, i === 0 ? ` ${label.padEnd(width)} `
+      : i === 1 ? ` ${"-".repeat(width)} ` : ` ${" ".repeat(width)} `);
+    return noteRowJoin(row);
+  });
+}
+
+function noteTableDelCol(rows, c) {
+  return rows.map(line => {
+    const row = noteRowParts(line);
+    if (row.parts.length <= c) return line;   // linha curta: já não tem esta coluna
+    row.parts.splice(c, 1);
+    return noteRowJoin(row);
+  });
+}
+
+// escreve a tabela nova no texto da caixa e deixa o cursor na célula (`r`, `c`)
+// dela; `select` marca o que essa célula tem escrito (escrever substitui-o)
+function noteTablePut(area, from, to, rows, r, c, select) {
+  const text = rows.join("\n");
+  const at = from + rows.slice(0, Math.min(r, rows.length)).reduce((n, l) => n + l.length + 1, 0);
+  const cells = noteTableCells({ text: rows[Math.min(r, rows.length - 1)] || "", at });
+  const cell = cells[Math.min(c, cells.length - 1)] || { at, text: "" };
+  replaceNoteRange(area, from, to, text, cell.at, select ? cell.at + cell.text.length : cell.at);
+}
+
+// `spot` (ver o menu, abaixo): `anchor` é o índice, no texto, da primeira célula
+// do cabeçalho — é por ele que a tabela se volta a encontrar, mesmo que o texto
+// já tenha mudado —, `row` é a linha da vista (0 = cabeçalho) e `col` a coluna.
+function noteTableAct(area, spot, act) {
+  const lines = noteTextLines(area.value);
+  const head = lines.findIndex(l => spot.anchor >= l.at && spot.anchor <= l.at + l.text.length);
+  const block = head >= 0 ? noteTableBlock(lines, head) : null;
+  if (!block) return;   // o texto mudou entretanto: já não é esta a tabela
+  const rows = [];
+  for (let k = head; k < head + block.count; k++) rows.push(lines[k].text);
+  const from = lines[head].at;
+  const to = from + rows.join("\n").length;
+  // a linha da vista nas linhas do texto: a linha de separação (a 1) não se vê
+  const r = spot.row <= 0 ? 0 : spot.row + 1;
+  const cols = noteTableCells({ text: rows[0], at: 0 }).length;
+  const c = Math.max(0, Math.min(spot.col, cols - 1));
+  if (act === "row_above" || act === "row_below") {
+    // a linha nova nunca entra entre o cabeçalho e a separação (isso partia a
+    // tabela): no cabeçalho, entra como primeira linha de dados
+    const at = Math.max(2, act === "row_above" ? r : r + 1);
+    const next = rows.slice();
+    next.splice(at, 0, noteTableEmptyRow(rows[0]));
+    noteTablePut(area, from, to, next, at, 0, false);
+    return;
+  }
+  if (act === "row_del") {
+    if (r < 2 || r >= rows.length) return;   // o cabeçalho não se apaga
+    const next = rows.slice();
+    next.splice(r, 1);
+    // era a última linha de dados: o cursor vai para o cabeçalho, nunca para a
+    // linha de separação (essa não se vê)
+    noteTablePut(area, from, to, next, next.length > 2 ? Math.min(r, next.length - 1) : 0, c, false);
+    return;
+  }
+  if (act === "col_left" || act === "col_right") {
+    const at = act === "col_left" ? c : c + 1;
+    const label = `${t("note_table_col")} ${at + 1}`;
+    // deixa escolhido o nome da coluna nova: escrever já o substitui
+    noteTablePut(area, from, to, noteTableAddCol(rows, at, label), 0, at, true);
+    return;
+  }
+  if (act === "col_del") {
+    if (cols <= 1) return;                   // a última coluna não se apaga
+    noteTablePut(area, from, to, noteTableDelCol(rows, c), r, Math.min(c, cols - 2), false);
+  }
+}
+
+// ---------- menu do botão direito de uma tabela ----------
+const NOTE_TABLE_ACTS = ["row_above", "row_below", "row_del", "col_left", "col_right", "col_del"];
+
+let noteTablePop = null;   // { el } do menu aberto
+
+function closeNoteTablePop() {
+  if (!noteTablePop) return;
+  noteTablePop.el.remove();
+  noteTablePop = null;
+}
+
+// segue o padrão dos outros painéis do quadro (clique fora ou Esc fecham); o
+// mousedown não deixa o menu tirar o cursor à caixa, como o botão da tabela
+function openNoteTablePop(clientX, clientY, spot) {
+  closeNoteTablePop();
+  const el = document.createElement("div");
+  el.className = "noteTablePop";
+  el.innerHTML = NOTE_TABLE_ACTS.map(act => {
+    // no cabeçalho não há linha para apagar nem linha acima onde entrar
+    const off = (spot.row <= 0 && (act === "row_above" || act === "row_del"))
+      || (act === "col_del" && spot.cols <= 1);
+    return `<button type="button" data-tblact="${act}"${off ? " disabled" : ""}>${esc(t(`note_tbl_${act}`))}</button>`;
+  }).join("");
+  el.addEventListener("mousedown", ev => ev.preventDefault());
+  el.addEventListener("click", ev => {
+    const btn = ev.target.closest("[data-tblact]");
+    if (!btn || btn.disabled) return;
+    ev.stopPropagation();
+    const area = $("noteCanvas").querySelector(`[data-btext="${CSS.escape(spot.box)}"]`);
+    closeNoteTablePop();
+    if (area) noteTableAct(area, spot, btn.dataset.tblact);
+  });
+  document.body.appendChild(el);
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = `${Math.max(6, Math.min(window.innerWidth - w - 6, clientX))}px`;
+  el.style.top = `${Math.max(6, Math.min(window.innerHeight - h - 6, clientY))}px`;
+  noteTablePop = { el };
+}
+
+// botão direito numa tabela de uma caixa: o menu das linhas e colunas. A caixa
+// passa a estar em escrita (é o texto dela que muda), com o cursor na célula
+// onde se clicou — e o preventDefault tira da frente o menu de copiar.
+$("noteCanvas").addEventListener("contextmenu", e => {
+  const cell = e.target.closest(".noteBoxTable th, .noteBoxTable td");
+  const boxEl = cell && cell.closest(".noteBox");
+  const table = cell && cell.closest("table");
+  const first = table && table.querySelector("tr");
+  const anchor = first && first.children[0] ? +first.children[0].dataset.at : NaN;
+  if (!boxEl || !Number.isFinite(anchor)) return;
+  e.preventDefault();
+  const spot = {
+    box: boxEl.dataset.bid,
+    anchor,
+    row: [...table.querySelectorAll("tr")].indexOf(cell.parentElement),
+    col: cell.cellIndex,
+    cols: first.children.length,
+  };
+  // a vista só recebe o cursor quando a caixa está em escrita: se não estava, é
+  // este clique que a põe (o índice da célula clicada leva lá o cursor)
+  if (noteEditBox !== spot.box && !startNoteEdit(spot.box, +cell.dataset.at)) return;
+  openNoteTablePop(e.clientX, e.clientY, spot);
+});
+
+// clicar fora fecha (dentro do menu não: é lá que se escolhe)
+document.addEventListener("pointerdown", e => {
+  if (noteTablePop && !e.target.closest(".noteTablePop")) closeNoteTablePop();
+}, true);
+
+// o menu fica preso ao ecrã: se o quadro rolar, deixa de estar junto à célula
+$("noteCanvas").addEventListener("scroll", closeNoteTablePop);
+window.addEventListener("resize", closeNoteTablePop);
+
+// em captura: com o menu aberto o Esc só o fecha (não sai também da caixa)
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !noteTablePop) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  closeNoteTablePop();
+}, true);
+
 // teclado dentro do texto de uma caixa (e só aí: o Tab continua a mudar de
 // campo em todo o resto da aplicação)
 $("noteCanvas").addEventListener("keydown", e => {
