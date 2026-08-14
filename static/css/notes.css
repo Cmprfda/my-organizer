@@ -1008,28 +1008,12 @@ body.notes-full .noteTree {
     cursor: zoom-in;
 }
 
-/* o texto de uma caixa tem duas caras: a vista formatada (negrito, riscado e
-   tabelas) e, quando se está a escrever nela, o próprio texto com os
-   marcadores à vista — o <textarea> de sempre */
+/* o texto de uma caixa mostra-se sempre formatado (negrito, riscado e tabelas)
+   e é nessa vista que se escreve — os marcadores (**, ~~ e os "|") nunca
+   aparecem. O <textarea> continua a ser o dono do texto com marcadores, mas
+   não se vê: é só ele que as funções de edição conhecem (ver notes.js) */
 .noteBoxText {
     display: none;
-    flex: 1 1 auto;
-    min-height: 22px;
-    width: 100%;
-    resize: none;
-    font: inherit;
-    font-size: 13px;
-    line-height: 1.4;
-    color: var(--text);
-    background: transparent;
-    border: none;
-    outline: none;
-    padding: 0;
-    overflow: auto;
-}
-
-.noteBox.editing .noteBoxText {
-    display: block;
 }
 
 .noteBoxTextView {
@@ -1045,8 +1029,10 @@ body.notes-full .noteTree {
     cursor: text;
 }
 
-.noteBox.editing .noteBoxTextView {
-    display: none;
+/* a escrever: o retângulo de foco do browser não faz falta (a caixa já está
+   marcada como escolhida) */
+.noteBoxTextView:focus {
+    outline: none;
 }
 
 .noteBoxPh {
@@ -1095,6 +1081,9 @@ body.notes-full .noteTree {
 .noteBoxTable th,
 .noteBoxTable td {
     min-width: 1.6em;
+    /* na tabela as palavras só se partem quando não cabem mesmo (a caixa parte
+       em qualquer sítio): assim o nome de uma coluna não fica cortado ao meio */
+    overflow-wrap: break-word;
     border: none;
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
@@ -1126,6 +1115,19 @@ body.notes-full .noteTree {
     text-transform: none;
     letter-spacing: normal;
     color: var(--text);
+}
+
+/* alinhamento por coluna, escrito na linha de separação (":---" / "---:") */
+.noteBoxTable .alL {
+    text-align: left;
+}
+
+.noteBoxTable .alC {
+    text-align: center;
+}
+
+.noteBoxTable .alR {
+    text-align: right;
 }
 
 /* linhas alternadas: ajuda a seguir a linha até ao fim nas tabelas largas */

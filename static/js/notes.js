@@ -280,6 +280,7 @@ function noteTableBlock(lines, i) {
   while (end < lines.length && NOTE_ROW_RE.test(lines[end].text) && !NOTE_SEP_RE.test(lines[end].text)) end++;
   return {
     head: lines[i],
+    sep: lines[i + 1],
     body: lines.slice(i + 2, end),
     aligns: noteTableAligns(lines[i + 1]),
     count: end - i,
@@ -287,17 +288,29 @@ function noteTableBlock(lines, i) {
 }
 
 // células de uma linha "| a | b |", cada uma com o índice do seu texto no
-// texto original (é o que põe o cursor na célula onde se clicou)
+// texto original (é o que põe o cursor na célula onde se clicou) e com os
+// espaços de enchimento que tinha à volta (`lead`/`trail`) — a vista não os
+// mostra, mas é por eles que a linha se volta a escrever igual (ver noteTrText)
 function noteTableCells(line) {
   const first = line.text.indexOf("|"), last = line.text.lastIndexOf("|");
   const cells = [];
   let at = line.at + first + 1;
   for (const part of line.text.slice(first + 1, last).split("|")) {
-    const lead = part.length - part.trimStart().length;
-    cells.push({ text: part.trim(), at: at + lead });
+    const body = part.trim();
+    // numa célula vazia o enchimento conta todo para a direita: o que se
+    // escrever nela entra no princípio, e a coluna fica da largura que tinha
+    const lead = body ? part.length - part.trimStart().length : Math.min(1, part.length);
+    cells.push({ text: body, at: at + lead, lead, trail: part.length - lead - body.length });
     at += part.length + 1;
   }
   return cells;
+}
+
+// o que uma linha de tabela tem fora das células: o que vem antes do primeiro
+// "|" e depois do último
+function noteTableEdges(line) {
+  const first = line.text.indexOf("|"), last = line.text.lastIndexOf("|");
+  return { pre: line.text.slice(0, first + 1), post: line.text.slice(last) };
 }
 
 // alinhamento de cada coluna, lido da linha de separação: "|:---|" à esquerda,
@@ -341,38 +354,45 @@ function noteRichInline(text, at, out) {
   while (open.length) out.html += `</${open.pop()}>`;
 }
 
+const NOTE_ALIGN_CLASS = { left: "alL", center: "alC", right: "alR" };
+
 // IMPORTANTE: nada de espaços nem mudanças de linha entre as etiquetas da
 // tabela — só o texto das células é que pode ser texto, senão o mapa deixava
 // de casar com o que o browser vê (ver noteViewRawIndex)
+//
 // uma linha da tabela; `cols` é o número de colunas do cabeçalho, para as
 // linhas mais curtas ganharem as células que faltam e a grelha não ficar
-// rasgada (essas células vazias levam o cursor ao fim da própria linha)
+// rasgada (essas células vazias levam o cursor ao fim da própria linha).
+// Os `data-*` são o que a vista precisa para se voltar a ler como texto: os
+// espaços que a célula tinha à volta e o que a linha tem fora das células.
 function noteTableRowHtml(row, tag, cols, aligns, out) {
   const cells = noteTableCells(row);
+  const edges = noteTableEdges(row);
+  out.html += `<tr data-pre="${esc(edges.pre)}" data-post="${esc(edges.post)}">`;
   cells.forEach((cell, c) => {
-    const align = aligns[c] ? ` style="text-align:${aligns[c]}"` : "";
-    out.html += `<${tag} data-at="${cell.at}"${align}>`;
+    const cls = NOTE_ALIGN_CLASS[aligns[c]];
+    out.html += `<${tag}${cls ? ` class="${cls}"` : ""} data-at="${cell.at}" data-pad="${cell.lead},${cell.trail}">`;
     noteRichInline(cell.text, cell.at, out);
     out.html += `</${tag}>`;
   });
   const end = row.at + row.text.length;
   for (let c = cells.length; c < cols; c++) {
-    out.html += `<${tag} class="noteBoxTableFill" data-at="${end}"></${tag}>`;
+    const cls = NOTE_ALIGN_CLASS[aligns[c]];
+    out.html += `<${tag} class="noteBoxTableFill${cls ? ` ${cls}` : ""}" data-at="${end}"></${tag}>`;
   }
+  out.html += `</tr>`;
 }
 
 function noteTableHtml(table, out) {
   const cols = noteTableCells(table.head).length;
-  out.html += `<table class="noteBoxTable"><thead><tr>`;
+  // a linha de separação não se mostra (é a grelha), mas guarda-se como estava
+  // para a tabela continuar a ser a mesma quando a vista voltar a texto
+  out.html += `<table class="noteBoxTable" data-sep="${esc(table.sep.text)}"><thead>`;
   noteTableRowHtml(table.head, "th", cols, table.aligns, out);
-  out.html += `</tr></thead>`;
+  out.html += `</thead>`;
   if (table.body.length) {
     out.html += `<tbody>`;
-    for (const row of table.body) {
-      out.html += `<tr>`;
-      noteTableRowHtml(row, "td", cols, table.aligns, out);
-      out.html += `</tr>`;
-    }
+    for (const row of table.body) noteTableRowHtml(row, "td", cols, table.aligns, out);
     out.html += `</tbody>`;
   }
   out.html += `</table>`;
@@ -383,30 +403,39 @@ function noteRichRender(text) {
   const out = { html: "", map: [] };
   const lines = noteTextLines(text);
   let i = 0;
-  let prevText = false;   // a linha anterior é texto normal: precisa do \n
+  let prevText = false;    // a linha anterior é texto normal: precisa do \n
+  let prevTable = false;   // a linha anterior fechou uma tabela
   while (i < lines.length) {
     const table = noteTableBlock(lines, i);
     if (table) {
       noteTableHtml(table, out);
       i += table.count;
       prevText = false;    // a tabela é um bloco: já muda de linha sozinha
+      prevTable = true;
       continue;
     }
     if (prevText) {
       out.map.push(lines[i].at - 1);
       out.html += "\n";    // a vista usa white-space: pre-wrap
+    } else if (prevTable && !lines[i].text && i < lines.length - 1) {
+      // linha em branco depois de uma tabela: não se vê, mas é ela que separa
+      // duas tabelas — sem isto, ler a vista de volta juntava-as numa só
+      out.map.push(lines[i].at);
+      out.html += "\n";
     }
     noteRichInline(lines[i].text, lines[i].at, out);
     prevText = true;
+    prevTable = false;
     i += 1;
   }
   return out;
 }
 
-function noteBoxViewHtml(text) {
-  return String(text || "").trim()
-    ? noteRichRender(text).html
-    : `<span class="noteBoxPh">${esc(t("ph_box"))}</span>`;
+// `editing`: a caixa está a ser escrita, e aí não entra o "escreve aqui..." —
+// é onde o cursor vive, e o texto de exemplo acabaria por ser escrito também
+function noteBoxViewHtml(text, editing) {
+  if (String(text || "").trim() || editing) return noteRichRender(text).html;
+  return `<span class="noteBoxPh">${esc(t("ph_box"))}</span>`;
 }
 
 // ---------- copiar o texto de uma caixa ----------
@@ -480,6 +509,79 @@ function copyNoteBox(note, boxId, btn) {
   flashNoteCopied(btn);
 }
 
+// ---------- a vista é onde se escreve ----------
+// A caixa mostra SEMPRE o texto formatado — a tabela desenhada, o negrito
+// negrito e o riscado riscado — e é nela que se escreve: os marcadores (**, ~~
+// e os "|" da tabela) nunca aparecem. O <textarea> continua a existir, mas
+// escondido: é ele que guarda o texto com marcadores e a marcação (from/to),
+// que é o que todas as funções de edição desta página conhecem (B/S, Tab,
+// Enter, inserir tabela). O caminho é sempre o mesmo:
+//   escreve-se na vista -> lê-se a vista como texto (noteViewText) -> o campo
+//   fica com esse texto -> se a FORMA mudou, a vista é refeita e o cursor volta
+//   ao mesmo sítio; se só mudaram letras, deixa-se o DOM como o browser o pôs
+//   (é o que deixa escrever um espaço no fim de uma célula).
+
+// os nós de texto da vista, por ordem, com o índice visível onde cada um começa
+function noteViewTextNodes(root) {
+  const out = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  while (walker.nextNode()) {
+    out.push({ node: walker.currentNode, at: seen, len: walker.currentNode.nodeValue.length });
+    seen += walker.currentNode.nodeValue.length;
+  }
+  return out;
+}
+
+// a célula de tabela onde este nó está (se estiver numa)
+function noteCellOf(node) {
+  const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  return el ? el.closest("[data-at]") : null;
+}
+
+// índice no texto original de uma posição dentro de uma célula, contando o
+// texto que ela tem até ali
+function noteCellIndexAt(cell, node, offset) {
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  try { range.setEnd(node, offset); } catch (err) { return +cell.dataset.at; }
+  return +cell.dataset.at + noteNodesText(range.cloneContents().childNodes, true).length;
+}
+
+// índice no texto original de uma posição (nó, deslocamento) da vista
+function noteViewIndexAt(view, text, node, offset) {
+  if (!node || !view.contains(node)) return -1;
+  const map = noteRichRender(text).map;
+  const end = () => (map.length ? map[map.length - 1] + 1 : 0);
+  // o cursor está ENTRE caracteres: `after` diz se está depois do caractere
+  // anterior (e não antes do seguinte, que pode já ser de outra célula)
+  const index = (plain, after) => {
+    if (after) return map[plain - 1] != null ? map[plain - 1] + 1 : end();
+    return map[plain] != null ? map[plain] : end();
+  };
+  const nodes = noteViewTextNodes(view);
+  if (node.nodeType === Node.TEXT_NODE) {
+    const hit = nodes.find(n => n.node === node);
+    if (!hit) return -1;
+    const off = Math.min(offset, hit.len);
+    // uma célula mostra-se sem os espaços das pontas, por isso pode ter escrito
+    // mais do que o texto conhece (um espaço ainda por acabar): aí conta-se pela
+    // própria célula
+    const cell = noteCellOf(node);
+    if (off > 0 && map[hit.at + off - 1] == null && cell) return noteCellIndexAt(cell, node, off);
+    return index(hit.at + off, off > 0);
+  }
+  // não é texto: uma ponta de célula, uma célula vazia (não tem onde pousar o
+  // cursor) ou uma caixa ainda sem nada escrito
+  const cell = node.closest ? node.closest("[data-at]") : null;
+  if (cell && !cell.textContent.length) return +cell.dataset.at;
+  const inside = nodes.filter(n => node.contains(n.node));
+  if (!inside.length) return cell ? +cell.dataset.at : 0;
+  if (offset === 0) return index(inside[0].at, false);
+  const last = inside[inside.length - 1];
+  return index(last.at + last.len, true);
+}
+
 // onde é que um clique na vista caiu, em índice do texto original (-1 = fora
 // do texto, e aí o cursor vai para o fim)
 function noteViewRawIndex(view, text, clientX, clientY) {
@@ -491,24 +593,169 @@ function noteViewRawIndex(view, text, clientX, clientY) {
     const pos = document.caretPositionFromPoint(clientX, clientY);
     if (pos) { node = pos.offsetNode; offset = pos.offset; }
   }
-  if (!node || !view.contains(node)) return -1;
-  if (node.nodeType !== Node.TEXT_NODE) {
-    // célula de tabela vazia (não tem texto onde pousar o cursor)
-    const cell = node.closest ? node.closest("[data-at]") : null;
-    return cell ? +cell.dataset.at : -1;
-  }
-  const map = noteRichRender(text).map;
-  const walker = document.createTreeWalker(view, NodeFilter.SHOW_TEXT);
-  let seen = 0;
-  while (walker.nextNode()) {
-    if (walker.currentNode === node) {
-      const plain = seen + Math.min(offset, walker.currentNode.nodeValue.length);
-      if (map[plain] != null) return map[plain];
-      return map.length ? map[map.length - 1] + 1 : -1;
+  return noteViewIndexAt(view, text, node, offset);
+}
+
+// o que está marcado na vista, em índices do texto original
+function noteViewSel(view, text) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return null;
+  const a = noteViewIndexAt(view, text, sel.anchorNode, sel.anchorOffset);
+  const b = noteViewIndexAt(view, text, sel.focusNode, sel.focusOffset);
+  if (a < 0 || b < 0) return null;
+  return { start: Math.min(a, b), end: Math.max(a, b) };
+}
+
+// posição (nó, deslocamento) da vista para um índice visível. Nas pontas de uma
+// célula devolve-se a própria célula (e não o texto lá dentro): assim o browser
+// não pode ler a posição como sendo a da célula ao lado — o que punha uma
+// marcação a atravessar duas células
+function noteViewNodeAt(view, nodes, plain) {
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    if (plain > n.at + n.len) continue;
+    // na fronteira entre dois textos o cursor fica no princípio do seguinte e
+    // não no fim deste: é a diferença entre escrever dentro ou fora de um
+    // negrito (ou de uma célula) e é o princípio que casa com o índice pedido
+    if (plain === n.at + n.len && nodes[i + 1] && nodes[i + 1].at === plain) continue;
+    const cell = n.node.parentElement && n.node.parentElement.closest("[data-at]");
+    if (cell && cell.firstChild === n.node && plain === n.at) return { node: cell, offset: 0 };
+    if (cell && cell.lastChild === n.node && plain === n.at + n.len) {
+      return { node: cell, offset: cell.childNodes.length };
     }
-    seen += walker.currentNode.nodeValue.length;
+    return { node: n.node, offset: plain - n.at };
   }
-  return -1;
+  const last = nodes[nodes.length - 1];
+  if (last) return { node: last.node, offset: last.len };
+  return { node: view, offset: 0 };
+}
+
+// posição (nó, deslocamento) da vista para um índice do texto original
+function noteViewPoint(view, nodes, map, raw) {
+  // o índice pode cair no enchimento de uma célula (que não se vê) ou numa
+  // célula vazia (que não tem texto onde pousar o cursor): em qualquer dos
+  // casos o cursor é dela, e não do que vem a seguir
+  let own = null;
+  for (const cell of view.querySelectorAll("[data-at]")) {
+    if (+cell.dataset.at > raw) break;
+    own = cell;
+  }
+  if (own) {
+    const at = +own.dataset.at;
+    const trail = +(own.dataset.pad || "0,0").split(",")[1] || 0;
+    // o texto da célula tal como se escreve (com marcadores): é por ele que se
+    // sabe onde a célula acaba, e não pelo que se lê na vista
+    const len = noteNodesText(own.childNodes, true).length;
+    if (raw <= at) return { node: own, offset: 0 };
+    if (raw >= at + len && raw <= at + len + trail) {
+      return { node: own, offset: own.childNodes.length };
+    }
+  }
+  let plain = 0;
+  for (let i = 0; i < map.length; i++) {
+    if (map[i] === raw) { plain = i; break; }
+    if (map[i] > raw) break;
+    plain = i + 1;
+  }
+  return noteViewNodeAt(view, nodes, plain);
+}
+
+// põe o cursor (ou a marcação) da vista nos índices do texto original
+function noteViewPlace(view, text, from, to) {
+  const map = noteRichRender(text).map;
+  const nodes = noteViewTextNodes(view);
+  const a = noteViewPoint(view, nodes, map, Math.max(0, from));
+  const b = to === from ? a : noteViewPoint(view, nodes, map, Math.max(0, to));
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  try {
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, b.offset);
+  } catch (err) { return; }
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// ---------- ler a vista como texto ----------
+// O contrário do render: o que está escrito na vista volta a ser o texto com
+// marcadores. Só se conhecem as etiquetas que o render escreve; o que o browser
+// tenha metido pelo meio (um <div>, um <span>, um <br> de enchimento) vale
+// apenas o texto que tem dentro.
+const NOTE_BLOCK_TAGS = new Set(["DIV", "P", "LI", "UL", "OL", "H1", "H2", "H3", "PRE"]);
+
+function noteViewText(view) {
+  return noteNodesText(view.childNodes, false);
+}
+
+function noteNodesText(nodes, inCell) {
+  let out = "";
+  for (const node of nodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // o browser mete espaços "duros" para os espaços do fim não se perderem
+      out += node.nodeValue.replace(/ /g, " ");
+      continue;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const tag = node.tagName;
+    if (tag === "BR") continue;   // enchimento do browser: o Enter é tratado à mão
+    if (tag === "STRONG" || tag === "B") {
+      out += NOTE_BOLD + noteNodesText(node.childNodes, inCell) + NOTE_BOLD;
+      continue;
+    }
+    if (tag === "S" || tag === "STRIKE" || tag === "DEL") {
+      out += NOTE_STRIKE + noteNodesText(node.childNodes, inCell) + NOTE_STRIKE;
+      continue;
+    }
+    if (tag === "TABLE") {
+      if (out && !out.endsWith("\n")) out += "\n";
+      out += noteTableText(node);
+      if (noteHasNextContent(node)) out += "\n";
+      continue;
+    }
+    if (NOTE_BLOCK_TAGS.has(tag) && out && !out.endsWith("\n")) out += "\n";
+    out += noteNodesText(node.childNodes, inCell);
+  }
+  return out;
+}
+
+function noteHasNextContent(node) {
+  for (let next = node.nextSibling; next; next = next.nextSibling) {
+    if (next.nodeType === Node.TEXT_NODE && next.nodeValue) return true;
+    if (next.nodeType === Node.ELEMENT_NODE) return true;
+  }
+  return false;
+}
+
+// uma linha de tabela: as células voltam a levar os espaços que tinham à volta
+// (data-pad) e a linha o que tinha fora delas (data-pre/data-post), para o
+// texto ficar igual ao que estava escrito
+function noteTrText(tr) {
+  const cells = [];
+  let loose = "";   // texto que o browser deixou fora de uma célula: vai para a
+  for (const node of tr.childNodes) {                          // célula ao lado
+    if (node.nodeType === Node.TEXT_NODE) { loose += node.nodeValue.replace(/ /g, " "); continue; }
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const pad = (node.dataset.pad || "0,0").split(",");
+    const body = loose + noteNodesText(node.childNodes, true).replace(/\n/g, " ");
+    loose = "";
+    if (node.classList.contains("noteBoxTableFill") && !body) continue;
+    cells.push(" ".repeat(+pad[0] || 0) + body + " ".repeat(+pad[1] || 0));
+  }
+  if (loose && cells.length) cells[cells.length - 1] += loose;
+  else if (loose) cells.push(loose);
+  return (tr.dataset.pre || "|") + cells.join("|") + (tr.dataset.post || "|");
+}
+
+function noteTableText(table) {
+  const rows = [];
+  for (const tr of table.querySelectorAll("tr")) {
+    rows.push(noteTrText(tr));
+    // a linha de separação volta ao seu lugar: logo depois do cabeçalho
+    const head = tr.parentElement && tr.parentElement.tagName === "THEAD";
+    if (head && table.dataset.sep) rows.push(table.dataset.sep);
+  }
+  return rows.join("\n");
 }
 
 // ---------- quadro ----------
@@ -529,9 +776,9 @@ function noteBoxHtml(b) {
       <button type="button" class="noteBoxColor" data-bcolor="${esc(b.id)}" title="${esc(t("t_box_color"))}"></button>
       <button type="button" data-bdel="${esc(b.id)}" title="${esc(t("t_box_del"))}">✕</button>
     </div>
-    <div class="noteBoxBody">${img}<div class="noteBoxTextView" data-bview="${esc(b.id)}"
-      title="${esc(t("t_box_text"))}">${noteBoxViewHtml(b.text)}</div><textarea class="noteBoxText" data-btext="${esc(b.id)}"
-      placeholder="${esc(t("ph_box"))}">${esc(b.text)}</textarea></div>
+    <div class="noteBoxBody">${img}<div class="noteBoxTextView" data-bview="${esc(b.id)}" spellcheck="false"
+      title="${esc(t("t_box_text"))}">${noteBoxViewHtml(b.text, noteEditBox === b.id)}</div><textarea class="noteBoxText" data-btext="${esc(b.id)}"
+      tabindex="-1" aria-hidden="true">${esc(b.text)}</textarea></div>
     <div class="noteBoxSize" data-bsize="${esc(b.id)}" title="${esc(t("t_box_size"))}"></div>
   </div>`;
 }
@@ -818,32 +1065,157 @@ function renderNoteBoard(focusBoxId) {
   if (focusBoxId) startNoteEdit(focusBoxId);
 }
 
-// ---------- escrever numa caixa: vista formatada <-> texto com marcadores ----------
+// ---------- escrever numa caixa ----------
+// a caixa em escrita a que um alvo (o que recebeu a tecla, o clique…) pertence:
+// a vista, que é quem tem o cursor, e o campo escondido, que tem o texto
+function noteEditPair(target) {
+  const view = target && target.closest ? target.closest("[data-bview]") : null;
+  if (!view || !view.isContentEditable) return null;
+  const box = view.closest(".noteBox");
+  const area = box && box.querySelector("[data-btext]");
+  return area ? { view, area } : null;
+}
+
+function noteViewOf(area) {
+  const box = area && area.closest ? area.closest(".noteBox") : null;
+  const view = box && box.querySelector("[data-bview]");
+  return view && view.isContentEditable ? view : null;
+}
+
+// a FORMA da vista: as etiquetas sem o texto e sem os índices. Quando alguém
+// escreve, o texto já está no DOM: só se a forma mudar (nasceu uma tabela,
+// fechou-se um negrito, entrou uma linha) é que a vista tem de ser refeita —
+// e assim o cursor (e um espaço ainda por acabar) ficam quietos.
+function noteViewShape(html) {
+  return String(html)
+    .replace(/ data-(at|pad|pre|post|sep)="[^"]*"/g, "")
+    .replace(/>[^<]*</g, "><")
+    .replace(/^[^<]*/, "")
+    .replace(/[^<]*$/, "");
+}
+
+// os índices do texto original nas etiquetas da vista mudam a cada letra
+// escrita: quando a vista não é refeita, são só eles que se acertam
+function noteViewSyncAt(view, html) {
+  const next = document.createElement("div");
+  next.innerHTML = html;
+  const from = next.querySelectorAll("[data-at]"), to = view.querySelectorAll("[data-at]");
+  if (from.length !== to.length) return;
+  from.forEach((cell, i) => {
+    to[i].dataset.at = cell.dataset.at;
+    to[i].dataset.pad = cell.dataset.pad || "0,0";
+  });
+  const rowsFrom = next.querySelectorAll("tr"), rowsTo = view.querySelectorAll("tr");
+  if (rowsFrom.length === rowsTo.length) {
+    rowsFrom.forEach((tr, i) => {
+      rowsTo[i].dataset.pre = tr.dataset.pre || "|";
+      rowsTo[i].dataset.post = tr.dataset.post || "|";
+    });
+  }
+}
+
+// a vista passa a mostrar o texto do campo, com o cursor onde o campo o tem
+// (é o caminho de tudo o que mexe no texto por fora: B/S, Tab, Enter, tabela,
+// Ctrl+Z)
+function noteSyncView(area, from, to) {
+  const view = noteViewOf(area);
+  if (!view) return;
+  // a vista é sempre refeita: esta alteração não veio de lá (foi o B, o Tab, o
+  // Enter…), por isso o que está no DOM ainda não a conhece
+  view.innerHTML = noteBoxViewHtml(area.value, true);
+  noteViewPlace(view, area.value,
+    from == null ? area.selectionStart : from, to == null ? area.selectionEnd : to);
+}
+
+// escreveu-se na vista: o texto da caixa é o que a vista mostra
+function noteViewEdited(view) {
+  const box = view.closest(".noteBox");
+  const area = box && box.querySelector("[data-btext]");
+  if (!area) return;
+  const text = noteViewText(view);
+  if (text === area.value) return;
+  const sel = noteViewSel(view, text);
+  noteHistEdit(area.value, area.selectionStart);
+  noteSetAreaText(area, text, sel ? sel.start : text.length, sel ? sel.end : text.length);
+  if (view.dataset.composing) return;   // a compor um acento: não mexer no DOM
+  const html = noteBoxViewHtml(text, true);
+  if (noteViewShape(html) === noteViewShape(view.innerHTML)) { noteViewSyncAt(view, html); return; }
+  view.innerHTML = html;
+  noteViewPlace(view, text, area.selectionStart, area.selectionEnd);
+}
+
+// o campo escondido fica com este texto (e é ele que dispara a gravação)
+function noteSetAreaText(area, text, from, to) {
+  area.value = text;
+  try { area.setSelectionRange(from, to); } catch (err) { /* campo escondido */ }
+  area.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// ---------- Ctrl+Z dentro de uma caixa ----------
+// O Ctrl+Z do browser não serve aqui: a vista é refeita de cada vez que a forma
+// do texto muda, e o histórico dele fica a apontar para coisas que já não
+// existem. Guarda-se o texto por escrita seguida — parar de escrever fecha um
+// passo, como em qualquer editor.
+const NOTE_HIST_GAP = 600;
+let noteHist = null;   // { box, undo: [{text, at}], redo: [], stamp }
+
+function noteHistOpen(boxId) {
+  noteHist = { box: boxId, undo: [], redo: [], stamp: 0 };
+}
+
+// `alone`: esta alteração é um passo só dela (uma tabela inserida, um Tab, um
+// B/S) — não se junta ao que se estava a escrever, nem o seguinte se lhe junta
+function noteHistEdit(prevText, prevAt, alone) {
+  if (!noteHist) return;
+  const now = Date.now();
+  if (alone || now - noteHist.stamp >= NOTE_HIST_GAP) noteHist.undo.push({ text: prevText, at: prevAt });
+  noteHist.stamp = alone ? 0 : now;
+  noteHist.redo.length = 0;
+}
+
+function noteHistStep(area, back) {
+  if (!noteHist) return false;
+  const from = back ? noteHist.undo : noteHist.redo;
+  if (!from.length) return false;
+  const to = back ? noteHist.redo : noteHist.undo;
+  to.push({ text: area.value, at: area.selectionStart });
+  const step = from.pop();
+  noteHist.stamp = 0;   // o passo seguinte não se junta a este
+  noteSetAreaText(area, step.text, step.at, step.at);
+  noteSyncView(area, step.at, step.at);
+  return true;
+}
+
 // `caretAt` é um índice no texto original (o que noteViewRawIndex devolve);
 // sem ele o cursor vai para o fim
 function startNoteEdit(boxId, caretAt) {
   const boxEl = $("noteCanvas").querySelector(`[data-bid="${CSS.escape(boxId)}"]`);
   if (!boxEl) return null;
   const area = boxEl.querySelector("[data-btext]");
-  if (!area) return null;
+  const view = boxEl.querySelector("[data-bview]");
+  if (!area || !view) return null;
   noteEditBox = boxId;
   boxEl.classList.add("editing");
-  area.focus();
+  view.contentEditable = "true";
+  noteHistOpen(boxId);
   const at = caretAt == null || caretAt < 0 ? area.value.length : Math.min(caretAt, area.value.length);
   area.setSelectionRange(at, at);
+  view.innerHTML = noteBoxViewHtml(area.value, true);
+  view.focus();
+  noteViewPlace(view, area.value, at, at);
   return area;
 }
 
-// sair da escrita: a caixa volta a mostrar o texto formatado (sem refazer o
-// quadro todo — o resto pode estar a ser arrastado ou escrito)
-function endNoteEdit(area) {
-  const boxEl = area.closest(".noteBox");
-  if (boxEl) {
-    boxEl.classList.remove("editing");
-    const view = boxEl.querySelector("[data-bview]");
-    if (view) view.innerHTML = noteBoxViewHtml(area.value);
-  }
-  if (noteEditBox === area.dataset.btext) noteEditBox = "";
+// sair da escrita: a vista deixa de receber texto e volta ao normal (sem
+// refazer o quadro todo — o resto pode estar a ser arrastado ou escrito)
+function endNoteEdit(view) {
+  const boxEl = view.closest(".noteBox");
+  const area = boxEl && boxEl.querySelector("[data-btext]");
+  view.contentEditable = "false";
+  view.innerHTML = noteBoxViewHtml(area ? area.value : noteViewText(view));
+  if (boxEl) boxEl.classList.remove("editing");
+  if (area && noteEditBox === area.dataset.btext) noteEditBox = "";
+  if (noteHist && (!area || noteHist.box === area.dataset.btext)) noteHist = null;
 }
 
 function noteRefLabel(ref) {
@@ -1853,8 +2225,9 @@ $("noteCanvas").addEventListener("pointerdown", e => {
   if (!box) { startCanvasBand(e); return; }
   if (e.target.closest("[data-bsize]")) { startBoxDrag(e, box, "size"); return; }
   // Ctrl/Cmd/Shift+clique junta (ou tira) a caixa à seleção, sem a arrastar
-  // (dentro do texto não: aí o Shift+clique serve para marcar o texto)
-  if ((e.ctrlKey || e.metaKey || e.shiftKey) && !e.target.closest(".noteBoxText")) {
+  // (dentro do texto que está a ser escrito não: aí o Shift+clique serve para
+  // marcar o texto)
+  if ((e.ctrlKey || e.metaKey || e.shiftKey) && !noteEditPair(e.target)) {
     e.preventDefault();
     blurStrayFocus();
     toggleBoxSel(box.dataset.bid);
@@ -1863,11 +2236,12 @@ $("noteCanvas").addEventListener("pointerdown", e => {
   // B / S / ⧉ : quem age é o tratador do clique — aqui não se pode tocar no
   // foco, senão perdia-se a marcação do texto (ver o mousedown mais abaixo)
   if (e.target.closest("[data-bfmt]") || e.target.closest("[data-bcopy]")) return;
-  // clicar no texto formatado passa a caixa para modo de escrita, com o cursor
-  // no sítio onde se clicou
+  // clicar no texto passa a caixa para modo de escrita, com o cursor no sítio
+  // onde se clicou. A partir daí não se toca no clique: o cursor, o arrastar
+  // para marcar e o duplo clique são os do browser, dentro da própria vista.
   const view = e.target.closest("[data-bview]");
   if (view) {
-    e.preventDefault();
+    if (view.isContentEditable) return;
     const note = currentNote();
     const model = note ? note.boxes.find(b => b.id === view.dataset.bview) : null;
     const at = model && model.text
@@ -2273,21 +2647,14 @@ function flushNoteText() {
   noteTextTimer = null;
 }
 
-// escrever no textarea como se tivesse sido escrito à mão: o `insertText` do
-// browser mantém o Ctrl+Z do campo a funcionar e dispara o `input` (que é quem
-// grava). Sem ele (ou a apagar texto sem pôr nada) faz-se à mão.
+// trocar um pedaço do texto da caixa: o campo escondido fica com o texto novo
+// (o `input` dele é quem grava) e a vista volta a mostrá-lo, com o cursor onde
+// esta troca o deixou. É por aqui que passa tudo o que mexe no texto sem ser a
+// escrever: B/S, Tab, Enter, inserir tabela.
 function replaceNoteRange(area, from, to, text, selFrom, selTo) {
-  area.focus();
-  area.setSelectionRange(from, to);
-  let done = false;
-  if (text) {
-    try { done = document.execCommand("insertText", false, text); } catch (err) { done = false; }
-  }
-  if (!done) {
-    area.value = area.value.slice(0, from) + text + area.value.slice(to);
-    area.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-  area.setSelectionRange(selFrom, selTo);
+  noteHistEdit(area.value, area.selectionStart, true);
+  noteSetAreaText(area, area.value.slice(0, from) + text + area.value.slice(to), selFrom, selTo);
+  noteSyncView(area, selFrom, selTo);
 }
 
 // põe (ou tira) **negrito** / ~~riscado~~ ao que estiver escolhido; sem nada
@@ -2369,6 +2736,48 @@ function noteOutlineTab(area, dir) {
   replaceNoteRange(area, from, to, next, from, from + next.length);
 }
 
+// só mudar o cursor (ou o que está marcado): não é uma alteração do texto, não
+// há nada para gravar nem para o histórico
+function noteMoveCaret(area, from, to) {
+  try { area.setSelectionRange(from, to); } catch (err) { /* campo escondido */ }
+  noteSyncView(area, from, to);
+}
+
+// a tabela a que a linha `i` pertence, e as suas células por ordem (a linha de
+// separação não conta: não se escreve nela)
+function noteTableAt(lines, i) {
+  if (i < 0 || !lines[i] || !NOTE_ROW_RE.test(lines[i].text)) return null;
+  let j = i;
+  while (j > 0 && NOTE_ROW_RE.test(lines[j - 1].text)) j--;
+  const block = noteTableBlock(lines, j);
+  if (!block || i >= j + block.count) return null;
+  const cells = [];
+  for (let k = j; k < j + block.count; k++) {
+    if (k === j + 1) continue;
+    for (const cell of noteTableCells(lines[k])) cells.push(cell);
+  }
+  return { block, head: j, cells };
+}
+
+// Tab dentro de uma tabela: célula seguinte (ou anterior), com o que ela tem
+// escolhido — escrever substitui-o, como numa folha de cálculo. Na última
+// célula, o Tab acrescenta uma linha.
+function noteTableTab(area, dir) {
+  const at = area.selectionStart;
+  const lines = noteTextLines(area.value);
+  const i = lines.findIndex(l => at <= l.at + l.text.length);
+  const table = noteTableAt(lines, i);
+  if (!table) return false;
+  const here = table.cells.findIndex(c => at >= c.at && at <= c.at + c.text.length);
+  const next = table.cells[(here < 0 ? 0 : here) + dir];
+  if (next) {
+    noteMoveCaret(area, next.at, next.at + next.text.length);
+    return true;
+  }
+  if (dir < 0) return true;              // primeira célula: não há para onde ir
+  return noteOutlineEnter(area);         // última: linha nova
+}
+
 // linha de tabela vazia com as mesmas colunas (e a mesma largura) de outra
 function noteTableEmptyRow(line) {
   const first = line.indexOf("|"), last = line.lastIndexOf("|");
@@ -2391,26 +2800,27 @@ function noteOutlineEnter(area) {
   const atEnd = s === e && s === lineEnd;
 
   if (NOTE_ROW_RE.test(line)) {
-    if (!atEnd) return false;
-    // só a ÚLTIMA linha de uma tabela reconhecida (cabeçalho + separador logo
-    // a seguir) é que acrescenta linha nova — sem esta confirmação, o Enter no
-    // cabeçalho ou no separador inseria a linha ali no meio e partia a tabela
-    // (deixava de ter o separador logo a seguir ao cabeçalho)
     const lines = noteTextLines(value);
     const k = lines.findIndex(l => l.at === from);
     let j = k;
     while (j > 0 && NOTE_ROW_RE.test(lines[j - 1].text)) j--;
     const block = k >= 0 ? noteTableBlock(lines, j) : null;
-    if (!block || k !== j + block.count - 1) return false;
-    if (!NOTE_SEP_RE.test(line) && !line.replace(/\|/g, "").trim()) {
-      replaceNoteRange(area, from, lineEnd, "", from, from);   // linha vazia: sai da tabela
+    if (!block || k >= j + block.count) return false;
+    // linha de dados que ficou vazia: o Enter limpa-a — é a maneira de sair da
+    // tabela
+    if (atEnd && k > j + 1 && !line.replace(/\|/g, "").trim()) {
+      replaceNoteRange(area, from, lineEnd, "", from, from);
       return true;
     }
-    const row = noteTableEmptyRow(line);
+    // a linha nova entra depois desta, nunca entre o cabeçalho e o separador
+    // (isso partia a tabela: deixava de ter o separador logo a seguir)
+    const ref = lines[Math.max(k, j + 1)];
+    const end = ref.at + ref.text.length;
+    const row = noteTableEmptyRow(lines[j].text);
     // cursor logo dentro da primeira célula (depois do "| ")
     const first = row.indexOf("|");
-    const at = s + 1 + first + (row[first + 1] === " " ? 2 : 1);
-    replaceNoteRange(area, s, e, `\n${row}`, at, at);
+    const at = end + 1 + first + (row[first + 1] === " " ? 2 : 1);
+    replaceNoteRange(area, end, end, `\n${row}`, at, at);
     return true;
   }
 
@@ -2483,22 +2893,86 @@ async function insertNoteTable() {
 // teclado dentro do texto de uma caixa (e só aí: o Tab continua a mudar de
 // campo em todo o resto da aplicação)
 $("noteCanvas").addEventListener("keydown", e => {
-  const area = e.target.closest ? e.target.closest("[data-btext]") : null;
-  if (!area) return;
+  const pair = noteEditPair(e.target);
+  if (!pair) return;
+  const area = pair.area;
+  // Esc sai da caixa (dentro de uma tabela o Tab já é para mudar de célula)
+  if (e.key === "Escape") { e.preventDefault(); pair.view.blur(); return; }
   if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
     e.preventDefault();
-    noteOutlineTab(area, e.shiftKey ? -1 : 1);
+    const dir = e.shiftKey ? -1 : 1;
+    // dentro de uma tabela o Tab muda de célula; fora dela desce/sobe um nível
+    if (!noteTableTab(area, dir)) noteOutlineTab(area, dir);
     return;
   }
-  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    if (noteOutlineEnter(area)) e.preventDefault();
+  // o Enter é sempre nosso: o que o browser faria era partir a vista em
+  // <div>/<br>, e o que uma mudança de linha é aqui só o texto sabe (outra
+  // linha da tabela, outro ramo da árvore, ou simplesmente outra linha)
+  if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    if (e.shiftKey || !noteOutlineEnter(area)) {
+      const from = area.selectionStart, to = area.selectionEnd;
+      replaceNoteRange(area, from, to, "\n", from + 1, from + 1);
+    }
     return;
   }
   if (!e.ctrlKey && !e.metaKey) return;
   if (e.altKey) return;
   const key = String(e.key || "").toLowerCase();
   if (key === "b" && !e.shiftKey) { e.preventDefault(); toggleNoteMark(area, NOTE_BOLD); return; }
-  if (key === "x" && e.shiftKey) { e.preventDefault(); toggleNoteMark(area, NOTE_STRIKE); }
+  if (key === "x" && e.shiftKey) { e.preventDefault(); toggleNoteMark(area, NOTE_STRIKE); return; }
+  // Ctrl+Z / Ctrl+Shift+Z (ou Ctrl+Y): o histórico do texto desta caixa
+  if (key === "z" && !e.shiftKey) { e.preventDefault(); noteHistStep(area, true); return; }
+  if ((key === "z" && e.shiftKey) || (key === "y" && !e.shiftKey)) {
+    e.preventDefault();
+    noteHistStep(area, false);
+  }
+});
+
+// escrever na vista: é a vista que passa a ser o texto da caixa
+$("noteCanvas").addEventListener("input", e => {
+  const pair = noteEditPair(e.target);
+  if (pair) noteViewEdited(pair.view);
+});
+
+// A marcação do texto é a do browser, feita na vista; mas quem a usa (o B, o S,
+// o Tab, o Enter, a tabela) lê-a do campo escondido, em índices do texto com
+// marcadores. De cada vez que ela muda, o campo fica a saber.
+document.addEventListener("selectionchange", () => {
+  const sel = window.getSelection();
+  const node = sel && sel.anchorNode;
+  if (!node) return;
+  const pair = noteEditPair(node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+  if (!pair || pair.view.dataset.composing) return;
+  const range = noteViewSel(pair.view, pair.area.value);
+  if (!range) return;
+  try { pair.area.setSelectionRange(range.start, range.end); } catch (err) { /* campo escondido */ }
+});
+
+// acentos e outros caracteres compostos: enquanto o browser está a compor não
+// se pode refazer a vista (perdia-se o que estava a ser composto)
+$("noteCanvas").addEventListener("compositionstart", e => {
+  const pair = noteEditPair(e.target);
+  if (pair) pair.view.dataset.composing = "1";
+});
+
+$("noteCanvas").addEventListener("compositionend", e => {
+  const pair = noteEditPair(e.target);
+  if (!pair) return;
+  delete pair.view.dataset.composing;
+  noteViewEdited(pair.view);
+});
+
+// colar dentro de uma caixa: só o texto (o HTML da origem não tem nada que
+// fazer na vista — o que vale é o texto com marcadores)
+$("noteCanvas").addEventListener("paste", e => {
+  const pair = noteEditPair(e.target);
+  if (!pair || !e.clipboardData) return;
+  const text = e.clipboardData.getData("text/plain");
+  if (!text) return;
+  e.preventDefault();
+  const area = pair.area, at = area.selectionStart + text.length;
+  replaceNoteRange(area, area.selectionStart, area.selectionEnd, text, at, at);
 });
 
 $("noteCanvas").addEventListener("input", e => {
@@ -2521,20 +2995,22 @@ $("noteCanvas").addEventListener("input", e => {
 });
 
 $("noteCanvas").addEventListener("focusin", e => {
-  const area = e.target.closest("[data-btext]");
-  if (!area) return;
+  const pair = noteEditPair(e.target);
+  if (!pair) return;
   noteTyping = true;
   noteTextSnap = false;
-  if (!noteSelBoxes.includes(area.dataset.btext)) selectBox(area.dataset.btext);
+  const id = pair.area.dataset.btext;
+  if (!noteSelBoxes.includes(id)) selectBox(id);
 });
 
 $("noteCanvas").addEventListener("focusout", e => {
-  const area = e.target.closest("[data-btext]");
+  const pair = noteEditPair(e.target);
   const note = currentNote();
   noteTyping = false;
   noteTextSnap = false;
-  if (!area) return;
-  endNoteEdit(area);   // volta a mostrar o texto formatado
+  if (!pair) return;
+  const area = pair.area;
+  endNoteEdit(pair.view);   // a vista deixa de receber texto
   if (!note) return;
   const model = note.boxes.find(b => b.id === area.dataset.btext);
   if (!model || model.text === area.value && !noteTextTimer) return;
