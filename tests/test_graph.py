@@ -88,4 +88,35 @@ shutil.which = lambda name: None
 app._cli_token.update({"token": "", "expires_at": 0.0})
 assert app.graph_token() is None
 
-print("OK - leitura, indices, escrita e token da Azure CLI validados")
+# --- a conta das Definições segue a que ficou mesmo autenticada -------------
+# ficheiro de configuração à parte: o da instalação nunca é tocado no teste
+TMP_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_tmp_graph_cfg.json")
+app.GRAPH_CONFIG_FILE = TMP_CFG
+app.graph_config = lambda: json.load(open(TMP_CFG, encoding="utf-8-sig"))
+try:
+    # conta antiga escrita à mão + login feito com outra: passa a valer a nova
+    json.dump({"login_email": "antigo@empresa.com"}, open(TMP_CFG, "w", encoding="utf-8"))
+    app._sync_login_email("novo@empresa.com")
+    assert app.graph_config()["login_email"] == "novo@empresa.com", app.graph_config()
+    assert app.login_hint() == "novo@empresa.com"
+
+    # a mesma conta (só com outra caixa) não reescreve nada
+    app._sync_login_email("NOVO@empresa.com")
+    assert app.graph_config()["login_email"] == "novo@empresa.com", app.graph_config()
+
+    # campo vazio fica vazio: aí quem manda é a conta da última sessão
+    json.dump({}, open(TMP_CFG, "w", encoding="utf-8"))
+    app._sync_login_email("novo@empresa.com")
+    assert "login_email" not in app.graph_config(), app.graph_config()
+
+    # login sem conta conhecida (o /me falhou) não apaga a escolha de ninguém
+    json.dump({"login_email": "antigo@empresa.com"}, open(TMP_CFG, "w", encoding="utf-8"))
+    app._sync_login_email("")
+    assert app.graph_config()["login_email"] == "antigo@empresa.com", app.graph_config()
+finally:
+    try:
+        os.remove(TMP_CFG)
+    except OSError:
+        pass
+
+print("OK - leitura, indices, escrita, token da Azure CLI e conta do login validados")

@@ -352,6 +352,25 @@ def save_login_email(email):
     return email
 
 
+def _sync_login_email(email):
+    """Acerta a conta escrita nas Definições pela que ficou mesmo autenticada.
+    Quem escolhe uma conta diferente na lista da Microsoft está a dizer, de
+    forma ainda mais explícita, qual é a que quer — sem isto o campo continuava
+    a mostrar a antiga (e era essa que o login seguinte pré-escolhia), a
+    contradizer a sessão que está mesmo aberta logo por cima dele.
+    Campo vazio fica vazio: aí já vale a conta da última sessão."""
+    email = str(email or "").strip()
+    if not email:
+        return
+    atual = str(graph_config().get("login_email") or "")
+    if not atual or atual.lower() == email.lower():
+        return
+    try:
+        save_login_email(email)
+    except (OSError, ValueError):
+        pass          # é uma comodidade: nunca pode estragar um login que correu bem
+
+
 def _graph_account_info(cfg, token):
     """Email/nome de quem acabou de autenticar (`/me`). Uma falha aqui (rede,
     permissão) nunca pode estragar o login: devolve simplesmente {}."""
@@ -382,6 +401,7 @@ def _graph_remember_account(account):
         tokens["account_email"] = email
         tokens["account_name"] = name
         _write_tokens(tokens)
+    _sync_login_email(email)
 
 
 def _probe_account_async(cfg):
@@ -600,6 +620,7 @@ def _graph_wait_redirect(cfg, srv, verifier, state, redirect):
     account = _graph_account_info(cfg, out.get("access_token", ""))
     with _graph_lock:
         _graph_save_tokens(out, account)
+    _sync_login_email(account.get("email"))
     _account_probed.set()      # a conta acabou de ser lida, não é preciso sondar
     _graph_login.update({"done": True, "error": ""})
     log_event("ligação ao OneDrive estabelecida"
@@ -636,6 +657,7 @@ def _graph_poll_login(cfg, device):
             account = _graph_account_info(cfg, out.get("access_token", ""))
             with _graph_lock:
                 _graph_save_tokens(out, account)
+            _sync_login_email(account.get("email"))
             _account_probed.set()
             _graph_login.update({"done": True, "error": ""})
             log_event("ligação ao OneDrive estabelecida")
