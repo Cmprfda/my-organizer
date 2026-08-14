@@ -1053,13 +1053,24 @@ body.notes-full .noteTree {
     color: var(--muted);
 }
 
+/* o negrito é a palavra mais forte da linha: mesmo dentro de um cabeçalho de
+   tabela (que é mais apagado) fica na cor cheia do texto */
 .noteBoxTextView strong {
     font-weight: 700;
+    color: var(--text);
 }
 
+/* riscado = "já não conta": além do traço, o texto perde força */
 .noteBoxTextView s {
+    color: var(--muted);
     text-decoration: line-through;
-    text-decoration-thickness: 1px;
+    text-decoration-thickness: 1.5px;
+    text-decoration-skip-ink: none;
+}
+
+/* negrito dentro de riscado continua riscado (não volta ao tom normal) */
+.noteBoxTextView s strong {
+    color: inherit;
 }
 
 /* tabelas escritas em "| coluna |": a vista da caixa desenha-lhes a grelha.
@@ -1069,36 +1080,87 @@ body.notes-full .noteTree {
 .noteBoxTable {
     width: auto;
     max-width: 100%;
-    border-collapse: collapse;
-    margin: 2px 0;
+    /* separate (e não collapse) para a moldura poder ter cantos redondos; o
+       espaçamento a zero mantém a grelha encostada, como no collapse */
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 4px 0;
     font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
 
+/* as linhas da grelha ficam por dentro das células (direita e baixo), para a
+   moldura de fora ser só a do <table> */
 .noteBoxTable th,
 .noteBoxTable td {
-    min-width: 1.4em;
-    border: 1px solid var(--border);
-    padding: 1px 5px;
+    min-width: 1.6em;
+    border: none;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 3px 7px;
     text-align: left;
     vertical-align: top;
     white-space: normal;
 }
 
-.noteBoxTable tr:last-child td {
-    border-bottom: 1px solid var(--border);
+.noteBoxTable th:last-child,
+.noteBoxTable td:last-child {
+    border-right: none;
 }
 
+.noteBoxTable tr:last-child td {
+    border-bottom: none;
+}
+
+/* cabeçalho: uma faixa ligeiramente mais escura que o fundo da caixa, seja ela
+   de que cor for (a mistura é sobre a cor do texto, por isso serve os dois temas) */
 .noteBoxTable th {
     position: static;
-    background: transparent;
+    background: color-mix(in srgb, var(--text) 9%, transparent);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     font-family: var(--font-mono);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: none;
     letter-spacing: normal;
-    color: var(--muted);
+    color: var(--text);
+}
+
+/* linhas alternadas: ajuda a seguir a linha até ao fim nas tabelas largas */
+.noteBoxTable tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+/* tabela ainda sem linhas escritas: é o cabeçalho que fecha a moldura */
+.noteBoxTable thead:last-child th {
+    border-bottom: none;
+}
+
+.noteBoxTable thead:last-child th:first-child {
+    border-bottom-left-radius: 7px;
+}
+
+.noteBoxTable thead:last-child th:last-child {
+    border-bottom-right-radius: 7px;
+}
+
+/* os cantos das células de ponta acompanham a moldura */
+.noteBoxTable thead th:first-child {
+    border-top-left-radius: 7px;
+}
+
+.noteBoxTable thead th:last-child {
+    border-top-right-radius: 7px;
+}
+
+.noteBoxTable tbody tr:last-child td:first-child {
+    border-bottom-left-radius: 7px;
+}
+
+.noteBoxTable tbody tr:last-child td:last-child {
+    border-bottom-right-radius: 7px;
 }
 
 .noteBox:has(.noteBoxImg) .noteBoxText,

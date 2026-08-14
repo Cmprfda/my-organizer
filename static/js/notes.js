@@ -278,7 +278,12 @@ function noteTableBlock(lines, i) {
   if (!lines[i + 1] || !NOTE_SEP_RE.test(lines[i + 1].text)) return null;
   let end = i + 2;
   while (end < lines.length && NOTE_ROW_RE.test(lines[end].text) && !NOTE_SEP_RE.test(lines[end].text)) end++;
-  return { head: lines[i], body: lines.slice(i + 2, end), count: end - i };
+  return {
+    head: lines[i],
+    body: lines.slice(i + 2, end),
+    aligns: noteTableAligns(lines[i + 1]),
+    count: end - i,
+  };
 }
 
 // células de uma linha "| a | b |", cada uma com o índice do seu texto no
@@ -293,6 +298,16 @@ function noteTableCells(line) {
     at += part.length + 1;
   }
   return cells;
+}
+
+// alinhamento de cada coluna, lido da linha de separação: "|:---|" à esquerda,
+// "|---:|" à direita, "|:--:|" ao centro; sem ":" fica o alinhamento normal
+function noteTableAligns(sep) {
+  return noteTableCells(sep).map(cell => {
+    const left = cell.text.startsWith(":"), right = cell.text.endsWith(":");
+    if (left && right) return "center";
+    return right ? "right" : left ? "left" : "";
+  });
 }
 
 // **negrito** e ~~riscado~~ dentro de uma linha; um marcador sem par fica
@@ -329,23 +344,33 @@ function noteRichInline(text, at, out) {
 // IMPORTANTE: nada de espaços nem mudanças de linha entre as etiquetas da
 // tabela — só o texto das células é que pode ser texto, senão o mapa deixava
 // de casar com o que o browser vê (ver noteViewRawIndex)
-function noteTableHtml(table, out) {
-  out.html += `<table class="noteBoxTable"><thead><tr>`;
-  for (const cell of noteTableCells(table.head)) {
-    out.html += `<th data-at="${cell.at}">`;
+// uma linha da tabela; `cols` é o número de colunas do cabeçalho, para as
+// linhas mais curtas ganharem as células que faltam e a grelha não ficar
+// rasgada (essas células vazias levam o cursor ao fim da própria linha)
+function noteTableRowHtml(row, tag, cols, aligns, out) {
+  const cells = noteTableCells(row);
+  cells.forEach((cell, c) => {
+    const align = aligns[c] ? ` style="text-align:${aligns[c]}"` : "";
+    out.html += `<${tag} data-at="${cell.at}"${align}>`;
     noteRichInline(cell.text, cell.at, out);
-    out.html += `</th>`;
+    out.html += `</${tag}>`;
+  });
+  const end = row.at + row.text.length;
+  for (let c = cells.length; c < cols; c++) {
+    out.html += `<${tag} class="noteBoxTableFill" data-at="${end}"></${tag}>`;
   }
+}
+
+function noteTableHtml(table, out) {
+  const cols = noteTableCells(table.head).length;
+  out.html += `<table class="noteBoxTable"><thead><tr>`;
+  noteTableRowHtml(table.head, "th", cols, table.aligns, out);
   out.html += `</tr></thead>`;
   if (table.body.length) {
     out.html += `<tbody>`;
     for (const row of table.body) {
       out.html += `<tr>`;
-      for (const cell of noteTableCells(row)) {
-        out.html += `<td data-at="${cell.at}">`;
-        noteRichInline(cell.text, cell.at, out);
-        out.html += `</td>`;
-      }
+      noteTableRowHtml(row, "td", cols, table.aligns, out);
       out.html += `</tr>`;
     }
     out.html += `</tbody>`;
