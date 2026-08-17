@@ -923,7 +923,8 @@ def build_payload(query):
     # servidor está exposto na LAN) — a conta ligada não sai daqui, só do
     # /api/graph, que é localhost-only
     graph_public = {k: v for k, v in graph.items()
-                    if k not in ("account_email", "account_name", "login_email")}
+                    if k not in ("account_email", "account_name", "login_email",
+                                 "session_email")}
     # "caminho" do livro na nuvem: o do próprio livro escolhido (identidade que
     # não se confunde com a de outro livro) ou, quando o livro só está indicado
     # na configuração, o caminho geral da fonte web

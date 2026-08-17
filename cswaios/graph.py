@@ -275,10 +275,15 @@ def _graph_save_tokens(out, account=None):
               "expires_at": time.time() + int(out.get("expires_in", 3600))}
     email = str((account or {}).get("email") or "") or str(old.get("account_email") or "")
     name = str((account or {}).get("name") or "") or str(old.get("account_name") or "")
+    # o UPN pode ser diferente do email de correio da mesma conta (alias): sem o
+    # guardar, a conta escrita nas Definições nessa forma parecia ser outra
+    upn = str((account or {}).get("upn") or "") or str(old.get("account_upn") or "")
     if email:
         tokens["account_email"] = email
     if name:
         tokens["account_name"] = name
+    if upn:
+        tokens["account_upn"] = upn
     if not tokens["refresh_token"]:
         # sem refresh token a sessão não se renova e o browser volta a abrir ao
         # fim de uma hora. Deixa rasto: até aqui a falha era silenciosa (o
@@ -296,7 +301,9 @@ def _graph_forget_tokens():
     account = _graph_load_tokens()
     email = str(account.get("account_email") or "")
     name = str(account.get("account_name") or "")
-    if (email or name) and _write_tokens({"account_email": email, "account_name": name}):
+    upn = str(account.get("account_upn") or "")
+    if (email or name) and _write_tokens({"account_email": email, "account_name": name,
+                                          "account_upn": upn}):
         return
     try:
         os.remove(GRAPH_TOKEN_FILE)
@@ -305,24 +312,38 @@ def _graph_forget_tokens():
 
 
 def remembered_account():
-    """Conta Microsoft usada da última vez (email/nome), se for conhecida.
-    Não prova que a sessão esteja viva — só serve para a mostrar na interface
-    e para pré-preencher o login seguinte. Sem nenhuma sessão anterior vale o
-    email escrito à mão nas Definições (`login_email`): é justamente quem nunca
-    se ligou aqui que ganha em ver a lista de contas já escolhida."""
+    """Conta Microsoft a mostrar na interface. O email escrito à mão nas
+    Definições ganha ao que a Microsoft devolveu no `/me`: é uma escolha
+    explícita do utilizador, e é essa forma que ele quer ver em todo o sítio
+    (o mesmo email da mesma conta pode chegar do `/me` noutra forma — alias de
+    correio vs UPN). Sem escolha nas Definições vale a conta da última sessão.
+    Nada disto prova que a sessão esteja viva."""
     tokens = _graph_load_tokens()
-    email = str(tokens.get("account_email") or "")
-    if not email:
-        email = str(graph_config().get("login_email") or "")
-    return {"email": email, "name": str(tokens.get("account_name") or "")}
+    sessao = str(tokens.get("account_email") or "")
+    escolhido = str(graph_config().get("login_email") or "")
+    email = escolhido or sessao
+    name = str(tokens.get("account_name") or "")
+    if escolhido and sessao and not _same_account(escolhido, tokens):
+        # a sessão é mesmo de outra conta: o nome guardado é o dela e não pode
+        # ficar colado ao email escolhido (seria uma identidade que não existe)
+        name = ""
+    return {"email": email, "name": name}
+
+
+def _same_account(email, tokens):
+    """True se `email` for a conta autenticada nestes tokens. Compara com o
+    email de correio e com o UPN: são formas diferentes da mesma conta e quem
+    escreve o UPN nas Definições não está a pedir outra conta nenhuma."""
+    email = str(email or "").strip().lower()
+    return bool(email) and email in {
+        str(tokens.get("account_email") or "").strip().lower(),
+        str(tokens.get("account_upn") or "").strip().lower()}
 
 
 def login_hint():
-    """Conta a pré-escolher no login. O email escrito à mão nas Definições
-    ganha ao da última sessão: é uma escolha explícita de quem quer autenticar
-    com outra conta (a lista da Microsoft continua a permitir mudar)."""
-    return (str(graph_config().get("login_email") or "")
-            or remembered_account()["email"])
+    """Conta a pré-escolher no login. É sempre a das Definições, quando lá
+    estiver escrita — a lista da Microsoft continua a permitir mudar."""
+    return remembered_account()["email"]
 
 
 def had_login():
@@ -343,10 +364,11 @@ def has_session():
 
 
 def save_login_email(email):
-    """Grava (ou remove, com vazio) o email da conta Microsoft a usar no login,
-    escolhido nas Definições. Serve para o `login_hint`: a lista de contas da
-    Microsoft aparece já com esta escolhida, sem obrigar a procurá-la. Não é um
-    segredo nem dá acesso a nada por si — os tokens continuam à parte."""
+    """Grava (ou remove, com vazio) o email da conta Microsoft a usar no
+    OneDrive, escolhido nas Definições. Passa a ser a conta que a interface
+    mostra e a que o login pré-escolhe (`login_hint`), e nenhum login nem
+    renovação de sessão a volta a trocar por outra forma do mesmo email. Não é
+    um segredo nem dá acesso a nada por si — os tokens continuam à parte."""
     email = str(email or "").strip()
     if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise ValueError("email inválido")
@@ -367,25 +389,6 @@ def save_login_email(email):
     return email
 
 
-def _sync_login_email(email):
-    """Acerta a conta escrita nas Definições pela que ficou mesmo autenticada.
-    Quem escolhe uma conta diferente na lista da Microsoft está a dizer, de
-    forma ainda mais explícita, qual é a que quer — sem isto o campo continuava
-    a mostrar a antiga (e era essa que o login seguinte pré-escolhia), a
-    contradizer a sessão que está mesmo aberta logo por cima dele.
-    Campo vazio fica vazio: aí já vale a conta da última sessão."""
-    email = str(email or "").strip()
-    if not email:
-        return
-    atual = str(graph_config().get("login_email") or "")
-    if not atual or atual.lower() == email.lower():
-        return
-    try:
-        save_login_email(email)
-    except (OSError, ValueError):
-        pass          # é uma comodidade: nunca pode estragar um login que correu bem
-
-
 def _graph_account_info(cfg, token):
     """Email/nome de quem acabou de autenticar (`/me`). Uma falha aqui (rede,
     permissão) nunca pode estragar o login: devolve simplesmente {}."""
@@ -400,11 +403,14 @@ def _graph_account_info(cfg, token):
     if not isinstance(out, dict) or out.get("_status", 200) >= 400:
         return {}
     return {"email": str(out.get("mail") or out.get("userPrincipalName") or "").strip(),
+            "upn": str(out.get("userPrincipalName") or "").strip(),
             "name": str(out.get("displayName") or "").strip()}
 
 
 def _graph_remember_account(account):
-    """Guarda o email/nome da conta sem mexer nos tokens que lá estão."""
+    """Guarda o email/nome da conta sem mexer nos tokens que lá estão. Não toca
+    na conta escrita nas Definições: essa é a escolha do utilizador e ganha
+    sempre — é ela que a interface mostra e que o login seguinte pré-escolhe."""
     email = str((account or {}).get("email") or "")
     name = str((account or {}).get("name") or "")
     if not email and not name:
@@ -415,8 +421,8 @@ def _graph_remember_account(account):
             return          # sessão apagada entretanto: nada a anotar
         tokens["account_email"] = email
         tokens["account_name"] = name
+        tokens["account_upn"] = str((account or {}).get("upn") or "")
         _write_tokens(tokens)
-    _sync_login_email(email)
 
 
 def _probe_account_async(cfg):
@@ -635,7 +641,6 @@ def _graph_wait_redirect(cfg, srv, verifier, state, redirect):
     account = _graph_account_info(cfg, out.get("access_token", ""))
     with _graph_lock:
         _graph_save_tokens(out, account)
-    _sync_login_email(account.get("email"))
     _account_probed.set()      # a conta acabou de ser lida, não é preciso sondar
     _graph_login.update({"done": True, "error": ""})
     log_event("ligação ao OneDrive estabelecida"
@@ -672,7 +677,6 @@ def _graph_poll_login(cfg, device):
             account = _graph_account_info(cfg, out.get("access_token", ""))
             with _graph_lock:
                 _graph_save_tokens(out, account)
-            _sync_login_email(account.get("email"))
             _account_probed.set()
             _graph_login.update({"done": True, "error": ""})
             log_event("ligação ao OneDrive estabelecida")
@@ -728,11 +732,23 @@ def graph_state():
         state["method"] = _graph_source if state["connected"] else ""
     except GraphError as exc:
         state["error"] = str(exc)
+    tokens = _graph_load_tokens()
     account = remembered_account()
-    if state["connected"] and not account["email"] and state["method"] != "cli":
+    # a sondagem depende da conta que os tokens conhecem, não da que se mostra:
+    # com um email escrito nas Definições havia sempre conta para mostrar e a
+    # sessão antiga ficava para sempre sem saber de quem é
+    if state["connected"] and state["method"] != "cli" and not tokens.get("account_email"):
         _probe_account_async(cfg)   # sessão anterior a esta versão: fica para a próxima leitura
     state["account_email"] = account["email"]
     state["account_name"] = account["name"]
+    # sessão mesmo autenticada com outra conta que não a escrita nas Definições.
+    # A app não deita fora uma sessão que funciona por causa de um email escrito
+    # à mão (que pode ter um erro de escrita e deixaria a app a pedir logins sem
+    # fim), mas também não pode mostrar a conta escolhida como se fosse ela a
+    # trabalhar: quem quiser trocar mesmo de conta liga outra vez.
+    sessao = str(tokens.get("account_email") or "")
+    state["session_email"] = (sessao if state["login_email"] and sessao
+                              and not _same_account(state["login_email"], tokens) else "")
     login = _graph_login
     if login:
         if not login.get("done") and login.get("expires", 0) > time.time():

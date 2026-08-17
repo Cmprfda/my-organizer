@@ -88,35 +88,57 @@ shutil.which = lambda name: None
 app._cli_token.update({"token": "", "expires_at": 0.0})
 assert app.graph_token() is None
 
-# --- a conta das Definições segue a que ficou mesmo autenticada -------------
-# ficheiro de configuração à parte: o da instalação nunca é tocado no teste
+# --- a conta escrita nas Definições manda em todo o sítio --------------------
+# ficheiro de configuração à parte: o da instalação nunca é tocado no teste, e a
+# sessão real (graph_token.json) também não — o _write_tokens fica à parte
 TMP_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_tmp_graph_cfg.json")
 app.GRAPH_CONFIG_FILE = TMP_CFG
 app.graph_config = lambda: json.load(open(TMP_CFG, encoding="utf-8-sig"))
+WRITES = []
+app._write_tokens = lambda tokens: (WRITES.append(tokens), True)[1]
 try:
-    # conta antiga escrita à mão + login feito com outra: passa a valer a nova
-    json.dump({"login_email": "antigo@empresa.com"}, open(TMP_CFG, "w", encoding="utf-8"))
-    app._sync_login_email("novo@empresa.com")
-    assert app.graph_config()["login_email"] == "novo@empresa.com", app.graph_config()
-    assert app.login_hint() == "novo@empresa.com"
+    # sessão autenticada como cm-andrade (UPN), com o /me a devolver o email de
+    # correio da mesma conta — é o caso real de quem escreve o UPN nas Definições
+    SESSAO = {"account_email": "carlos.andrade@empresa.com",
+              "account_upn": "c-andrade@empresa.com",
+              "account_name": "Carlos Andrade"}
+    app._graph_load_tokens = lambda: dict(SESSAO)
 
-    # a mesma conta (só com outra caixa) não reescreve nada
-    app._sync_login_email("NOVO@empresa.com")
-    assert app.graph_config()["login_email"] == "novo@empresa.com", app.graph_config()
+    # a conta escrita à mão ganha à que o /me devolveu: é ela que se mostra e que
+    # o login pré-escolhe, e o nome fica (é a mesma conta, só noutra forma)
+    json.dump({"login_email": "c-andrade@empresa.com"}, open(TMP_CFG, "w", encoding="utf-8"))
+    assert app.remembered_account() == {"email": "c-andrade@empresa.com",
+                                        "name": "Carlos Andrade"}, app.remembered_account()
+    assert app.login_hint() == "c-andrade@empresa.com"
 
-    # campo vazio fica vazio: aí quem manda é a conta da última sessão
+    # um login novo (ou a sondagem da conta) não volta a trocar a escolha, e
+    # deixa o UPN guardado (é ele que prova que a conta é a mesma)
+    app._graph_remember_account({"email": "carlos.andrade@empresa.com",
+                                 "upn": "c-andrade@empresa.com", "name": "Carlos Andrade"})
+    assert app.graph_config()["login_email"] == "c-andrade@empresa.com", app.graph_config()
+    assert WRITES[-1]["account_upn"] == "c-andrade@empresa.com", WRITES[-1]
+
+    # conta mesmo diferente: mostra-se a escolhida, mas sem o nome da outra
+    json.dump({"login_email": "outra@empresa.com"}, open(TMP_CFG, "w", encoding="utf-8"))
+    assert app.remembered_account() == {"email": "outra@empresa.com", "name": ""}, \
+        app.remembered_account()
+
+    # campo vazio: quem manda é a conta da última sessão
     json.dump({}, open(TMP_CFG, "w", encoding="utf-8"))
-    app._sync_login_email("novo@empresa.com")
-    assert "login_email" not in app.graph_config(), app.graph_config()
+    assert app.remembered_account() == {"email": "carlos.andrade@empresa.com",
+                                        "name": "Carlos Andrade"}, app.remembered_account()
 
-    # login sem conta conhecida (o /me falhou) não apaga a escolha de ninguém
-    json.dump({"login_email": "antigo@empresa.com"}, open(TMP_CFG, "w", encoding="utf-8"))
-    app._sync_login_email("")
-    assert app.graph_config()["login_email"] == "antigo@empresa.com", app.graph_config()
+    # email inválido não entra na configuração
+    try:
+        app.save_login_email("nao-e-um-email")
+        raise AssertionError("devia ter recusado o email")
+    except ValueError:
+        pass
 finally:
+    app._graph_load_tokens = lambda: {}
     try:
         os.remove(TMP_CFG)
     except OSError:
         pass
 
-print("OK - leitura, indices, escrita, token da Azure CLI e conta do login validados")
+print("OK - leitura, indices, escrita, token da Azure CLI e conta escolhida validados")

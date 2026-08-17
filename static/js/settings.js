@@ -193,7 +193,7 @@ applyTheme();
 // Excel (Microsoft Graph). O bloco só aparece se o servidor estiver configurado.
 let graphInfo = { configured: false, connected: false, code: "", url: "", pending: false, error: "",
                   account_email: "", account_name: "", onedrive_url: "",
-                  has_session: false, had_login: false, login_email: "" };
+                  has_session: false, had_login: false, login_email: "", session_email: "" };
 let graphPoll = null;
 let graphPollUntil = 0;
 // prova ao vivo (não só o prazo do token em cache) de que o pedido de 20 em 20
@@ -343,9 +343,12 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // conta Microsoft a usar no OneDrive, escrita à mão: num PC com várias contas a
-// lista da Microsoft aparecia sempre na errada. Isto só pré-escolhe a conta no
-// login (login_hint) — quem manda continua a ser a Microsoft, e a lista dela
-// permite sempre mudar. Vazio = a conta da última sessão.
+// lista da Microsoft aparecia sempre na errada. Escolhida aqui, é esta a conta
+// que a app mostra em todo o sítio e a que pré-escolhe no login — nem um login
+// nem uma renovação de sessão a trocam por outra (o /me devolve muitas vezes o
+// email de correio quando o utilizador escreveu o UPN, ou vice-versa). Quem
+// manda no acesso continua a ser a Microsoft, e a lista dela permite sempre
+// mudar. Vazio = a conta da última sessão.
 function renderGraphEmailState() {
   $("graphEmailBox").classList.toggle("hidden", !graphInfo.configured);
   if (!graphInfo.configured) return;
@@ -355,8 +358,14 @@ function renderGraphEmailState() {
     $("graphEmailInput").value = graphInfo.login_email || "";
   }
   const set = !!graphInfo.login_email;
-  $("graphEmailState").innerHTML = `<span class="stateDot ${set ? "ok" : ""}"></span>` +
-    esc(set ? tf("graph_email_state_set", graphInfo.login_email) : t("graph_email_state_off"));
+  // sessão aberta mesmo com outra conta: dizê-lo aqui em vez de deixar a app a
+  // mostrar a conta escolhida como se fosse ela a trabalhar. A app não fecha a
+  // sessão boa por causa disto — trocar de conta é um clique em Ligar.
+  const outra = set ? (graphInfo.session_email || "") : "";
+  $("graphEmailState").innerHTML =
+    `<span class="stateDot ${outra ? "err" : (set ? "ok" : "")}"></span>` +
+    esc(set ? tf("graph_email_state_set", graphInfo.login_email) : t("graph_email_state_off")) +
+    (outra ? `<br><span style="opacity:.75">${esc(tf("graph_email_other_session", outra))}</span>` : "");
 }
 
 async function saveGraphEmail() {
