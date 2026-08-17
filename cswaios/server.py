@@ -18,6 +18,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from . import config
+from .chat import answer as chat_answer
 from .config import APP_VERSION, DOWNLOAD_URL, HERE, SHARE_URL, lan_ip
 from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, flush_pending,
@@ -635,6 +636,23 @@ class Handler(BaseHTTPRequestHandler):
                            "application/json")
             except Exception as exc:
                 log_event(f"{ip} operação TODO FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/chat":
+            # assistente: pergunta + retrato do que o cliente tem em memória.
+            # Não escreve nada e não lê a folha — quando propõe uma alteração,
+            # é o cliente que a executa pelos endpoints normais depois de
+            # confirmada (ver cswaios/chat.py).
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                pergunta = str(payload.get("message") or "")
+                out = chat_answer(pergunta, payload.get("context"),
+                                  str(payload.get("lang") or "pt"))
+                log_event(f"{ip} assistente [{out.get('intent')}]: {pergunta[:80]!r}")
+                self._send(200, json.dumps({"ok": True, **out}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} assistente FALHOU: {exc!r}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
         if path == "/api/jira/config":

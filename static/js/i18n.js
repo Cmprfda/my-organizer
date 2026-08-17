@@ -646,6 +646,27 @@ const TR = {
   cmd_feedback: ["Enviar sugestão", "Send feedback"],
   cmd_refresh: ["Atualizar os dados", "Refresh the data"],
   cmd_settings: ["Abrir definições", "Open settings"],
+
+  // ---------- assistente (Ctrl+I) ----------
+  chat_title: ["Assistente", "Assistant"],
+  chat_clear: ["Limpar", "Clear"],
+  ph_chat: ["Pergunta sobre o que está aberto…", "Ask about what is open…"],
+  chat_greeting: ["Pergunta-me sobre as tarefas, as CCRs, a lista Por fazer ou as notas — respondo com o que a app já tem aberto. Também acrescento itens à lista, mudo estados (fica local ✎, como sempre) e escrevo notas, sempre com confirmação. Escreve **ajuda** para ver tudo o que sei fazer.",
+    "Ask me about tasks, CCRs, your TODO list or notes — I answer from what the app already has open. I can also add items to your list, change statuses (staying local ✎, as always) and write notes, always with a confirmation. Type **help** to see everything I can do."],
+  chat_thinking: ["A ver…", "Looking…"],
+  chat_err: ["Não consegui responder:", "I could not answer:"],
+  chat_confirm: ["Confirmar", "Confirm"],
+  chat_cancel: ["Deixar estar", "Leave it"],
+  chat_working: ["A fazer…", "Working…"],
+  chat_done: ["Feito.", "Done."],
+  chat_failed: ["Não foi possível fazer isso.", "That could not be done."],
+  chat_cancelled: ["Não fiz nada.", "I did nothing."],
+  chat_row_gone: ["A linha já não está à vista — atualiza e tenta outra vez.",
+    "That row is no longer in view — refresh and try again."],
+  chat_sug_tasks: ["as minhas tarefas", "my tasks"],
+  chat_sug_stale: ["tarefas paradas", "stale tasks"],
+  chat_sug_todo: ["o que tenho por fazer", "what do I have to do"],
+  chat_sug_help: ["ajuda", "help"],
 };
 const t = key => (TR[key] || [key, key])[LANG === "en" ? 1 : 0];
 const tf = (key, ...args) => args.reduce((s, a, i) => s.replaceAll(`{${i}}`, a), t(key));

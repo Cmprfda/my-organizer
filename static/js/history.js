@@ -58,11 +58,13 @@ const activeHistory = () => taskHistoryByTab.get(activeTabId) || null;
 // ---------- idade de uma linha ----------
 const DAY_MS = 86400000;
 
-// { days, estimated, changed } de uma linha, ou null quando o histórico ainda
-// não a conhece. `estimated` = a linha nunca foi vista a mudar, por isso a
-// idade é "pelo menos isto" (mostra-se com ≥).
-function taskAge(meta) {
-  const hist = activeHistory();
+// { days, estimated, changed } de uma linha de UM livro qualquer (o histórico é
+// por separador), ou null quando o histórico ainda não a conhece. `estimated` =
+// a linha nunca foi vista a mudar, por isso a idade é "pelo menos isto"
+// (mostra-se com ≥). O assistente precisa disto para os livros que não estão à
+// vista (ver chatContext, static/js/chat.js).
+function taskAgeInTab(tabId, meta) {
+  const hist = taskHistoryByTab.get(tabId) || null;
   if (!hist || !meta || meta.xlrow == null) return null;
   const entry = hist.rows[String(meta.xlrow)];
   if (!entry || !entry.changed) return null;
@@ -74,6 +76,9 @@ function taskAge(meta) {
     changed: when,
   };
 }
+
+// idade de uma linha do livro que está à vista (o caso de sempre)
+const taskAge = meta => taskAgeInTab(activeTabId, meta);
 
 // Uma tarefa parada é uma que está à espera de alguém há demasiado tempo: as
 // concluídas (e as que não se aplicam) nunca contam, senão o botão enchia-se de

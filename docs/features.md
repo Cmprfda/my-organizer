@@ -69,3 +69,14 @@
 - **Search everything** (**Ctrl+K**): one box across the rows of every open
   workbook, CCRs, TODO items, board notes (title and box text), linked Jira
   issues, and app actions. ↑/↓ to move, Enter to jump there, Esc to close.
+- **Assistant** (💬 in the top bar, or **Ctrl+I**): a box where you type the
+  question instead of walking to the right view — *my tasks*, *tasks in
+  progress*, *stale tasks*, *pending changes*, *how many …?*, *ccrs ready to
+  close*, *what do I have to do*, *notes about X*, *week report*, *summary*;
+  anything else searches everything that is open. Each answer lists the items it
+  found, and clicking one jumps there. It also takes orders — *add to my list:
+  X*, *mark as done: X*, *status of X to Done*, *note on X: text* — but never
+  acts on its own: it shows what it is about to do and waits for **Confirm**,
+  and status changes stay local (✎) until the Push, like any other. It only
+  knows what the app has open at that moment: it never reads Excel or OneDrive
+  to answer. Type `help` in the box for the full list of what it understands.

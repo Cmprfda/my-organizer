@@ -31,6 +31,7 @@
   <link rel="stylesheet" href="/static/css/notify.css">
   <link rel="stylesheet" href="/static/css/copymenu.css">
   <link rel="stylesheet" href="/static/css/insights.css">
+  <link rel="stylesheet" href="/static/css/chat.css">
   <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 
@@ -46,6 +47,8 @@
       <button type="button" id="connBadge" class="connBadge" title="Fonte dos dados">
         <span class="connDot" id="connDot"></span><span id="connText">…</span>
       </button>
+      <button id="chatBtn" type="button" title="Assistente" aria-label="Assistente"
+        aria-expanded="false">&#128172;</button>
       <button id="helpBtn" type="button" title="Como usar" aria-label="Como usar" aria-expanded="false">?</button>
     </div>
 
@@ -656,6 +659,22 @@
     </div>
   </div>
 
+  <div id="chatPanel" class="chatPanel hidden" role="dialog" aria-label="Assistente">
+    <div class="chatHead">
+      <strong id="chatTitle">Assistente</strong>
+      <span class="chatEngine hidden" id="chatEngine"></span>
+      <button type="button" class="mini" id="chatClear">Limpar</button>
+      <button type="button" class="ccr-x" id="chatClose" title="Fechar">&#10005;</button>
+    </div>
+    <div class="chatLog" id="chatLog"></div>
+    <div class="chatSuggest" id="chatSuggest"></div>
+    <form class="chatBar" id="chatForm" autocomplete="off">
+      <input type="text" id="chatInput" autocomplete="off" spellcheck="false"
+        placeholder="Pergunta sobre o que está aberto…">
+      <button type="submit" id="chatSend" title="Enviar">&#10148;</button>
+    </form>
+  </div>
+
   <datalist id="jiraSuggestions"></datalist>
 
   <div id="jiraLogOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
@@ -710,6 +729,7 @@
   <script src="/static/js/copymenu.js"></script>
   <script src="/static/js/metrics.js"></script>
   <script src="/static/js/search.js"></script>
+  <script src="/static/js/chat.js"></script>
   <script src="/static/js/main.js"></script>
 </body>
 

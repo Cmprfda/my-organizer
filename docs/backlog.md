@@ -1,5 +1,33 @@
 ## Backlog
 
+### [DONE] Assistant (💬 / Ctrl+I)
+- **What landed:** `cswaios/chat.py` (`answer()`, local intent engine, `POST /api/chat`),
+  `static/js/chat.js` + `static/css/chat.css` (docked panel, context builder,
+  confirmation of proposed changes), `taskAgeInTab()` in `static/js/history.js`
+  (row age for any open workbook, not just the one on screen), plus i18n and a
+  help section.
+- **Design:** the context travels with the question (the client's own in-memory
+  snapshot), so answering never reads Excel/OneDrive; writes come back as
+  proposals the client executes through `/api/todo`, `/api/update` and
+  `/api/note` after a Confirm.
+- **Engine:** `local` (deterministic, the only one implemented) chosen in
+  `chat_config.json`; `llm` is a documented seam (`_llm_reply`) that falls back
+  to the local engine with a notice while it is not configured.
+- **Known limits (worth revisiting):**
+  - The local engine understands a defined set of shapes (the `help` intent
+    lists them); anything else falls back to searching what is open. Free-form
+    phrasing is what the `llm` engine is for.
+  - `status_set` on a sheet displayed through a **mapped view** writes the
+    tracker column and counts in the Push, but the mapped cell keeps showing the
+    sheet value until the Push (that view reads cells by coordinate and writes
+    through `/api/cellcat/update`).
+  - "Mine" is exact while *Show all* is off (the server already filtered by
+    person); with it on, ownership is guessed from the name in the row, with the
+    same tolerance for partial names as the rest of the app.
+  - The context is capped (4 workbooks, 400 rows each from the client, 800 at
+    the server) — a very large sheet answers about its first rows only.
+  - The conversation lives in memory: closing the app forgets it.
+
 ### [DONE] Task history, stale tasks, weekly report, metrics, global search, timer → Jira
 - **What landed:** `cswaios/history.py` (per-sheet change history, seeded from
   `read_sheet`, app writes tagged by `push_overrides`), `cswaios/report.py`

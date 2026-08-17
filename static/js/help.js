@@ -115,6 +115,19 @@ const HELP = [
         ],
     },
     {
+        title: ["Assistente", "Assistant"],
+        items: [
+            ["O <strong>💬</strong> na barra do topo (ou <strong>Ctrl+I</strong>) abre uma caixa onde escreves a pergunta em vez de ires à vista certa: <code>as minhas tarefas</code>, <code>tarefas em curso</code>, <code>tarefas paradas</code>, <code>alterações por enviar</code>, <code>quantas tarefas em curso?</code>, <code>ccrs prontas a fechar</code>, <code>o que tenho por fazer</code>, <code>notas sobre &lt;texto&gt;</code>, <code>relatório da semana</code>, <code>resumo</code>. Qualquer outro texto procura em tudo o que está aberto. Escreve <code>ajuda</code> na caixa para ver a lista completa.",
+                "The <strong>💬</strong> button in the top bar (or <strong>Ctrl+I</strong>) opens a box where you type the question instead of going to the right view: <code>my tasks</code>, <code>tasks in progress</code>, <code>stale tasks</code>, <code>pending changes</code>, <code>how many tasks in progress?</code>, <code>ccrs ready to close</code>, <code>what do I have to do</code>, <code>notes about &lt;text&gt;</code>, <code>week report</code>, <code>summary</code>. Any other text searches everything that is open. Type <code>help</code> in the box for the full list."],
+            ["Cada resposta traz os itens que encontrou: clica num para saltar para ele (a linha do Excel, o item Por fazer, a CCR ou a nota), como na pesquisa em tudo.",
+                "Every answer brings the items it found: click one to jump to it (the Excel row, the TODO entry, the CCR or the note), just like in search everything."],
+            ["Também pede alterações: <code>adiciona à lista: rever o TC-42</code>, <code>marca como feito: rever o TC-42</code>, <code>estado de &lt;tarefa&gt; para Done</code> (ou <code>estado tp de … para …</code>) e <code>nota em &lt;tarefa&gt;: &lt;texto&gt;</code>. O assistente <strong>nunca</strong> altera nada sozinho: mostra o que vai fazer e espera pelo <strong>Confirmar</strong>. As mudanças de estado ficam <strong>locais</strong> (✎) e só vão para o Excel com o <strong>Enviar</strong>, como qualquer outra.",
+                "It also takes orders: <code>add to my list: review TC-42</code>, <code>mark as done: review TC-42</code>, <code>status of &lt;task&gt; to Done</code> (or <code>status tp of … to …</code>) and <code>note on &lt;task&gt;: &lt;text&gt;</code>. The assistant <strong>never</strong> changes anything on its own: it shows what it is about to do and waits for <strong>Confirm</strong>. Status changes stay <strong>local</strong> (✎) and only reach Excel with the <strong>Push</strong>, like any other."],
+            ["Só sabe o que a app tem aberto neste momento: um livro fechado, ou uma aba que não foi lida, não entra nas respostas. Não vai ao Excel nem ao OneDrive para responder — e por isso responde depressa.",
+                "It only knows what the app has open right now: a closed workbook, or a sheet that was never read, does not show up in the answers. It never goes to Excel or OneDrive to answer — which is why it answers fast."],
+        ],
+    },
+    {
         title: ["Ecrã dividido", "Split screen"],
         items: [
             ["Arrasta o botão ↗ de um item (ou um separador) para o lado esquerdo/direito do ecrã para ver duas vistas ao mesmo tempo. Arrasta a barra do meio para redimensionar e ⇄ para trocar de lado.",

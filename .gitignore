@@ -16,6 +16,7 @@ feedback_pending/
 graph_config.json
 graph_token.json
 jira_config.json
+chat_config.json
 
 # Workbooks (company data)
 *.xlsx

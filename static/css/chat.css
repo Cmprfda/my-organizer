@@ -1,0 +1,316 @@
+/* My Organizer — assistente (💬)
+   Painel encostado ao canto inferior direito, acima da versão e à esquerda da
+   pilha de avisos (ver notify.css). Não é um modal: fica aberto enquanto se
+   trabalha, por isso não escurece nada por baixo. Cores só por tokens do tema
+   (ver THEME.md). */
+
+.chatPanel {
+  position: fixed;
+  right: 12px;
+  bottom: 34px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 120px));
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow-lg);
+  overflow: hidden;
+}
+
+.chatHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chatHead strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+
+.chatEngine {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chatLog {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chatMsg {
+  max-width: 92%;
+  padding: 8px 10px;
+  border-radius: var(--ios-radius-btn);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.chatMsg.me {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.chatMsg.bot {
+  align-self: flex-start;
+  background: var(--ios-bg-primary);
+  border: 1px solid var(--border);
+}
+
+.chatMsg.chatWait {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.chatMsg p {
+  margin: 0 0 6px;
+}
+
+.chatMsg p:last-child {
+  margin-bottom: 0;
+}
+
+.chatMsg ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+
+.chatMsg li {
+  margin: 2px 0;
+}
+
+.chatMsg code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--ios-gray-light);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.chatMsg blockquote {
+  margin: 4px 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+}
+
+.chatMsg .chatH {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  margin: 6px 0 3px;
+}
+
+.chatMsg .chatH:first-child {
+  margin-top: 0;
+}
+
+/* aviso do motor (ex.: LLM pedido mas não configurado) */
+.chatNote {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* ---------- itens a que a resposta leva ---------- */
+.chatItems {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chatItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  border-radius: var(--ios-radius-btn);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatItem:hover {
+  background: var(--accent-soft);
+}
+
+.chatItemIcon {
+  flex: 0 0 auto;
+  width: 16px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.chatItemText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chatItemText strong {
+  font-weight: 500;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatItemText small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- confirmação de uma alteração ---------- */
+.chatActions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.chatActions button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--ios-radius-btn);
+  cursor: pointer;
+}
+
+.chatOk {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+}
+
+.chatOk:hover {
+  background: var(--accent-hover);
+}
+
+.chatNo {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.chatNo:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.chatActionDone {
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ok-text);
+}
+
+/* ---------- sugestões e caixa de escrita ---------- */
+.chatSuggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px 8px;
+}
+
+.chatChip {
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-pill);
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.chatChip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.chatBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+#chatInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--ios-bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  padding: 7px 9px;
+}
+
+#chatInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+#chatSend {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 14px;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--ios-radius-btn);
+  cursor: pointer;
+}
+
+#chatSend:hover {
+  background: var(--accent-hover);
+}
+
+/* no telemóvel o painel ocupa a largura toda e sobe do fundo */
+@media (max-width: 720px) {
+  .chatPanel {
+    right: 8px;
+    left: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: min(70vh, calc(100vh - 90px));
+  }
+}
