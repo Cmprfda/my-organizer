@@ -33,8 +33,8 @@ from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
 from .report import build_report
-from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
-                    save_overrides)
+from .store import (load_announcement, load_ccrs, load_notes, load_overrides,
+                    save_announcement, save_ccrs, save_notes, save_overrides)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
                     forget_web_cache, known_headers, pending_overrides_summary,
                     push_overrides, queue_cellcat_override)
@@ -53,6 +53,15 @@ STATIC_TYPES = {
     ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
     ".woff2": "font/woff2", ".ttf": "font/ttf", ".map": "application/json",
 }
+
+
+def _is_local(ip):
+    """Pedido feito no PC onde a app corre.
+
+    Só esses mexem em configuração (sessão do OneDrive, token do Jira, aviso do
+    dono) ou abrem janelas: quem chega pela rede local usa a app, não a
+    configura."""
+    return ip in ("127.0.0.1", "::1", "localhost")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -181,6 +190,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"currentVersion": APP_VERSION,
                                         "entries": read_changelog()}),
                        "application/json")
+        elif parsed.path == "/api/announcement":
+            # aviso do dono da instalação (ver store.py). Pedido uma vez por
+            # arranque da interface, por isso sem registo no log. `canEdit` diz
+            # à página das Definições se este cliente é o dono (só o PC onde a
+            # app corre é que escreve o aviso).
+            self._send(200, json.dumps({**load_announcement(),
+                                        "canEdit": _is_local(ip)}), "application/json")
         elif parsed.path.startswith("/api/notepad/img/"):
             self.send_note_image(parsed.path[len("/api/notepad/img/"):])
         elif parsed.path == "/api/ping":
@@ -655,6 +671,56 @@ class Handler(BaseHTTPRequestHandler):
                 log_event(f"{ip} assistente FALHOU: {exc!r}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
+        if path == "/api/window":
+            # segunda janela da app (ver openWorkbookWindow em workbooks.js):
+            # só a partir deste PC, porque a janela abre onde a app corre —
+            # quem chega pela rede local abre-a no seu próprio browser, com o
+            # window.open que já tentou antes de chegar aqui
+            if not _is_local(ip):
+                self._send(403, json.dumps({"ok": False, "error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                destino = str(payload.get("path") or "/")
+                # caminho desta app e mais nada: nunca abrir um endereço vindo
+                # de fora ("//outro.site", "http://…") numa janela nossa
+                if not destino.startswith("/") or destino.startswith("//"):
+                    destino = "/"
+                url = f"http://127.0.0.1:{config.SERVER_PORT}{destino}"
+                aberta = open_extra_window(url)
+                log_event(f"{ip} abriu outra janela em {destino}"
+                          f"{'' if aberta else ' (no browser)'}")
+                self._send(200, json.dumps({"ok": True, "native": aberta}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} /api/window FALHOU: {exc!r}")
+                self._send(500, json.dumps({"ok": False, "error": "erro interno"}),
+                           "application/json")
+            return
+        if path == "/api/announcement":
+            # escrever/apagar o aviso mostrado a quem abre a app: só a partir
+            # deste PC, tal como o /api/graph e o /api/jira/config
+            if not _is_local(ip):
+                log_event(f"{ip} tentou mexer no aviso - recusado")
+                self._send(403, json.dumps({"error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                if payload.get("action") == "clear":
+                    data = save_announcement("", "")
+                    log_event(f"{ip} apagou o aviso")
+                else:
+                    data = save_announcement(payload.get("title"), payload.get("text"))
+                    log_event(f"{ip} gravou o aviso ({len(data['text'])} caracteres)")
+                self._send(200, json.dumps({"ok": True, **data, "canEdit": True}),
+                           "application/json")
+            except Exception as exc:
+                log_event(f"{ip} aviso FALHOU: {exc!r}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
         if path == "/api/jira/config":
             # grava o token do Jira: só a partir deste PC, tal como o /api/graph
             if ip not in ("127.0.0.1", "::1", "localhost"):
@@ -975,6 +1041,24 @@ def port_free(port, wait=0.0):
         if time.time() >= deadline:
             return False
         time.sleep(0.3)
+
+
+def open_extra_window(url):
+    """Abre outra janela da app (ver /api/window). True se for janela nativa.
+
+    Com a interface na janela nativa (pywebview) abre-se outra janela igual;
+    sem ela — a app está a ser usada numa aba do browser — abre-se lá o
+    endereço, que é o que o browser faria."""
+    if config.WEBVIEW_WINDOW is not None:
+        try:
+            import webview
+            webview.create_window("My Organizer", url, width=1300, height=850,
+                                  min_size=(1000, 650))
+            return True
+        except Exception as exc:
+            log_event(f"segunda janela nativa falhou ({exc!r}) - a abrir no browser")
+    webbrowser.open(url)
+    return False
 
 
 def open_ui(url):

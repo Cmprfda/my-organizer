@@ -53,6 +53,45 @@ function openWorkbookTab(spec) {
   return tab;
 }
 
+/* ---------- ver dois livros ao mesmo tempo: janela nova ----------
+   O ⧉ do separador (ou o botão do meio do rato) abre a app noutra janela já
+   naquele livro — `?wb=<id>`, ver SOLO_WB em state.js. É a maneira de ter dois
+   livros à frente ao mesmo tempo: o ecrã dividido não serve para isso, porque o
+   painel das tarefas é um só e mostra sempre o livro do separador ativo.
+
+   Primeiro tenta-se aqui (é um clique do utilizador, o browser não bloqueia);
+   quando a interface é a janela nativa da app o window.open não abre nada e é o
+   servidor que abre a janela (/api/window), como já acontece com o login da
+   Microsoft. */
+async function openWorkbookWindow(id) {
+  const tab = tabById(id);
+  if (!tab) return;
+  const caminho = `/?wb=${encodeURIComponent(id)}`;
+  let janela = null;
+  try {
+    // nome próprio por livro: carregar duas vezes no ⧉ traz à frente a janela
+    // que já está aberta em vez de abrir outra igual
+    janela = window.open(caminho, `myorg_wb_${id}`, "width=1280,height=860");
+  } catch (err) {
+    janela = null;
+  }
+  if (janela) {
+    try { janela.focus(); } catch (err) { /* algumas janelas não deixam */ }
+    return;
+  }
+  try {
+    const res = await fetch("/api/window", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: caminho }),
+    });
+    const out = await res.json();
+    if (!out.ok) toast(out.error || t("wb_window_failed"), "err");
+  } catch (err) {
+    toast(t("wb_window_failed"), "err");
+  }
+}
+
 // ---------- opção 1: livro no OneDrive/SharePoint ----------
 $("wbAddOneDrive").addEventListener("click", e => {
   e.stopPropagation();

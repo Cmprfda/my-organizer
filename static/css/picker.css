@@ -153,7 +153,8 @@
     max-width: 22ch;
 }
 
-.tabs button[data-view^="wb:"] .wbTabClose {
+.tabs button[data-view^="wb:"] .wbTabClose,
+.tabs button[data-view^="wb:"] .wbTabPop {
     margin-left: 6px;
     padding: 0 2px;
     border-radius: 4px;
@@ -164,11 +165,15 @@
 
 .tabs button[data-view^="wb:"]:hover .wbTabClose,
 .tabs button[data-view^="wb:"].active .wbTabClose,
-.tabs button[data-view^="wb:"].side .wbTabClose {
+.tabs button[data-view^="wb:"].side .wbTabClose,
+.tabs button[data-view^="wb:"]:hover .wbTabPop,
+.tabs button[data-view^="wb:"].active .wbTabPop,
+.tabs button[data-view^="wb:"].side .wbTabPop {
     opacity: 1;
 }
 
-.tabs button[data-view^="wb:"] .wbTabClose:hover {
+.tabs button[data-view^="wb:"] .wbTabClose:hover,
+.tabs button[data-view^="wb:"] .wbTabPop:hover {
     color: var(--accent);
     background: var(--accent-soft);
 }

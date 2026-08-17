@@ -18,6 +18,7 @@ function applyLang() {
   document.querySelector('label[for="langSel"]').textContent = t("lang_title");
   applyInsightsLang();
   applyChatLang();
+  applyAnnounceLang();
   renderGraphState();
   $("themeSel").title = t("theme_title");
   $("themeSel").options[0].textContent = t("theme_auto");
@@ -243,6 +244,9 @@ function graphAccountLine() {
 // OneDrive podem ter mudado noutra janela desde a última vez
 function renderSettingsPage() {
   if (typeof refreshJiraSettings === "function") refreshJiraSettings();
+  // o aviso pode ter sido escrito noutra janela desta app (ou à mão no
+  // announcement.json): relê-se sempre que a página abre
+  if (typeof loadAnnouncement === "function") loadAnnouncement(false);
   graphAction("state");
 }
 

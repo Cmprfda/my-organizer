@@ -133,6 +133,11 @@ function renderWorkbookTabs() {
     b.dataset.label = tab.name || tabFile(tab);
     b.title = tab.kind === "onedrive" ? `${tab.name} — OneDrive` : (tab.path || tab.name);
     b.innerHTML = `<span class="wbTabName">${esc(tab.name || tabFile(tab))}</span>` +
+      // numa janela já dedicada a um livro o ⧉ não tem para onde abrir: era
+      // esta mesma janela outra vez (ver SOLO_WB em state.js)
+      (SOLO_WB ? "" :
+        `<span class="wbTabPop" data-wbpop="${esc(tab.id)}" title="${esc(t("wb_window"))}" ` +
+        `role="button" aria-label="${esc(t("wb_window"))}">⧉</span>`) +
       `<span class="wbTabClose" data-wbclose="${esc(tab.id)}" title="${esc(t("wb_close"))}" ` +
       `role="button" aria-label="${esc(t("wb_close"))}">✕</span>`;
   });
@@ -185,7 +190,15 @@ function closeWorkbookTab(id) {
 }
 
 function wireTabButton(b) {
+  // botão do meio num separador de livro: janela nova, como nos browsers
+  b.addEventListener("auxclick", e => {
+    if (e.button !== 1 || !isWorkbookView(b.dataset.view)) return;
+    e.preventDefault();
+    openWorkbookWindow(workbookViewId(b.dataset.view));
+  });
   b.addEventListener("click", e => {
+    const p = e.target.closest("[data-wbpop]");
+    if (p) { e.preventDefault(); e.stopPropagation(); openWorkbookWindow(p.dataset.wbpop); return; }
     const x = e.target.closest("[data-wbclose]");
     if (x) { e.preventDefault(); e.stopPropagation(); closeWorkbookTab(x.dataset.wbclose); return; }
     // clicar no separador da vista que está ao lado devolve-a ao ecrã inteiro

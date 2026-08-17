@@ -10,6 +10,7 @@ bug_reports.json
 tracker.log
 projects_to_add
 workbooks.json
+announcement.json
 feedback_pending/
 
 # Credentials / local Graph configuration (NEVER commit)

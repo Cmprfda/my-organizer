@@ -26,7 +26,11 @@
     same tolerance for partial names as the rest of the app.
   - The context is capped (4 workbooks, 400 rows each from the client, 800 at
     the server) — a very large sheet answers about its first rows only.
-  - The conversation lives in memory: closing the app forgets it.
+  - ~~The conversation lives in memory: closing the app forgets it.~~ Fixed in
+    v127: it is kept in this browser's `localStorage` (`bsp-tracker-chat`, the
+    last 60 messages), like the theme or the split size. A proposal that was
+    never confirmed comes back marked as expired instead of confirmable — the
+    workbook it was about may have been reread (or closed) in the meantime.
 
 ### [DONE] Task history, stale tasks, weekly report, metrics, global search, timer → Jira
 - **What landed:** `cswaios/history.py` (per-sheet change history, seeded from
@@ -47,14 +51,50 @@
   - "Time counted" in the report is the timers' running total, not just the
     period's — the app has no per-day breakdown of timer time.
 
-### [TODO] Admin welcome/announcement message
-- **Request:** Allow admins to set a message that is shown to users the first time they open the app (or after it is updated).
-- **Notes:**
-  - Backend: add a `GET /api/announcement` endpoint that reads a message from a config file (e.g. `announcement.json` — excluded from releases like other local JSON state). The payload should include the message text and a version/ID key so the client can tell if it has already been dismissed.
-  - Frontend: on first load (`main.js`), call `/api/announcement`; if the message is new (compare stored ID in `localStorage`), show a modal or banner before the normal UI renders. Store the seen ID in `localStorage` to suppress it on subsequent opens.
-  - Admin write path: `POST /api/announcement` (localhost-only, like `/api/graph`) to set/clear the message.
+### [DONE] Admin welcome/announcement message
+- **What landed:** `announcement.json` + `load_announcement()`/`save_announcement()`
+  in `cswaios/store.py`, `GET`/`POST /api/announcement` (the POST localhost-only,
+  like `/api/graph`), `static/js/announce.js` with the modal and the editor card
+  in the Settings page, plus i18n.
+- **Design:** the `id` is a hash of the content, computed on the server — editing
+  the text gives a new id and the notice shows again to everyone, and each browser
+  stores the last id it read in `localStorage` (`bsp-tracker-announce-seen`), so
+  reopening the app with the same text does not nag whoever already read it.
+- **Reach:** the notice is written to the shared releases folder when it is
+  mounted on the machine (`find_releases_dir()`), the same folder that already
+  delivers updates and the changelog — so it reaches every install, not only the
+  clients of one instance. The shared copy wins over the local one on read; the
+  local copy is the fallback (no shared folder, or a notice meant only for the
+  LAN clients of that instance).
+- **Released in:** v127.
+- **Known limits (worth revisiting):**
+  - It reaches other installs only when they are opened (there is no push): the
+    file is read once per app start and whenever the Settings page opens.
+  - Recipients whose share is read-only cannot publish to everyone — their
+    notice stays local, for whoever opens their instance.
+  - No scheduling and no "who has read it": one live message at a time.
 
-### [FEEDBACK] Multiple Excel workbook windows
+### [DONE] Multiple Excel workbook windows
 - **Source:** Carlos Andrade — feedback `20260803_192147_Carlos_Andrade` (v1.3.0, page: Tarefas)
 - **Request:** Give the ability to have multiple excel windows open simultaneously.
-- **Notes:** Currently the app is scoped to a single active workbook at a time. This would require rethinking the data model in `cswaios/tasks.py` (`_RAW_CACHE`, `_LAST_GOOD`) and the UI tab/view routing to support multiple concurrent workbook sessions.
+- **What landed:** `⧉` on each workbook tab (and middle-click) opens the app in a
+  second window already on that workbook — `/?wb=<id>`, read into `SOLO_WB`
+  (`static/js/state.js`); `openWorkbookWindow()` in `static/js/workbooks.js`, with
+  `POST /api/window` (localhost-only) opening a native window when the UI is the
+  pywebview window, where `window.open` does nothing.
+- **Design:** each window is its own JavaScript context — its own data, filters
+  and polling — so nothing had to be duplicated inside the page. The server side
+  already keyed its caches per workbook (`_RAW_CACHE`, `_LAST_GOOD` in
+  `cswaios/tasks.py`), so two windows on two workbooks never collide.
+- **Released in:** v127.
+- **Known limits (worth revisiting):**
+  - A dedicated window never saves the open-workbook list (`saveWorkbookTabs()`
+    returns early when `SOLO_WB` is set): the `localStorage` is shared with the
+    main window and saving there would close its tabs. So opening another
+    workbook inside a dedicated window works, but only until it is closed —
+    including the sheet chosen in its selector.
+  - Split screen inside one window still shows a single workbook: the `#excelView`
+    panel is one, and it follows the active tab. Two workbooks side by side means
+    two windows.
+  - Two windows reading the same workbook each poll it on their own (the 20s
+    cycle runs per window).

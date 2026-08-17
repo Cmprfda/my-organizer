@@ -199,6 +199,12 @@ $("toggleAll").addEventListener("click", () => {
 renderWorkbookTabs();
 applyLang();
 showView(currentView);
+// janela dedicada a um livro (?wb=): o nome do livro no título, para se
+// distinguir da janela principal na barra de tarefas do Windows
+if (SOLO_WB && activeTab()) {
+  document.title = `${activeTab().name} — My Organizer`;
+  toast(t("wb_window_solo"), "ok");
+}
 // o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
 // (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
 loadAllTabs().then(() => { notifyTaskChanges(); });
@@ -207,6 +213,9 @@ loadAllTabs().then(() => { notifyTaskChanges(); });
 // arranque chega, os polls seguintes ao /api/tasks preservam-na (graphInfo é
 // sempre um merge a partir daqui, nunca uma substituição)
 if (typeof graphAction === "function") graphAction("state");
+// aviso do dono da instalação: lido uma vez no arranque e mostrado só se for
+// novo para este browser (ver announce.js)
+loadAnnouncement(true);
 
 // barra do topo: encolhe (mais estreita e sem subtítulos) assim que se desce
 // zona morta entre os 32 e os 64px para não oscilar (encolhe/expande em

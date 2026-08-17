@@ -14,6 +14,20 @@ let PERSON = localStorage.getItem("bsp-tracker-person") || "Carlos Andrade";
 const WORKBOOKS_KEY = "bsp-tracker-workbooks";
 const ACTIVE_WORKBOOK_KEY = "bsp-tracker-workbook-active";
 
+/* ---------- janela dedicada a um livro ----------
+   "Abrir em janela nova" (⧉ no separador) abre esta mesma app com `?wb=<id>`:
+   uma segunda janela que arranca já naquele livro, para se ver dois livros ao
+   mesmo tempo lado a lado. É a app inteira, não uma vista reduzida — a janela
+   tem os seus próprios dados, filtros e leituras, porque cada janela é um
+   contexto de JavaScript à parte (o servidor já guarda a cache de cada livro
+   pela sua chave, ver _RAW_CACHE em cswaios/tasks.py).
+
+   O que esta janela NÃO faz é gravar a lista de livros abertos: a lista é a
+   mesma no localStorage das duas, e gravá-la aqui (onde só está este livro)
+   apagaria os separadores da janela principal. Abrir outro livro por aqui
+   funciona; é só nesta janela, até ela fechar. */
+const SOLO_WB = new URLSearchParams(location.search).get("wb") || "";
+
 // identidade estável: o mesmo livro dá sempre o mesmo id, entre arranques e
 // entre separadores (é o que permite não abrir o mesmo livro duas vezes)
 function workbookId(kind, key) {
@@ -64,12 +78,19 @@ function loadWorkbookTabs() {
 }
 
 let workbookTabs = loadWorkbookTabs();
-let activeTabId = localStorage.getItem(ACTIVE_WORKBOOK_KEY) || "";
+// numa janela dedicada só entra o livro pedido (os outros continuam abertos na
+// janela principal). Um id desconhecido — outro browser, outro dispositivo —
+// deixa a janela no painel de boas-vindas, de onde se abre o livro à mão.
+if (SOLO_WB) workbookTabs = workbookTabs.filter(x => x.id === SOLO_WB);
+let activeTabId = SOLO_WB || localStorage.getItem(ACTIVE_WORKBOOK_KEY) || "";
 if (!workbookTabs.some(x => x.id === activeTabId))
   activeTabId = workbookTabs.length ? workbookTabs[0].id : "";
 
 // só a identidade dos livros é guardada; os dados lidos ficam em memória
 function saveWorkbookTabs() {
+  // numa janela dedicada a lista em memória é só este livro: gravá-la fechava
+  // os separadores da janela principal (o localStorage é o mesmo)
+  if (SOLO_WB) return;
   localStorage.setItem(WORKBOOKS_KEY, JSON.stringify(workbookTabs.map(x => ({
     id: x.id, kind: x.kind, path: x.path, driveId: x.driveId, itemId: x.itemId,
     name: x.name, sheet: x.sheet,

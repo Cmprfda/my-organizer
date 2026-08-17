@@ -464,6 +464,24 @@
               </div>
             </section>
 
+            <section class="setCard hidden" id="setCardAnnounce">
+              <h2 class="setCardTitle" id="setSecAnnounce">Aviso a quem abre a app</h2>
+              <div class="setNote hidden" id="announceEditBox">
+                <span class="setNoteLbl" id="announceLbl">Mensagem</span>
+                <input type="text" id="announceTitleInput" maxlength="200" placeholder="Título (opcional)">
+                <textarea id="announceTextInput" rows="4" maxlength="4000"
+                  placeholder="O que queres dizer a quem abrir a app…"></textarea>
+                <div class="setRow setRowUpdate">
+                  <button type="button" class="mini" id="announceSaveBtn">Guardar</button>
+                  <button type="button" class="mini" id="announceClearBtn">Apagar</button>
+                </div>
+                <span id="announceState"></span>
+              </div>
+              <div class="setRow setRowUpdate">
+                <button type="button" class="mini hidden" id="announceShowBtn">Ver o aviso</button>
+              </div>
+            </section>
+
             <section class="setCard">
               <h2 class="setCardTitle" id="setSecApp">Aplicação</h2>
               <div class="setRow setRowUpdate">
@@ -504,6 +522,19 @@
         <button type="button" class="ccr-x" id="helpClose" title="Fechar">✕</button>
       </div>
       <div id="helpBody" class="helpBody"></div>
+    </div>
+  </div>
+
+  <div id="announceOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Aviso">
+    <div class="helpCard announceCard">
+      <div class="helpHead">
+        <strong id="announceTitle">Aviso</strong>
+        <button type="button" class="ccr-x" id="announceClose" title="Fechar">✕</button>
+      </div>
+      <div id="announceBody" class="helpBody"></div>
+      <div class="setRow setRowUpdate">
+        <button type="button" class="mini" id="announceOk">Entendido</button>
+      </div>
     </div>
   </div>
 
@@ -750,6 +781,7 @@
   <script src="/static/js/metrics.js"></script>
   <script src="/static/js/search.js"></script>
   <script src="/static/js/chat.js"></script>
+  <script src="/static/js/announce.js"></script>
   <script src="/static/js/main.js"></script>
 </body>
 

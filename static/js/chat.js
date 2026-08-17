@@ -20,8 +20,56 @@
 // inteira; o servidor corta outra vez, por segurança)
 const CHAT_MAX_ROWS = 400;
 
-// histórico da conversa (só em memória): { who: "me"|"bot", text, items, action, note, done }
-let chatMsgs = [];
+// ---------- a conversa ----------
+// { who: "me"|"bot", text, items, action, note, done }
+//
+// Fica guardada neste browser (como o tema ou o tamanho do ecrã dividido), não
+// no servidor: a conversa é de quem a teve, e o contexto que a gerou é o que
+// este browser tinha aberto. Fechar a app deixou de a esquecer; o botão Limpar
+// continua a ser a forma de a deitar fora.
+const CHAT_STORE_KEY = "bsp-tracker-chat";
+const CHAT_KEEP = 60;          // mensagens guardadas (as mais recentes)
+const CHAT_MAX_BYTES = 120000; // teto do que se escreve no localStorage
+
+// Uma proposta por confirmar é de uma sessão anterior: o livro pode ter sido
+// relido (ou nem sequer estar aberto) desde então, por isso não se deixa
+// confirmar às cegas — fica no registo, marcada como fora de prazo.
+function restoreChatMsg(m) {
+  if (!m || typeof m !== "object") return null;
+  const msg = {
+    who: m.who === "me" ? "me" : "bot",
+    text: String(m.text || ""),
+    items: Array.isArray(m.items) ? m.items : [],
+    action: m.action || null,
+    note: String(m.note || ""),
+    done: m.done ? String(m.done) : "",
+  };
+  if (msg.action && !msg.done) msg.done = t("chat_expired");
+  return msg;
+}
+
+function loadChatMsgs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CHAT_STORE_KEY) || "null");
+    if (!Array.isArray(raw)) return [];
+    return raw.map(restoreChatMsg).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveChatMsgs() {
+  try {
+    let guardar = chatMsgs.slice(-CHAT_KEEP);
+    // conversas com muitos resultados listados chegam a ser grandes: corta-se
+    // pela frente até caber, em vez de estoirar a quota do localStorage
+    while (guardar.length > 1 && JSON.stringify(guardar).length > CHAT_MAX_BYTES)
+      guardar = guardar.slice(1);
+    localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(guardar));
+  } catch (e) { /* sem espaço: a conversa continua a viver em memória */ }
+}
+
+let chatMsgs = loadChatMsgs();
 let chatBusy = false;
 
 const chatIsOpen = () => !$("chatPanel").classList.contains("hidden");
@@ -172,7 +220,7 @@ function setChatOpen(open) {
   if (!open) return;
   if (!chatMsgs.length) {
     chatMsgs.push({ who: "bot", text: t("chat_greeting") });
-    renderChatLog();
+    renderChatLog();   // a saudação não se guarda: é o que se mostra a quem chega
   }
   $("chatInput").focus();
 }
@@ -204,6 +252,7 @@ async function chatAsk(message) {
     chatBusy = false;
     chatMsgs.push({ who: "bot", text: t("err_server") });
   }
+  saveChatMsgs();
   renderChatLog();
 }
 
@@ -303,6 +352,7 @@ async function confirmChatAction(i) {
   renderChatLog();
   const ok = await runChatAction(msg.action);
   msg.done = ok ? t("chat_done") : t("chat_failed");
+  saveChatMsgs();
   renderChatLog();
 }
 
@@ -314,6 +364,7 @@ $("chatBtn").addEventListener("click", e => {
 $("chatClose").addEventListener("click", () => setChatOpen(false));
 $("chatClear").addEventListener("click", () => {
   chatMsgs = [];
+  saveChatMsgs();
   renderChatLog();
   setChatOpen(true);
 });
@@ -343,7 +394,7 @@ $("chatLog").addEventListener("click", e => {
   const no = e.target.closest("[data-chatskip]");
   if (no) {
     const msg = chatMsgs[+no.dataset.chatskip];
-    if (msg) { msg.done = t("chat_cancelled"); renderChatLog(); }
+    if (msg) { msg.done = t("chat_cancelled"); saveChatMsgs(); renderChatLog(); }
   }
 });
 
