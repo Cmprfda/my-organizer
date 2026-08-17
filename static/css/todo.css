@@ -25,13 +25,15 @@ tr.todoRow.ccr-done.flagged td {
   padding: 3px;
 }
 
+/* 6px (e não 7) porque a caixa do segmentado ainda acrescenta 3px de padding
+   de cada lado: assim fica com a mesma altura dos botões e campos ao lado */
 .todoMode button,
 .todoMode button.secondary {
   background: transparent;
   color: var(--text);
   border: none;
   border-right: none;
-  padding: 7px 12px;
+  padding: 6px 12px;
   font-size: 12.5px;
   border-radius: 4px;
 }
@@ -615,16 +617,25 @@ tr.todoRow td.todoCtl>* {
   gap: 5px;
 }
 
+/* no cartão do kanban a coluna dá ~155px de conteúdo e o código do Jira só
+   por si come quase tudo: sem quebra de linha a fila estourava a largura e o
+   ✕ de desligar a issue ficava cortado pelo overflow:hidden do .todoCard.
+   Os botões passam para a linha de baixo em vez de desaparecerem. */
 .todoJiraItem {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px 6px;
   font-size: 11px;
   padding: 1px 0;
 }
 
 .todoJiraKey {
-  flex: 0 0 auto;
+  /* pode encolher (com "…") se nem sozinho couber na linha: cortado pelo
+     cartão não se lia de qualquer maneira */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: 9.5px;
   font-weight: 700;
@@ -633,6 +644,7 @@ tr.todoRow td.todoCtl>* {
   padding: 2px 7px;
   border-radius: 999px;
   white-space: nowrap;
+  text-overflow: ellipsis;
   text-decoration: none;
   cursor: pointer;
 }
@@ -658,6 +670,15 @@ a.todoJiraKey:hover {
   flex: 0 0 auto;
   padding: 2px 6px;
   font-size: 11px;
+}
+
+/* o ✕ era o maior dos três (16px) e era sempre ele a cair fora do cartão:
+   ao tamanho dos vizinhos, as três ações cabem na mesma linha quebrada */
+.todoJiraItem .ccr-x {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .todoJiraAddRow {

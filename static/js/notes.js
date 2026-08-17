@@ -1222,12 +1222,69 @@ function noteRefLabel(ref) {
   return ref.label || ref.fn || ref.ccr || ref.todo_id || "";
 }
 
+/* Índice das notas ligadas a linhas do Excel: "função␟o que fazer" -> notas.
+   O pino de cada linha (taskNoteFlagHtml) é montado no desenho da tabela, uma
+   vez por linha: percorrer as notas todas de cada vez seriam até 500 notas ×
+   20 ligações por linha desenhada. O índice é refeito quando o `notepad` muda
+   de objeto — e ele só é substituído inteiro (loadNotepad/postNotepad), nunca
+   remendado por dentro, por isso comparar a referência basta para o índice
+   nunca ficar desatualizado. */
+let _taskNoteIndex = null;
+let _taskNoteIndexOf = null;   // a lista de notas de que este índice foi feito
+
+// o separador tem de ser um caractere que nunca apareca no texto da folha:
+// sem ele, ("ab", "c") e ("a", "bc") davam a mesma chave e o pino aparecia
+// na linha errada. Escrito com a sequencia de escape, e nao com o
+// proprio caractere invisivel, para se conseguir ler o codigo.
+const taskNoteKey = (fn, todo) => `${fn}\u001F${todo || ""}`;
+
+function taskNoteIndex() {
+  const notas = notepad.notes || [];
+  if (_taskNoteIndex && _taskNoteIndexOf === notas) return _taskNoteIndex;
+  const index = new Map();
+  notas.forEach(n => {
+    (n.refs || []).forEach(r => {
+      if (r.kind !== "task" || !r.fn) return;
+      const chave = taskNoteKey(r.fn, r.todo);
+      const lista = index.get(chave);
+      // a mesma nota pode estar ligada duas vezes à mesma linha: conta uma
+      if (lista) {
+        if (!lista.includes(n)) lista.push(n);
+      } else {
+        index.set(chave, [n]);
+      }
+    });
+  });
+  _taskNoteIndex = index;
+  _taskNoteIndexOf = notas;
+  return index;
+}
+
 function notesForTask(fn, todo) {
-  return notepad.notes.filter(n => (n.refs || []).some(r => r.kind === "task" && r.fn === fn && (r.todo || "") === (todo || "")));
+  return taskNoteIndex().get(taskNoteKey(fn, todo)) || [];
 }
 
 function notesForCcr(ccrId) {
   return notepad.notes.filter(n => (n.refs || []).some(r => r.kind === "ccr" && r.ccr === ccrId));
+}
+
+// pino para o quadro de Notas ligado a uma linha do Excel, ao lado do nome da
+// tarefa — o mesmo que as CCRs (ccrs.js) e os itens Por fazer (todo.js) já
+// tinham. A ligação nota → tarefa existia só num sentido: quem estava na nota
+// via a tarefa, mas quem estava na tarefa não sabia que havia uma nota.
+// Com mais de uma nota ligada, o pino leva a contagem e abre a primeira.
+function taskNoteFlagHtml(meta) {
+  const fn = (meta && meta.fn) || "";
+  if (!fn) return "";
+  const todo = (meta && meta.todo) || "";
+  const ligadas = notesForTask(fn, todo);
+  if (!ligadas.length) return "";
+  const titulo = ligadas.length > 1
+    ? `${t("t_open_linked_note")} (${ligadas.length})`
+    : t("t_open_linked_note");
+  return `<button type="button" class="taskNoteFlag" data-tasklink-fn="${esc(fn)}" ` +
+    `data-tasklink-todo="${esc(todo)}" title="${esc(titulo)}">📌${ligadas.length > 1
+      ? `<span class="taskNoteCount">${ligadas.length}</span>` : ""}</button>`;
 }
 
 function notesForTodo(todoId) {

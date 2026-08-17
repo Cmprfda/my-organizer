@@ -21,6 +21,7 @@ from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbo
 from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_forget_item,
                     graph_ids_from_path, graph_load_rows, graph_modified, graph_path_for,
                     graph_state, has_book, is_graph_path)
+from .history import HISTORY_COLS, mark_app_write, record_read
 from .i18n import msg
 from .logs import log_event
 from .store import (load_ccrs, load_notes, load_overrides, save_notes,
@@ -251,6 +252,9 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
         return t not in ("", "n/a")
 
     data_rows, row_meta, statuses = [], [], set()
+    # retrato desta leitura para o histórico: TODAS as linhas da folha, não só as
+    # que passam o filtro da pessoa (ver record_read, cswaios/history.py)
+    history_rows = []
     total_rows = 0
     overrides_stale = False
     for i, row in enumerate(rows[header_index + 1:]):
@@ -274,6 +278,11 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
             statuses.add(orig["Status TC"])
         if orig.get("Status TP"):
             statuses.add(orig["Status TP"])
+        # o histórico segue sempre o valor CRU da folha (orig), nunca o `cells`
+        # com a alteração local aplicada: senão editar um estado aqui aparecia
+        # duas vezes, uma ao editar e outra quando o Push a leva à folha
+        history_rows.append({"xlrow": xlrow, "fn": fn_key, "todo": todo_key,
+                             "cols": {c: orig.get(c, "") for c in HISTORY_COLS}})
 
         # papel por vertente (usado para sincronizar TODO por regras de autoria/review)
         role_sync = {"author": [], "reviewer": []}
@@ -352,6 +361,16 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
                        ("function/tc", "Function/TC"), ("to do", "To Do")):
         if want in hidx:
             xlcols[name] = hidx[want] + 1
+
+    # histórico: só com uma leitura FRESCA (com warning_ts estamos a servir o
+    # retrato antigo do _RAW_CACHE — as linhas são as mesmas de propósito) e só
+    # numa folha do tracker (numa folha genérica nenhuma destas colunas existe).
+    # Nunca deixar o histórico rebentar uma leitura: é um extra, não o serviço.
+    if warning_ts is None and not generic:
+        try:
+            record_read(path, real_sheet, history_rows)
+        except Exception as exc:
+            log_event(f"não consegui anotar o histórico de {real_sheet} ({exc!r})")
 
     warn_key = "warning_web" if is_graph_path(path) else "warning_locked"
     return {
@@ -722,6 +741,11 @@ def push_overrides(target):
             if ok:
                 overrides.pop(key, None)
                 pushed += 1
+                # para o histórico saber que esta mudança na folha foi daqui
+                headers_now = known_headers(target, sheet)
+                mark_app_write(target, sheet, xlrow,
+                               headers_now[col0] if headers_now and col0 < len(headers_now)
+                               else f"Coluna {xlcol}", valor)
                 list_cfg = entry.get("list")
                 if isinstance(list_cfg, dict) and list_cfg.get("fixed") and list_cfg.get("values"):
                     set_data_validation_fixed_list(
@@ -763,6 +787,7 @@ def push_overrides(target):
             if ok:
                 entry.pop(col_name)
                 pushed += 1
+                mark_app_write(target, sheet, xlrow, col_name, valor)
                 if col_name == "Function/TC":
                     new_fn = guard_fn = str(valor)
                 elif col_name == "To Do":

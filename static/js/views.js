@@ -4,7 +4,7 @@
 // aberto — não tem separador próprio, é o que se mostra no lugar deles.
 const VIEWS = {
   workbooks: "wbEmptyView", ccrs: "ccrView", todo: "todoView",
-  notes: "notesView", feedback: "fbView", jira: "jiraView",
+  notes: "notesView", metrics: "metricsView", feedback: "fbView", jira: "jiraView",
 };
 // vista que está no painel lateral do ecrã dividido (null = sem divisão)
 let sideView = null;
@@ -89,6 +89,12 @@ function showView(name) {
   if (name === "todo" || sideView === "todo") renderTodo();
   if (name === "notes" || sideView === "notes") renderNotes();
   if (name === "jira" || sideView === "jira") renderJiraPage();
+  if (name === "metrics" || sideView === "metrics") {
+    // a atividade de todos os livros só se vai buscar quando esta vista abre
+    // (não vale a pena pedi-la a quem nunca cá vem)
+    loadMetricsActivity();
+    renderMetrics();
+  }
 }
 
 // vista para onde ir quando a atual deixa de existir (fechar o último livro)

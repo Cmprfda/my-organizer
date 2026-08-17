@@ -285,7 +285,8 @@
     border: 1px solid var(--border);
     cursor: pointer;
     padding: 0;
-    margin-left: 4px;
+    /* o gap da barra já dá o espaçamento; a margem somava-lhe e só aqui */
+    margin-left: 0;
 }
 
 /* ---------- painel de cores (caixas e traço) ---------- */
@@ -1280,6 +1281,23 @@ body.notes-full .noteTree {
 @media (max-width: 860px) {
     .notesLayout {
         flex-direction: column;
+    }
+
+    /* a barra de ferramentas partia-se em três filas desiguais e os
+       separadores ficavam presos no fim/início de uma fila. Numa fila só com
+       scroll (o mesmo que o ecrã inteiro já faz) mantém a ordem e a leitura. */
+    .noteToolbar {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: thin;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .noteToolBtn,
+    .noteToolSep,
+    .noteToolColor,
+    .noteZoomLabel {
+        flex: 0 0 auto;
     }
 
     .notesSide {

@@ -122,9 +122,36 @@ button.searchMode:active {
 .btns {
   display: flex;
   flex-wrap: wrap;
+  /* os botões e o segmentado (.todoMode) não têm exatamente a mesma altura:
+     sem isto ficavam encostados ao fundo da linha */
+  align-items: center;
   justify-content: flex-end;
   gap: 10px;
   margin-left: auto;
+}
+
+/* Barras com muitas ações (a do Excel chega aos 11 botões): o campo de
+   pesquisa (.field.grow) come o espaço que sobra e empurra a .btns para uma
+   linha só dela. Aí o justify-content: flex-end encostava cada fila partida à
+   direita e abria um buraco à esquerda — a barra parecia desalinhada. Passa a
+   ocupar a fila toda, a alinhar com a coluna dos campos, e só a ação
+   principal (o último botão) fica ancorada à direita. */
+#excelView .btns {
+  flex: 1 1 100%;
+  justify-content: flex-start;
+  margin-left: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+#excelView .btns > button:last-child {
+  margin-left: auto;
+}
+
+/* o segmentado tem fundo próprio: um pouco mais de folga para não se ler
+   como mais um par de botões de ação */
+.btns .todoMode {
+  margin-right: 2px;
 }
 
 .fileinfo {
@@ -173,10 +200,14 @@ body.devmode {
   font-weight: 600;
 }
 
+/* hoje quase todos os .mini vivem em contentores flex com gap próprio (painel
+   de definições, mapa de colunas, filtros, cartões do TODO/Jira), onde a
+   margem fixa somava ao gap e desalinhava o primeiro botão da coluna acima —
+   por isso já era anulada em meia dúzia de sítios. Fica só onde nasceu: a
+   seguir a texto corrido, no rodapé da barra. */
 .mini {
   padding: 5px 11px;
   font-size: 12px;
-  margin-left: 8px;
   border-radius: var(--ios-radius-btn);
   background: var(--accent);
   color: #fff;
@@ -202,6 +233,12 @@ body.devmode {
 
 .execCell .mini {
   margin: 0 6px 0 0;
+}
+
+/* único sítio onde o .mini aparece a seguir a texto corrido (ver o aviso do
+   #fileInfo, tasks.js) */
+.fileinfo .mini {
+  margin-left: 8px;
 }
 
 /* ações de um editor (guardar / cancelar / limpar): só o símbolo, em botões

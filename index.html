@@ -30,6 +30,7 @@
   <link rel="stylesheet" href="/static/css/picker.css">
   <link rel="stylesheet" href="/static/css/notify.css">
   <link rel="stylesheet" href="/static/css/copymenu.css">
+  <link rel="stylesheet" href="/static/css/insights.css">
   <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 
@@ -52,6 +53,7 @@
       <button data-view="ccrs" data-icon="&#9873;" draggable="true">CCRs</button>
       <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
       <button data-view="notes" data-icon="&#9998;" draggable="true">Notas</button>
+      <button data-view="metrics" data-icon="&#128200;" draggable="true">Métricas</button>
       <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
       <button data-view="jira" data-icon="" draggable="true" class="hidden"><img src="/static/img/jira.svg" alt="" width="17" height="17" style="flex-shrink:0">Jira</button>
       <button id="addWorkbookBtn" type="button" class="addWbBtn" title="Abrir um livro de Excel"
@@ -74,6 +76,16 @@
         <select id="langSel">
           <option value="pt">PT</option>
           <option value="en">EN</option>
+        </select>
+      </div>
+      <div class="setRow">
+        <label for="staleSel">Paradas a partir de</label>
+        <select id="staleSel" title="Dias sem mexer a partir dos quais uma tarefa conta como parada">
+          <option value="2">2 dias</option>
+          <option value="3">3 dias</option>
+          <option value="5">5 dias</option>
+          <option value="7">7 dias</option>
+          <option value="14">14 dias</option>
         </select>
       </div>
       <div class="setNote hidden" id="graphBox">
@@ -340,6 +352,41 @@
           </div>
         </div>
 
+        <div id="metricsView" class="hidden">
+          <div class="bar">
+            <div class="controls">
+              <div class="field">
+                <label for="metricsDaysSel">Período</label>
+                <select id="metricsDaysSel" title="Dias em análise">
+                  <option value="7">7 dias</option>
+                  <option value="14">14 dias</option>
+                  <option value="30">30 dias</option>
+                  <option value="day">um dia</option>
+                  <option value="range">datas à escolha</option>
+                </select>
+              </div>
+              <div class="field hidden" id="metricsDayField">
+                <label for="metricsDayInput">Dia</label>
+                <input type="date" id="metricsDayInput" class="dateInput" title="Dia em análise">
+              </div>
+              <div class="fieldPair hidden" id="metricsRangeFields">
+                <div class="field">
+                  <label for="metricsFromInput">De</label>
+                  <input type="date" id="metricsFromInput" class="dateInput" title="Primeiro dia em análise">
+                </div>
+                <div class="field">
+                  <label for="metricsToInput">Até</label>
+                  <input type="date" id="metricsToInput" class="dateInput" title="Último dia em análise">
+                </div>
+              </div>
+              <div class="btns">
+                <button type="button" id="metricsReportBtn">A minha semana</button>
+              </div>
+            </div>
+          </div>
+          <div class="metricsGrid" id="metricsBody"></div>
+        </div>
+
         <div id="fbView" class="hidden">
           <div class="bar">
             <div class="controls">
@@ -586,6 +633,29 @@
     </div>
   </div>
 
+  <div id="reportOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="A minha semana">
+    <div class="helpCard">
+      <div class="helpHead">
+        <strong id="reportTitle">A minha semana</strong>
+        <button type="button" class="mini" id="reportCopy">Copiar</button>
+        <button type="button" class="ccr-x" id="reportClose" title="Fechar">✕</button>
+      </div>
+      <pre id="reportBody" class="reportBody"></pre>
+    </div>
+  </div>
+
+  <div id="cmdOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Pesquisar em tudo">
+    <div class="helpCard cmdCard">
+      <div class="cmdBar">
+        <span class="cmdBarIcon">⌕</span>
+        <input type="text" id="cmdInput" autocomplete="off" spellcheck="false"
+          placeholder="Procurar em tudo… (tarefas, CCRs, Por fazer, notas, Jira)">
+        <span class="cmdHint">Esc</span>
+      </div>
+      <div id="cmdResults" class="cmdResults"></div>
+    </div>
+  </div>
+
   <datalist id="jiraSuggestions"></datalist>
 
   <div id="jiraLogOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
@@ -608,6 +678,7 @@
           <label for="jiraLogComment">Comentário</label>
           <textarea id="jiraLogComment" rows="3" placeholder="Opcional"></textarea>
         </div>
+        <div class="jiraLogMsg hint hidden" id="jiraLogHint"></div>
         <div class="jiraLogMsg err hidden" id="jiraLogError"></div>
         <div class="jiraLogMsg ok hidden" id="jiraLogSuccess"></div>
         <button type="button" id="jiraLogSubmit">Registar</button>
@@ -619,6 +690,7 @@
   <script src="/static/js/state.js"></script>
   <script src="/static/js/bugs.js"></script>
   <script src="/static/js/utils.js"></script>
+  <script src="/static/js/history.js"></script>
   <script src="/static/js/tasks.js"></script>
   <script src="/static/js/ccrs.js"></script>
   <script src="/static/js/views.js"></script>
@@ -636,6 +708,8 @@
   <script src="/static/js/help.js"></script>
   <script src="/static/js/notify.js"></script>
   <script src="/static/js/copymenu.js"></script>
+  <script src="/static/js/metrics.js"></script>
+  <script src="/static/js/search.js"></script>
   <script src="/static/js/main.js"></script>
 </body>
 

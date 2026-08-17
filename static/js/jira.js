@@ -110,12 +110,36 @@ function toJiraStarted(localDatetime) {
     `${sign}${pad(Math.floor(Math.abs(tzMin) / 60))}${pad(Math.abs(tzMin) % 60)}`;
 }
 
-// agora, no formato do <input type="datetime-local">
-function jiraLocalNow() {
-  const d = new Date();
+// agora, no formato do <input type="datetime-local">. Com `backMs` recua no
+// tempo: o registo que vem do cronómetro começa quando o trabalho começou, não
+// no instante em que se carrega no botão.
+function jiraLocalNow(backMs = 0) {
+  const d = new Date(Date.now() - Math.max(0, +backMs || 0));
   const pad = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ---------- tempo <-> texto do Jira ----------
+// O Jira fala em "1w 2d 3h 30m" (semana = 5 dias, dia = 8 horas). As duas
+// conversões existem porque o cronómetro dá milissegundos e o Jira quer o texto,
+// e depois é preciso saber quanto tempo do cronómetro é que o texto submetido
+// consumiu (ver submitJiraLog: só esse é que deixa de ser proposto).
+const JIRA_UNIT_MS = { w: 5 * 8 * 3600000, d: 8 * 3600000, h: 3600000, m: 60000 };
+
+function msToJiraTime(ms) {
+  const minutos = Math.max(1, Math.round((+ms || 0) / 60000));
+  const h = Math.floor(minutos / 60), m = minutos % 60;
+  return [h ? `${h}h` : "", m ? `${m}m` : ""].filter(Boolean).join(" ") || "1m";
+}
+
+function jiraTimeToMs(text) {
+  let total = 0;
+  String(text || "").toLowerCase().replace(/(\d+)\s*([wdhm])/g, (_, n, u) => {
+    total += (+n) * (JIRA_UNIT_MS[u] || 0);
+    return "";
+  });
+  return total;
 }
 
 function jiraLogNote(id, msg) {
@@ -124,18 +148,24 @@ function jiraLogNote(id, msg) {
   el.classList.toggle("hidden", !msg);
 }
 
-function openJiraLogModal(itemId, key, summary) {
-  jiraLogTarget = { itemId, key };
+// `timerMs` (opcional) = tempo do cronómetro do item que ainda não foi
+// registado: vem já escrito no campo, e a data de início recua o mesmo tanto.
+// Continua tudo editável — a proposta é um atalho, não uma imposição.
+function openJiraLogModal(itemId, key, summary, timerMs = 0) {
+  const doCronometro = Math.max(0, +timerMs || 0);
+  jiraLogTarget = { itemId, key, timerMs: doCronometro };
   $("jiraLogTitle").textContent = `${t("jira_log_title")} · ${key}` + (summary ? ` — ${summary}` : "");
-  $("jiraLogTime").value = "";
+  $("jiraLogTime").value = doCronometro >= 60000 ? msToJiraTime(doCronometro) : "";
   $("jiraLogComment").value = "";
-  $("jiraLogStarted").value = jiraLocalNow();
+  $("jiraLogStarted").value = jiraLocalNow(doCronometro);
   jiraLogNote("jiraLogError", "");
   jiraLogNote("jiraLogSuccess", "");
+  jiraLogNote("jiraLogHint", doCronometro >= 60000 ? t("jira_log_from_timer") : "");
   $("jiraLogSubmit").disabled = false;
   $("jiraLogSubmit").textContent = t("jira_log_submit");
   $("jiraLogOverlay").classList.remove("hidden");
   $("jiraLogTime").focus();
+  $("jiraLogTime").select();
 }
 
 function closeJiraLogModal() {
@@ -169,6 +199,12 @@ async function submitJiraLog() {
         timeSpent, started: toJiraStarted(started),
         comment: $("jiraLogComment").value.trim(),
         item_id: jiraLogTarget.itemId || undefined,
+        // quanto do cronómetro é que este registo consome: o que foi mesmo
+        // submetido, nunca mais do que o que estava por registar. Registar 30m
+        // de 1h20 deixa 50m à espera, em vez de dar tudo por registado.
+        timer_ms: jiraLogTarget.timerMs
+          ? Math.min(jiraLogTarget.timerMs, jiraTimeToMs(timeSpent))
+          : undefined,
       }),
     });
     const out = await res.json();

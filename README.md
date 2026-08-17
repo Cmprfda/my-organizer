@@ -80,6 +80,25 @@ table.
 - **Full view** — the original table with all columns and detailed statuses
 - **See all** — the whole team's tasks
 - Auto-refresh every 2 minutes
+- **Task history** — each read of the sheet is compared with the previous one, so
+  a task's detail box shows what happened to it (date, column, old → new value)
+  and whether it was pushed from this app (**✎**) or came from someone editing
+  the workbook (**☁**). Excel keeps none of this; only changes since this version
+  started tracking the sheet are known.
+- **Stale tasks** — unfinished tasks untouched for N days get an age tag
+  (⏳ 7 days) and a **Stale** filter button; the threshold is in Settings.
+  *≥ 7 days* means "at least", for tasks never seen changing.
+- **Pin (📌)** on an Excel task that has a board note linked to it — the link
+  now shows on both sides.
+- **Kanban timer → Jira** — the effort button shows the timer time not yet
+  logged and pre-fills the Jira effort dialog with it; when a card leaves
+  *In progress*, a one-click prompt offers to log it.
+- **Metrics** tab — changes per day, tasks stale the longest, work by status,
+  load per person, time counted vs. logged in Jira, TODO per column.
+- **My week** — a copy-ready markdown report of what you did in the period
+  (button in the Metrics tab).
+- **Search everything (Ctrl+K)** — one box across all open workbooks, CCRs,
+  TODO, board notes, linked Jira issues and app actions.
 
 ## Excel open on this PC?
 

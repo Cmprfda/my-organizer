@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+from datetime import datetime
 
 from .config import HERE
 from .text import normalize
@@ -183,7 +184,30 @@ def normalize_todo_item(item):
     except (TypeError, ValueError):
         logged = 0
     out["jiraLoggedSeconds"] = max(0, logged)
+    # tempo dos cronómetros que já foi para o Jira: o que ainda não foi é a
+    # diferença para o elapsed_ms, e é isso que o registo de esforço propõe
+    # (ver todoUnloggedMs em static/js/todo.js)
+    out["jiraLoggedFromTimerMs"] = min(out["elapsed_ms"],
+                                       max(0, _int_or_zero(out.get("jiraLoggedFromTimerMs"))))
+    # quando o item foi fechado (ISO): é o que permite dizer o que se fechou
+    # nesta semana. Os itens fechados antes desta versão não o têm.
+    done_at = str(out.get("done_at") or "").strip()[:32]
+    if out["done"] and done_at:
+        out["done_at"] = done_at
+    else:
+        out.pop("done_at", None)
     return out
+
+
+def _int_or_zero(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _now_iso():
+    return datetime.now().replace(microsecond=0).isoformat()
 
 
 def stop_todo_timer(item, now_ms=None):
@@ -206,12 +230,20 @@ def stop_todo_timer(item, now_ms=None):
 
 
 def sync_todo_timer_with_column(item, old_col, new_col):
+    """Acerta o que depende da coluna quando um cartão muda de sítio: o
+    cronómetro (só corre em "Em curso") e a data de fecho (só existe em "Done").
+    """
     now_ms = int(time.time() * 1000)
     if old_col == "inprogress" and new_col != "inprogress":
         stop_todo_timer(item, now_ms)
     elif old_col != "inprogress" and new_col == "inprogress":
         if item.get("timer_started") is None:
             item["timer_started"] = now_ms
+    if new_col == "done" and old_col != "done":
+        item["done_at"] = _now_iso()
+    elif new_col != "done" and old_col == "done":
+        # reaberto: a data de fecho antiga já não diz nada
+        item.pop("done_at", None)
 
 
 def sort_todos_by_priority(items):

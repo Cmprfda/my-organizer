@@ -1,0 +1,628 @@
+/* My Organizer — histórico, tarefas paradas, métricas, relatório e pesquisa
+   global. Tudo com as variáveis do tema (theme.css): não há aqui uma única cor
+   escrita à mão, para o tema claro/escuro continuar a valer sozinho. */
+
+/* ---------- tarefas paradas ---------- */
+.staleChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--ios-radius-pill);
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.pill.stalepill {
+  border-color: var(--status-doing-fg);
+}
+
+.pill.stalepill.active {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+  border-color: var(--status-doing-fg);
+}
+
+/* contagem no pino da nota, quando há mais do que uma ligada à mesma linha */
+.taskNoteCount {
+  margin-left: 2px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ---------- histórico de uma linha (caixa de detalhe) ---------- */
+.histBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.histAge {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.histAge.stale strong {
+  color: var(--status-doing-fg);
+}
+
+.histList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.histRow {
+  display: grid;
+  grid-template-columns: auto minmax(64px, auto) 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--ios-radius-btn);
+  background: var(--bg);
+  font-size: 12.5px;
+}
+
+/* alteração feita nesta app (Push), não por alguém a mexer na folha */
+.histRow.histApp {
+  background: var(--accent-soft);
+}
+
+.histWhen {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.histCol {
+  font-weight: 600;
+}
+
+.histVals {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.histFrom {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.histArrow {
+  color: var(--muted);
+}
+
+.histTo {
+  font-weight: 600;
+}
+
+.histVia,
+.histEmpty {
+  color: var(--muted);
+}
+
+.histEmpty {
+  font-size: 12.5px;
+}
+
+/* ---------- vista de métricas ---------- */
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  padding: 12px 0;
+  align-items: start;
+}
+
+.metricCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow);
+  padding: 14px 16px 12px;
+  min-width: 0;
+}
+
+.metricTitle {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.metricNote,
+.metricEmpty {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metricEmpty {
+  margin: 0;
+  padding: 10px 0;
+}
+
+/* barras horizontais */
+.metricBars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.metricBar {
+  display: grid;
+  grid-template-columns: minmax(72px, 34%) 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.metricBarLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricBarTrack {
+  height: 10px;
+  border-radius: var(--ios-radius-pill);
+  background: var(--ios-gray-light);
+  overflow: hidden;
+}
+
+.metricBarFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--ios-radius-pill);
+  min-width: 2px;
+}
+
+.metricBarValue {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 2ch;
+  text-align: right;
+}
+
+/* cores das barras: estados com a paleta dos estados, categorias com as tags
+   de coluna — as duas já existem no tema e não se confundem entre si */
+.bar-done { background: var(--status-done-fg); }
+.bar-doing { background: var(--status-doing-fg); }
+.bar-blocked { background: var(--status-blocked-fg); }
+.bar-other { background: var(--ios-gray); }
+.bar-purple { background: var(--coltag-purple-fg); }
+.bar-teal { background: var(--coltag-teal-fg); }
+.bar-indigo { background: var(--coltag-indigo-fg); }
+.bar-sand { background: var(--coltag-sand-fg); }
+.bar-slate { background: var(--ios-gray); }
+
+/* datas escolhidas à mão (período das métricas). O input[type=date] não entra
+   na regra base dos campos (que só cobre o type=text), por isso repete-se aqui
+   o mesmo aspeto; o calendário nativo segue o tema pelo color-scheme do :root */
+.dateInput {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  padding: 7px 10px;
+}
+
+/* os dois campos "De/Até" andam juntos: ou aparecem os dois, ou nenhum */
+.fieldPair:not(.hidden) {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+/* colunas por dia */
+.metricColsWrap {
+  overflow-x: auto;
+}
+
+.metricCols {
+  list-style: none;
+  margin: 0;
+  /* a data de cada coluna é centrada nela e é mais larga do que ela: sem esta
+     folga, a do primeiro e a do último dia ficavam cortadas pelo cartão */
+  padding: 0 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 120px;
+}
+
+.metricCol {
+  flex: 1 1 0;
+  min-width: 16px;
+  display: flex;
+}
+
+/* a coluna toda é o botão que abre o dia: o alvo do rato é a barra, o número e
+   a data, não só o retângulo pintado (que num dia de zero quase não existe) */
+.metricColBtn {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: none;
+  border-radius: var(--ios-radius-btn);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.metricColBtn:hover {
+  filter: none;
+  background: var(--accent-soft);
+}
+
+.metricColBtn:hover .metricColBar.zero {
+  background: var(--ios-gray);
+}
+
+.metricColBtn:active {
+  transform: none;
+  opacity: 0.7;
+}
+
+.metricColBarBox {
+  width: 100%;
+  height: 84px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.metricColBar {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.metricColBar.zero {
+  background: var(--ios-gray-light);
+}
+
+.metricColValue {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-height: 13px;
+}
+
+.metricColLabel {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* ---------- um dia à lupa ---------- */
+/* as linhas deste cartão têm cinco pedaços (hora, tarefa, coluna, antes→depois
+   e origem): num mosaico de 300px o antes→depois quebrava em três linhas, por
+   isso o cartão do dia vale dois lugares (com uma coluna só, o grid ignora-o) */
+.metricCard.metricCardWide {
+  grid-column: span 2;
+}
+
+.metricDayList {
+  max-height: 320px;
+}
+
+/* como o .histRow, mais a tarefa: aqui os eventos vêm de todos os livros e sem
+   o nome da tarefa não se sabia a quem pertencia a alteração */
+.histRow.metricDayRow {
+  grid-template-columns: auto minmax(80px, 1.1fr) auto minmax(0, 1.4fr) auto;
+}
+
+.metricDayTask {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricDayBackWrap {
+  margin: 0 0 8px;
+}
+
+button.metricDayBack {
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+button.metricDayBack:hover {
+  filter: none;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* sem largura para cinco colunas: hora, tarefa e origem na primeira linha, a
+   coluna e o antes→depois na segunda */
+@media (max-width: 720px) {
+  .histRow.metricDayRow {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .histRow.metricDayRow .metricDayTask {
+    grid-column: 2;
+  }
+
+  .histRow.metricDayRow .histVia {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .histRow.metricDayRow .histCol {
+    grid-column: 1;
+  }
+
+  .histRow.metricDayRow .histVals {
+    grid-column: 2 / -1;
+  }
+}
+
+/* mosaicos de números */
+.metricTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.metricTile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--ios-radius-btn);
+  background: var(--bg);
+}
+
+.metricTileValue {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricTileLabel {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* lista (tarefas paradas) */
+.metricList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.metricListRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.metricListName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricListAge {
+  color: var(--status-doing-fg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- relatório da semana ---------- */
+.reportBody {
+  margin: 0;
+  padding: 14px 16px;
+  max-height: 62vh;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+/* ---------- pesquisa global (Ctrl+K) ---------- */
+.cmdCard {
+  width: min(640px, 94vw);
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cmdBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cmdBarIcon {
+  color: var(--muted);
+  font-size: 17px;
+}
+
+#cmdInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  padding: 4px 0;
+}
+
+#cmdInput:focus {
+  outline: none;
+}
+
+.cmdHint {
+  color: var(--muted);
+  font-size: 10.5px;
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  padding: 1px 5px;
+}
+
+.cmdResults {
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.cmdGroup {
+  padding: 8px 8px 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.cmdRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--ios-radius-btn);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cmdRow:hover,
+.cmdRow.active {
+  background: var(--accent-soft);
+}
+
+.cmdIcon {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.cmdText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cmdText strong {
+  font-weight: 500;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdText strong strong {
+  font-weight: 700;
+  color: var(--accent-text);
+}
+
+.cmdText small {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdEmpty {
+  padding: 18px 10px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------- avisos clicáveis (convite a registar no Jira) ---------- */
+#toast.clickable {
+  cursor: pointer;
+  border-color: var(--accent);
+}
+
+#toast.clickable::after {
+  content: " →";
+  font-weight: 700;
+}
+
+/* dica do registo de esforço quando o tempo vem do cronómetro */
+.jiraLogMsg.hint {
+  color: var(--muted);
+}
+
+/* botão do registo de esforço com tempo à espera */
+.todoJiraLogPending {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .metricsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  /* com uma coluna só, o "span 2" não é ignorado: criava uma segunda coluna
+     implícita e esmagava os cartões seguintes contra a margem */
+  .metricCard.metricCardWide {
+    grid-column: auto;
+  }
+
+  .histRow {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .histCol {
+    grid-column: 2;
+  }
+
+  .histVals {
+    grid-column: 1 / -1;
+  }
+}

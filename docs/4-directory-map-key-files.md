@@ -50,7 +50,7 @@
 - [tests/](tests/)
   - Test scripts/cases.
 
-- [status_overrides.json](status_overrides.json), [notes.json](notes.json), [ccrs.json](ccrs.json), [todo.json](todo.json), [bug_reports.json](bug_reports.json), [tracker.log](tracker.log)
+- [status_overrides.json](status_overrides.json), [notes.json](notes.json), [ccrs.json](ccrs.json), [todo.json](todo.json), [history.json](history.json), [bug_reports.json](bug_reports.json), [tracker.log](tracker.log)
   - Local sidecar state and logs.
 
 ---

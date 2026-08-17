@@ -1,0 +1,311 @@
+# -*- coding: utf-8 -*-
+"""Histórico das linhas da folha e o relatório que dele sai.
+
+Corre offline: nem Excel, nem COM, nem rede. O ficheiro do histórico é
+redirecionado para uma pasta temporária — o history.json real do utilizador
+nunca é tocado (é dados dele, como o todo.json ou as notas).
+"""
+import json
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from cswaios import history, report, tasks
+from cswaios.excel import _RAW_CACHE
+
+LIVRO = "C:/qualquer/livro_de_teste.xlsx"
+ABA = "PRJ_CFG1_reworks_julho"
+
+
+def linha(xlrow, fn, tc="In progress", tp="", obs="", todo="rework"):
+    return {"xlrow": xlrow, "fn": fn, "todo": todo,
+            "cols": {"Status TC": tc, "Status TP": tp, "OBS": obs,
+                     "Function/TC": fn, "To Do": todo}}
+
+
+class TestHistorico(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.real = history.HISTORY_FILE
+        history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
+        history._APP_WRITES.clear()
+
+    def tearDown(self):
+        history.HISTORY_FILE = self.real
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_primeira_leitura_so_semeia(self):
+        """Sem retrato anterior não há alterações: a folha inteira pareceria nova."""
+        n = history.record_read(LIVRO, ABA, [linha(2, "FN_A"), linha(3, "FN_B")])
+        self.assertEqual(n, 0)
+        h = history.sheet_history(LIVRO, ABA)
+        self.assertEqual(len(h["rows"]), 2)
+        self.assertEqual(h["events"], [])
+        # nenhuma foi vista a mudar: a idade que sai daqui é "pelo menos isto"
+        self.assertTrue(all(r["estimated"] for r in h["rows"].values()))
+
+    def test_anota_o_que_mudou_coluna_a_coluna(self):
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress")])
+        n = history.record_read(LIVRO, ABA,
+                                [linha(2, "FN_A", tc="Ready for review", obs="feito")])
+        self.assertEqual(n, 2)          # Status TC e OBS
+        eventos = history.sheet_history(LIVRO, ABA)["events"]
+        mudou = {(e["col"], e["from"], e["to"]) for e in eventos}
+        self.assertIn(("Status TC", "In progress", "Ready for review"), mudou)
+        self.assertIn(("OBS", "", "feito"), mudou)
+        # já foi vista a mudar: a idade passa a ser exata
+        self.assertFalse(history.sheet_history(LIVRO, ABA)["rows"]["2"]["estimated"])
+
+    def test_leitura_igual_nao_anota_nada(self):
+        rows = [linha(2, "FN_A")]
+        history.record_read(LIVRO, ABA, rows)
+        self.assertEqual(history.record_read(LIVRO, ABA, rows), 0)
+        self.assertEqual(history.sheet_history(LIVRO, ABA)["events"], [])
+
+    def test_escrita_da_app_fica_identificada(self):
+        """O Push desta app e alguém a mexer na folha não são a mesma coisa."""
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress")])
+        history.mark_app_write(LIVRO, ABA, 2, "Status TC", "Done")
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="Done")])
+        self.assertEqual(history.sheet_history(LIVRO, ABA)["events"][0]["via"], "app")
+
+    def test_alteracao_de_fora_fica_identificada(self):
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress")])
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="Done")])
+        self.assertEqual(history.sheet_history(LIVRO, ABA)["events"][0]["via"], "sheet")
+
+    def test_marca_de_escrita_nao_serve_para_outro_valor(self):
+        """A marca vale para o valor que foi escrito, não para o próximo que vier."""
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress")])
+        history.mark_app_write(LIVRO, ABA, 2, "Status TC", "Done")
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In rework")])
+        self.assertEqual(history.sheet_history(LIVRO, ABA)["events"][0]["via"], "sheet")
+
+    def test_linha_inserida_nao_inventa_historia(self):
+        """O retrato é por nº de linha: inserir uma linha empurra todas as outras
+        e faria parecer que meio livro mudou de uma vez. Semeia-se de novo."""
+        base = [linha(i, f"FN_{i}") for i in range(2, 32)]
+        history.record_read(LIVRO, ABA, base)
+        empurradas = [linha(i + 1, f"FN_{i}") for i in range(2, 32)]
+        self.assertEqual(history.record_read(LIVRO, ABA, empurradas), 0)
+        h = history.sheet_history(LIVRO, ABA)
+        self.assertEqual(h["events"], [])
+        # depois de semear de novo, as idades voltam a ser estimativas
+        self.assertTrue(all(r["estimated"] for r in h["rows"].values()))
+
+    def test_poucas_alteracoes_juntas_continuam_a_contar(self):
+        """O corte do deslocamento não pode engolir trabalho real: três estados
+        mudados na mesma leitura são três alterações, não um deslocamento."""
+        base = [linha(i, f"FN_{i}") for i in range(2, 32)]
+        history.record_read(LIVRO, ABA, base)
+        mudadas = [linha(i, f"FN_{i}", tc="Done" if i < 5 else "In progress")
+                   for i in range(2, 32)]
+        self.assertEqual(history.record_read(LIVRO, ABA, mudadas), 3)
+
+    def test_linha_apagada_sai_do_retrato(self):
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A"), linha(3, "FN_B")])
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A")])
+        self.assertEqual(sorted(history.sheet_history(LIVRO, ABA)["rows"]), ["2"])
+
+    def test_eventos_tem_teto(self):
+        """O histórico não pode crescer para sempre dentro do ficheiro."""
+        history.MAX_EVENTS, teto = 5, history.MAX_EVENTS
+        try:
+            history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="s0")])
+            for i in range(1, 12):
+                history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc=f"s{i}")])
+            with open(history.HISTORY_FILE, encoding="utf-8") as f:
+                guardado = json.load(f)
+            self.assertEqual(len(guardado["events"]), 5)
+            # os que ficam são os mais recentes
+            self.assertEqual(guardado["events"][-1]["to"], "s11")
+        finally:
+            history.MAX_EVENTS = teto
+
+    def test_livros_diferentes_nao_se_misturam(self):
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress")])
+        history.record_read("outro.xlsx", ABA, [linha(2, "FN_A", tc="In progress")])
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="Done")])
+        self.assertEqual(len(history.sheet_history(LIVRO, ABA)["events"]), 1)
+        self.assertEqual(len(history.sheet_history("outro.xlsx", ABA)["events"]), 0)
+
+    def test_ficheiro_corrompido_nao_rebenta(self):
+        with open(history.HISTORY_FILE, "w", encoding="utf-8") as f:
+            f.write("{isto nao e json")
+        self.assertEqual(history.record_read(LIVRO, ABA, [linha(2, "FN_A")]), 0)
+        self.assertEqual(len(history.sheet_history(LIVRO, ABA)["rows"]), 1)
+
+
+class TestLeituraDaFolhaNaoAnotaDaCache(unittest.TestCase):
+    """Com o Excel a bloquear o ficheiro, a app serve a última leitura crua. Essas
+    linhas são as MESMAS de propósito: anotá-las outra vez só sujava o histórico
+    (e, pior, com a data errada)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.real = history.HISTORY_FILE
+        history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
+        cabecalhos = ["Function/TC", "To Do", "Status TC", "Status TP",
+                      "Author TC", "Reviewer TC", "Author TP", "Reviewer TP", "OBS"]
+        linhas = [cabecalhos,
+                  ["FN_A", "rework", "In progress", "N/A",
+                   "Carlos Andrade", "", "", "", "obs"]]
+        self.ficheiro = os.path.join(self.tmp, "__nao_existe__", "livro.xlsx")
+        _RAW_CACHE[(self.ficheiro, ABA.lower())] = (datetime.now(), ABA, [ABA], linhas)
+
+    def tearDown(self):
+        _RAW_CACHE.pop((self.ficheiro, ABA.lower()), None)
+        history.HISTORY_FILE = self.real
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_nao_escreve_historico(self):
+        resultado = tasks.read_sheet(self.ficheiro, ABA, "Carlos Andrade", False)
+        self.assertIn("warning", resultado)
+        self.assertTrue(resultado["warning"])          # está a servir da cache
+        self.assertFalse(os.path.exists(history.HISTORY_FILE))
+
+
+class TestRelatorio(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.real_hist = history.HISTORY_FILE
+        self.real_todo = report.load_todo
+        history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
+        history._APP_WRITES.clear()
+
+    def tearDown(self):
+        history.HISTORY_FILE = self.real_hist
+        report.load_todo = self.real_todo
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_separa_o_que_eu_fiz_do_que_a_equipa_fez(self):
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress"),
+                                         linha(3, "FN_B", tc="In progress")])
+        history.mark_app_write(LIVRO, ABA, 2, "Status TC", "Done")
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="Done"),
+                                         linha(3, "FN_B", tc="In rework")])
+        report.load_todo = lambda: []
+        dados = report.build_report(days=7, lang="pt")
+        self.assertEqual(len(dados["app_changes"]), 1)
+        self.assertEqual(dados["app_changes"][0]["fn"], "FN_A")
+        self.assertEqual(dados["team_changes"], 1)
+        self.assertIn("FN_A", dados["markdown"])
+        self.assertFalse(dados["empty"])
+
+    def test_conta_o_que_se_fechou_na_semana(self):
+        agora = datetime.now()
+        report.load_todo = lambda: [
+            {"id": "a", "title": "Fechado ontem", "done": True, "col": "done",
+             "elapsed_ms": 3600000, "jiraLoggedSeconds": 0,
+             "done_at": (agora - timedelta(days=1)).isoformat()},
+            {"id": "b", "title": "Fechado no mês passado", "done": True, "col": "done",
+             "elapsed_ms": 0, "jiraLoggedSeconds": 0,
+             "done_at": (agora - timedelta(days=40)).isoformat()},
+            {"id": "c", "title": "Sem data de fecho (versão antiga)", "done": True,
+             "col": "done", "elapsed_ms": 0, "jiraLoggedSeconds": 0},
+            {"id": "d", "title": "Ainda em curso", "done": False, "col": "inprogress",
+             "elapsed_ms": 1800000, "jiraLoggedSeconds": 0},
+        ]
+        dados = report.build_report(days=7, lang="pt")
+        self.assertEqual([x["title"] for x in dados["todo_done"]], ["Fechado ontem"])
+        self.assertEqual([x["title"] for x in dados["todo_doing"]], ["Ainda em curso"])
+        self.assertIn("1h", dados["markdown"])
+
+    def test_soma_o_esforco_por_issue(self):
+        report.load_todo = lambda: [
+            {"id": "a", "title": "T1", "done": False, "col": "todo", "elapsed_ms": 0,
+             "jiraLoggedSeconds": 3600, "jiraIssues": [{"key": "BSP-1", "summary": "x"}]},
+            {"id": "b", "title": "T2", "done": False, "col": "todo", "elapsed_ms": 0,
+             "jiraLoggedSeconds": 1800, "jiraIssues": [{"key": "BSP-1", "summary": "x"}]},
+        ]
+        dados = report.build_report(days=7, lang="pt")
+        self.assertEqual(dados["jira"], [{"key": "BSP-1", "seconds": 5400}])
+        self.assertIn("1h 30m", dados["markdown"])
+
+    def test_relatorio_vazio_continua_a_ser_valido(self):
+        report.load_todo = lambda: []
+        for lang in ("pt", "en"):
+            dados = report.build_report(days=7, lang=lang)
+            self.assertTrue(dados["empty"])
+            self.assertTrue(dados["markdown"].startswith("#"))
+
+
+class TestPeriodoEscolhido(unittest.TestCase):
+    """Datas escolhidas à mão na vista de métricas (since/until), em vez da
+    janela relativa de N dias."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.real_hist = history.HISTORY_FILE
+        self.real_todo = report.load_todo
+        history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
+        report.load_todo = lambda: []
+
+    def tearDown(self):
+        history.HISTORY_FILE = self.real_hist
+        report.load_todo = self.real_todo
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def semear(self, *marcas):
+        """Escreve eventos com as marcas de tempo pedidas (uma por linha da folha,
+        para se distinguirem umas das outras)."""
+        eventos = [{"ts": ts, "book": LIVRO, "sheet": ABA, "xlrow": 2 + i,
+                    "fn": f"FN_{i}", "todo": "rework", "col": "Status TC",
+                    "from": "", "to": "Done", "via": "sheet"}
+                   for i, ts in enumerate(marcas)]
+        with open(history.HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump({"version": 1, "snapshots": {}, "events": eventos}, f)
+
+    def test_intervalo_inclui_os_dois_dias_inteiros(self):
+        self.semear("2026-05-31T23:59:00", "2026-06-01T00:05:00",
+                    "2026-06-05T22:30:00", "2026-06-06T00:01:00")
+        eventos = history.recent_events(since="2026-06-01", until="2026-06-05")
+        self.assertEqual([e["ts"] for e in eventos],
+                         ["2026-06-05T22:30:00", "2026-06-01T00:05:00"])
+
+    def test_um_dia_so(self):
+        self.semear("2026-06-01T09:00:00", "2026-06-02T09:00:00",
+                    "2026-06-03T09:00:00")
+        eventos = history.recent_events(since="2026-06-02", until="2026-06-02")
+        self.assertEqual([e["ts"] for e in eventos], ["2026-06-02T09:00:00"])
+
+    def test_datas_ao_contrario_valem_o_mesmo_intervalo(self):
+        self.semear("2026-06-02T09:00:00")
+        self.assertEqual(len(history.recent_events(since="2026-06-05", until="2026-06-01")), 1)
+
+    def test_data_invalida_cai_na_janela_de_dias(self):
+        agora = datetime.now()
+        self.semear((agora - timedelta(days=2)).isoformat(),
+                    (agora - timedelta(days=40)).isoformat())
+        eventos = history.recent_events(days=7, since="ontem", until="")
+        self.assertEqual(len(eventos), 1)
+
+    def test_relatorio_de_um_intervalo_passado(self):
+        self.semear("2026-06-01T09:00:00", "2026-06-30T09:00:00",
+                    "2026-07-01T09:00:00")
+        dados = report.build_report(since="2026-06-01", until="2026-06-30", lang="pt")
+        self.assertEqual(dados["days"], 30)
+        self.assertTrue(dados["since"].startswith("2026-06-01T00:00"))
+        self.assertTrue(dados["until"].startswith("2026-06-30T23:59"))
+        self.assertEqual(dados["team_changes"], 2)
+        self.assertIn("01/06", dados["markdown"])
+
+    def test_relatorio_so_conta_o_que_se_fechou_no_intervalo(self):
+        self.semear()
+        report.load_todo = lambda: [
+            {"id": "a", "title": "Fechado no intervalo", "done": True, "col": "done",
+             "elapsed_ms": 0, "jiraLoggedSeconds": 0, "done_at": "2026-06-10T11:00:00"},
+            {"id": "b", "title": "Fechado depois", "done": True, "col": "done",
+             "elapsed_ms": 0, "jiraLoggedSeconds": 0, "done_at": "2026-07-10T11:00:00"},
+        ]
+        dados = report.build_report(since="2026-06-01", until="2026-06-30", lang="pt")
+        self.assertEqual([x["title"] for x in dados["todo_done"]], ["Fechado no intervalo"])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

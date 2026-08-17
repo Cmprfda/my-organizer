@@ -94,11 +94,28 @@
     max-width: none;
   }
 
+  /* grelha em vez de flex: com flex:1 1 auto cada fila repartia o espaço que
+     sobrava por quem lá estava, e os botões saíam todos com larguras
+     diferentes de fila para fila. Em colunas ficam alinhados uns por baixo
+     dos outros. */
   .btns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
     margin-left: 0;
     width: 100%;
-    flex-wrap: wrap;
     gap: 8px;
+  }
+
+  /* aqui a .btns já ocupa a fila toda: sem separador nem âncora à direita */
+  #excelView .btns {
+    padding-top: 0;
+    border-top: none;
+  }
+
+  /* a ação principal é o alvo grande no fim da grelha */
+  #excelView .btns > button:last-child {
+    grid-column: 1 / -1;
+    margin-left: 0;
   }
 
   /* na vertical, vista de tarefas fica sempre em caixas — sem opção de troca */
@@ -106,8 +123,17 @@
     display: none;
   }
 
-  .btns button {
-    flex: 1 1 auto;
+  /* o segmentado tem dois botões lá dentro: precisa de duas colunas. Como
+     célula da grelha é esticado à largura toda, mas os botões só ocupavam o
+     tamanho do texto e sobrava caixa cinzenta vazia à direita — daí o
+     flex nos filhos. */
+  .btns .todoMode {
+    grid-column: span 2;
+    margin-right: 0;
+  }
+
+  .btns .todoMode button {
+    flex: 1 1 0;
   }
 
   .summary {

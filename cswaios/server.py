@@ -25,11 +25,13 @@ from .feedback import (attach_server_log, deliver, flush_pending,
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
                     graph_logout, graph_pick, graph_state, save_login_email,
                     save_onedrive_root)
+from .history import recent_events, sheet_history
 from .jira import (fetch_issue, load_jira_config, log_work, save_jira_config,
                    search_issues)
 from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
+from .report import build_report
 from .store import (load_ccrs, load_notes, load_overrides, save_ccrs, save_notes,
                     save_overrides)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
@@ -144,6 +146,32 @@ class Handler(BaseHTTPRequestHandler):
             # pedido leve e repetido: sem registo no log para não o encher
             self._send(200, json.dumps(current_stamp(parse_qs(parsed.query))),
                        "application/json")
+        elif parsed.path == "/api/history":
+            # histórico de uma folha: quando cada linha mudou pela última vez
+            # (tarefas paradas) e os eventos recentes. Pedido repetido a cada
+            # leitura, por isso sem registo no log.
+            q = parse_qs(parsed.query)
+            self._send(200, json.dumps(sheet_history(
+                (q.get("file") or [""])[0], (q.get("sheet") or [""])[0],
+                days=int((q.get("days") or ["30"])[0] or 30))), "application/json")
+        elif parsed.path == "/api/history/recent":
+            # atividade de todos os livros/abas (vista de métricas). `days` é a
+            # janela relativa; com `since`/`until` (AAAA-MM-DD) é o intervalo de
+            # datas escolhido na vista, em dias inteiros.
+            q = parse_qs(parsed.query)
+            self._send(200, json.dumps({"events": recent_events(
+                days=int((q.get("days") or ["14"])[0] or 14),
+                limit=min(5000, max(1, int((q.get("limit") or ["1000"])[0] or 1000))),
+                since=(q.get("since") or [""])[0],
+                until=(q.get("until") or [""])[0])}), "application/json")
+        elif parsed.path == "/api/report/week":
+            q = parse_qs(parsed.query)
+            dias = int((q.get("days") or ["7"])[0] or 7)
+            desde, ate = (q.get("since") or [""])[0], (q.get("until") or [""])[0]
+            log_event(f"{ip} pediu o relatório de {desde or f'-{dias}d'} a {ate or 'agora'}")
+            self._send(200, json.dumps(build_report(
+                days=dias, lang=(q.get("lang") or ["pt"])[0],
+                since=desde, until=ate)), "application/json")
         elif parsed.path == "/api/notepad":
             self._send(200, json.dumps(load_notepad()), "application/json")
         elif parsed.path == "/api/changelog":
@@ -644,6 +672,16 @@ class Handler(BaseHTTPRequestHandler):
                     if target is not None:
                         target["jiraLoggedSeconds"] = int(target.get("jiraLoggedSeconds") or 0) \
                             + int(result.get("timeSpentSeconds") or 0)
+                        # `timer_ms` = quanto do cronómetro este registo cobre
+                        # (vem do botão que propõe o tempo por registar): sem
+                        # isto o mesmo tempo voltava a ser proposto a seguir
+                        try:
+                            timer_ms = max(0, int(payload.get("timer_ms") or 0))
+                        except (TypeError, ValueError):
+                            timer_ms = 0
+                        if timer_ms:
+                            target["jiraLoggedFromTimerMs"] = \
+                                int(target.get("jiraLoggedFromTimerMs") or 0) + timer_ms
                         todos = [normalize_todo_item(t) for t in todos if normalize_todo_item(t)]
                         save_todo(todos)
                         out["todo"] = todos

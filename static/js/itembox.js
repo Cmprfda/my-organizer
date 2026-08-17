@@ -170,7 +170,7 @@ function itemBoxFields(el) {
   // customFilterHiddenCols, tasks.js): a caixa mostra o item inteiro
   if (el.closest("#tbody")) {
     const whole = taskBoxFieldsWhole(el);
-    if (whole) return whole;
+    if (whole) return withTaskHistory(el, whole);
   }
   const ths = [...(el.closest("table") || el).querySelectorAll("thead th")];
   [...el.children].forEach(td => {
@@ -179,7 +179,17 @@ function itemBoxFields(el) {
     const th = ths[td.cellIndex];
     out.push({ label: td.dataset.label || (th ? th.textContent.trim() : ""), node });
   });
-  return out;
+  return el.closest("#tbody") ? withTaskHistory(el, out) : out;
+}
+
+// Último campo de uma linha da folha: o que já aconteceu a esta tarefa (ver
+// taskHistoryNode, history.js). Não vem de nenhuma célula — vem do histórico do
+// servidor — por isso é acrescentado aqui e não sai do clone da linha.
+function withTaskHistory(tr, fields) {
+  const meta = currentMeta[[...tr.parentNode.children].indexOf(tr)];
+  const node = meta ? taskHistoryNode(meta) : null;
+  if (node) fields.push({ label: t("ibox_history"), node, wide: true });
+  return fields;
 }
 
 // Valores que a folha usa para dizer "não há nada aqui" — um campo só com

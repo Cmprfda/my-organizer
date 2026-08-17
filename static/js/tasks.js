@@ -1180,6 +1180,14 @@ function render() {
   if (activeCustomFilters.length)
     rows = rows.filter(r => activeCustomFilters.every(f => evalCustomFilter(metaFor(r), f, customListValues, compoundById)));
 
+  // tarefas paradas (ver taskIsStale, static/js/history.js): um botão à parte,
+  // porque isto não sai de nenhuma coluna da folha — sai do histórico, que só
+  // o servidor tem. Sem histórico ainda lido não se mostra botão nenhum, em
+  // vez de mostrar um a dizer 0 (que pareceria "não há nenhuma parada").
+  const temHistorico = !!activeHistory();
+  const staleN = temHistorico ? rows.filter(r => taskIsStale(metaFor(r))).length : 0;
+  if (staleOnly && temHistorico) rows = rows.filter(r => taskIsStale(metaFor(r)));
+
   let summaryHtml = `<span class="pill">${rows.length} ${rows.length === 1 ? t("tasks_one") : t("tasks_many")}` +
     (showAll ? ` ${t("of_all")}` : ` ${t("of_person")} ${esc(PERSON)}`) + `</span>`;
   const pillClasses = (extra, active, n) =>
@@ -1202,6 +1210,10 @@ function render() {
       `<span class="${pillClasses(`customfilter${f.color ? " customfilter-" + f.color : ""}`, customFilterActive.has(f.id), customFacetCounts[f.id] || 0)}" ` +
       `data-customfilter="${esc(f.id)}">${esc(f.name)}: ${customFacetCounts[f.id] || 0}</span>`
     ).join("");
+  }
+  if (temHistorico && (staleN || staleOnly)) {
+    summaryHtml += `<span class="${pillClasses("stalepill", staleOnly, staleN)}" ` +
+      `data-stale="1" title="${esc(tf("t_stale", staleDays()))}">⏳ ${esc(t("pill_stale"))}: ${staleN}</span>`;
   }
   $("summary").innerHTML = summaryHtml;
 
@@ -1290,6 +1302,16 @@ function render() {
   // HTML de uma célula. A mesma conta serve a tabela e a caixa de detalhe: com
   // um filtro a esconder colunas, a caixa é montada a partir da linha COMPLETA
   // (ver currentBoxCells, mais abaixo), que a tabela não tem.
+  // Decorações da 1.ª coluna (a do nome do item): pino do quadro de Notas
+  // ligado a esta linha (ver taskNoteFlagHtml, notes.js) e etiqueta de tarefa
+  // parada (ver staleChipHtml, history.js). Ficam aqui, num sítio só, para
+  // valerem na tabela, nos cartões e na caixa de detalhe ao mesmo tempo.
+  function firstColExtras(ri) {
+    const m = currentMeta[ri];
+    if (!m) return "";
+    return taskNoteFlagHtml(m) + staleChipHtml(m);
+  }
+
   function cellHtmlOf(r, ri, i2) {
     const cell = (() => {
       const c = r[i2] !== undefined ? r[i2] : "";
@@ -1312,10 +1334,15 @@ function render() {
         if (compact.compoundIdx && compact.compoundIdx.has(i2))
           return `<td class="compoundCatText" title="${esc(t("compoundcat_hint"))}">${c}</td>`;
         const m = currentMeta[ri] || {};
-        return `<td${i2 === 0 ? ' class="fn"' : ""}>${cellCatHtml(c, i2, m, compact)}</td>`;
+        return `<td${i2 === 0 ? ' class="fn"' : ""}>${cellCatHtml(c, i2, m, compact)}` +
+          `${i2 === 0 ? firstColExtras(ri) : ""}</td>`;
       }
       if (isStatusHeader(headers[i2]))
         return `<td>${statusCell(r, ri, i2)}</td>`;
+      // sem classe "fn" aqui de propósito: na vista completa a 1.ª coluna
+      // nunca teve o estilo de título dos cartões e não é isto que o muda
+      if (i2 === 0)
+        return `<td>${esc(c)}${firstColExtras(ri)}</td>`;
       return `<td>${esc(c)}</td>`;
     })();
     // em ecrãs estreitos a tabela vira cartões: cada célula mostra o seu cabeçalho
@@ -1499,6 +1526,9 @@ function afterLoad() {
     if (currentView === "ccrs" && !editorOpen) renderCCRs();
   }
   render();
+  // histórico da folha (idades e "o que aconteceu a esta tarefa"): pedido à
+  // parte, depois de desenhar, para nunca atrasar o que já se pode mostrar
+  loadTaskHistory(activeTab());
 }
 
 // Recarrega o livro do separador ativo (ou só o estado global, se não houver

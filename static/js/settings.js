@@ -9,6 +9,7 @@ function applyLang() {
   $("settingsPanel").setAttribute("aria-label", t("settings_title"));
   document.querySelector('label[for="themeSel"]').textContent = t("theme_title");
   document.querySelector('label[for="langSel"]').textContent = t("lang_title");
+  applyInsightsLang();
   renderGraphState();
   $("themeSel").title = t("theme_title");
   $("themeSel").options[0].textContent = t("theme_auto");

@@ -315,6 +315,26 @@ function hasTodoRunningTimer() {
   return todos.some(it => it && it.timer_started != null && todoColOf(it) === "inprogress");
 }
 
+// ---------- cronómetro -> esforço no Jira ----------
+// O cronómetro conta o tempo e o Jira quer o mesmo tempo registado: o que falta
+// é a ponte. `jiraLoggedFromTimerMs` (ver todos.py) diz quanto deste cronómetro
+// já foi para lá; o resto é o que o registo de esforço propõe.
+const todoJiraIssue = it =>
+  (Array.isArray(it && it.jiraIssues) ? it.jiraIssues : [])[0] || null;
+
+function todoUnloggedMs(it) {
+  if (!it) return 0;
+  return Math.max(0, todoLiveElapsed(it) - Math.max(0, +it.jiraLoggedFromTimerMs || 0));
+}
+
+// abaixo de um minuto não há nada que valha a pena registar (o Jira também não
+// aceita menos do que isso)
+const TODO_LOG_MIN_MS = 60000;
+
+function todoCanLogTime(it) {
+  return !!todoJiraIssue(it) && todoUnloggedMs(it) >= TODO_LOG_MIN_MS;
+}
+
 function todoTimerHtml(it) {
   const col = todoColOf(it);
   const running = it.timer_started != null;
@@ -708,9 +728,19 @@ function todoJiraHtml(it) {
       `<input type="text" class="todoJiraLinkInput" list="jiraSuggestions" data-tjiranew="${esc(it.id)}" placeholder="${t("jira_link_ph")}"></li></ul>`;
   }
   const label = issue.parentSummary && issue.summary ? `${issue.parentSummary} — ${issue.summary}` : (issue.summary || issue.key);
+  // com tempo por registar, o botão do registo de esforço mostra-o: é assim que
+  // se percebe que o cronómetro tem algo para levar ao Jira sem abrir nada
+  const porRegistar = todoUnloggedMs(it);
+  const temPendente = todoCanLogTime(it);
+  // aqui o tempo aparece no formato do Jira ("1h 20m"), não no do cronómetro
+  // ("01:20"): é este o valor que vai ser registado, e "01:20" lê-se como hora
+  const logLabel = temPendente ? `⏱ ${msToJiraTime(porRegistar)}` : "⏱+";
+  const logTitle = temPendente
+    ? tf("jira_log_pending", msToJiraTime(porRegistar))
+    : t("jira_log_action");
   return `<ul class="todoJiraList"><li class="todoJiraItem">
     ${jiraKeyBadgeHtml(issue.key, label)}
-    <button type="button" class="mini" data-tjiralog="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("jira_log_action"))}">⏱+</button>
+    <button type="button" class="mini${temPendente ? " todoJiraLogPending" : ""}" data-tjiralog="${esc(it.id)}|${esc(issue.key)}" title="${esc(logTitle)}">${esc(logLabel)}</button>
     <button type="button" class="srcBtn" data-tjiragoto="${esc(issue.key)}" title="${esc(t("jira_goto_action"))}">↗</button>
     <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>
   </li></ul>`;
@@ -962,7 +992,38 @@ function renderTodo() {
   refreshItemBox();
 }
 
+// Retrato do que interessa antes de mexer na lista, para se saber depois quais
+// os cartões que saíram de "Em curso" (ver offerJiraLogForPaused). É tirado no
+// postTodo, e não em cada sítio que move um cartão, para valer em todos: arrasto
+// no quadro, botão da coluna, caixa de marcar e o que vier a seguir.
+function todoTimerSnapshot() {
+  return todos.map(it => ({
+    id: it.id, col: todoColOf(it),
+    unlogged: todoUnloggedMs(it),
+    issue: todoJiraIssue(it),
+  }));
+}
+
+// Um cartão que sai de "Em curso" tem o cronómetro parado nesse instante: é o
+// momento certo para o levar ao Jira. O aviso é um convite clicável — não abre
+// nada por si, para não atrapalhar quem está só a arrumar o quadro.
+function offerJiraLogForPaused(antes) {
+  if (typeof jiraConfigured !== "undefined" && !jiraConfigured) return;
+  const porId = new Map(antes.map(a => [a.id, a]));
+  for (const it of todos) {
+    const a = porId.get(it.id);
+    if (!a || a.col !== "inprogress" || todoColOf(it) === "inprogress") continue;
+    if (!a.issue || !todoCanLogTime(it)) continue;
+    const ms = todoUnloggedMs(it);
+    const issue = todoJiraIssue(it);
+    toast(tf("jira_log_offer", msToJiraTime(ms), issue.key), "",
+      () => openJiraLogModal(it.id, issue.key, issue.summary, ms));
+    return;   // um convite de cada vez: dois avisos seguidos não se leem
+  }
+}
+
 async function postTodo(body) {
+  const antesTimers = todoTimerSnapshot();
   try {
     const res = await fetch("/api/todo", {
       method: "POST",
@@ -980,6 +1041,7 @@ async function postTodo(body) {
     // a página do Jira é montada a partir dos `todos`: ligar/desligar uma issue
     // tem de se ver logo (o jira.js é carregado depois deste ficheiro)
     if (typeof renderJiraPage === "function" && (currentView === "jira" || sideView === "jira")) renderJiraPage();
+    offerJiraLogForPaused(antesTimers);
     return true;
   } catch (err) {
     alert("Não foi possível contactar o servidor: " + err);
@@ -1274,7 +1336,8 @@ function todoItemTap(e) {
     const [id, key] = jiraLog.dataset.tjiralog.split("|");
     const item = todos.find(it => it.id === id);
     const issue = item && (item.jiraIssues || []).find(j => j.key === key);
-    openJiraLogModal(id, key, issue && issue.summary);
+    // o tempo do cronómetro que ainda não foi para o Jira vai já proposto
+    openJiraLogModal(id, key, issue && issue.summary, todoUnloggedMs(item));
     return;
   }
   const jiraGoto = e.target.closest("[data-tjiragoto]");

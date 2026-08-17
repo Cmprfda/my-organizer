@@ -2,7 +2,11 @@
 
 // ---------- ir ao item original + ecrã dividido ----------
 let toastTimer = null;
-function toast(msg, kind = "") {
+// `action` (opcional) torna o aviso clicável: um convite a fazer algo a seguir
+// ao que acabou de acontecer (ex.: registar no Jira o tempo do cronómetro que
+// acabou de parar). Fica mais tempo no ecrã do que um aviso normal, para haver
+// tempo de o ler e clicar, e desaparece assim que se clica.
+function toast(msg, kind = "", action = null) {
   let el = $("toast");
   if (!el) {
     el = document.createElement("div");
@@ -11,9 +15,15 @@ function toast(msg, kind = "") {
   }
   el.textContent = msg;
   el.className = kind;          // "ok" (verde) | "err" (vermelho) | "" (neutro)
+  if (action) {
+    el.classList.add("clickable");
+    el.onclick = () => { el.classList.add("hidden"); action(); };
+  } else {
+    el.onclick = null;
+  }
   el.classList.remove("hidden");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add("hidden"), 4000);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), action ? 9000 : 4000);
 }
 
 // Encontra a <tr> da origem na vista respetiva (null se não estiver lá).
