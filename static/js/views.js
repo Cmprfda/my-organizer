@@ -5,6 +5,10 @@
 const VIEWS = {
   workbooks: "wbEmptyView", ccrs: "ccrView", todo: "todoView",
   notes: "notesView", metrics: "metricsView", feedback: "fbView", jira: "jiraView",
+  // as definições são uma página como as outras; o separador delas é a roda
+  // dentada (#settingsBtn), que não tem data-view e por isso não se arrasta
+  // nem se abre ao lado no ecrã dividido
+  settings: "settingsView",
 };
 // vista que está no painel lateral do ecrã dividido (null = sem divisão)
 let sideView = null;
@@ -84,7 +88,11 @@ function showView(name) {
   }
   $("excelView").classList.toggle("hidden", !wbOnScreen);
   $("excelSub").classList.toggle("hidden", !wbOnScreen);
+  $("settingsBtn").classList.toggle("active", name === "settings");
+  if (name === "settings") $("settingsBtn").setAttribute("aria-current", "page");
+  else $("settingsBtn").removeAttribute("aria-current");
   if (wbOnScreen) render();
+  if (name === "settings" && typeof renderSettingsPage === "function") renderSettingsPage();
   if (name === "ccrs" || sideView === "ccrs") renderCCRs();
   if (name === "todo" || sideView === "todo") renderTodo();
   if (name === "notes" || sideView === "notes") renderNotes();
@@ -267,22 +275,29 @@ if (tabsNav) {
   });
 }
 
-// ---------- definições (tema + língua) ----------
+// ---------- definições (página própria) ----------
+// vista de onde se veio, para o segundo clique na roda dentada (ou o Escape)
+// devolver a app ao sítio onde se estava
+let viewBeforeSettings = "";
+
 function setSettingsOpen(open) {
-  $("settingsPanel").classList.toggle("hidden", !open);
-  $("settingsBtn").classList.toggle("active", open);
-  $("settingsBtn").setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    if (currentView !== "settings") viewBeforeSettings = currentView;
+    showView("settings");
+  } else if (currentView === "settings") {
+    showView(viewBeforeSettings || fallbackView());
+  }
 }
 
-$("settingsBtn").addEventListener("click", e => {
-  e.stopPropagation();
-  setSettingsOpen($("settingsPanel").classList.contains("hidden"));
-});
-
-document.addEventListener("click", e => {
-  if (!$("settingsPanel").contains(e.target)) setSettingsOpen(false);
+$("settingsBtn").addEventListener("click", () => {
+  setSettingsOpen(currentView !== "settings");
 });
 
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") setSettingsOpen(false);
+  // só quando as definições estão à frente e o foco não está num campo: o
+  // Escape das janelas (ajuda, seletor de livros…) continua a ser delas
+  if (e.key !== "Escape" || currentView !== "settings") return;
+  const alvo = e.target;
+  if (alvo && alvo.closest && alvo.closest("input, select, textarea, [contenteditable]")) return;
+  setSettingsOpen(false);
 });

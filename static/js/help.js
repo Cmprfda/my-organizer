@@ -187,7 +187,6 @@ function setHelpOpen(open) {
 
 $("helpBtn").addEventListener("click", e => {
     e.stopPropagation();
-    setSettingsOpen(false);
     setHelpOpen($("helpOverlay").classList.contains("hidden"));
 });
 

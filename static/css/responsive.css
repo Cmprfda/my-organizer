@@ -64,13 +64,9 @@
     padding: 9px 12px;
   }
 
-  /* painel de definições sobe do fundo, por cima da barra */
-  .settingsPanel {
-    top: auto;
-    left: 10px;
-    right: 10px;
-    transform: none;
-    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  /* a página das definições passa a uma coluna, como as métricas */
+  .setPage {
+    grid-template-columns: 1fr;
   }
 
   header h1 {

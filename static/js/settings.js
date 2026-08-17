@@ -6,7 +6,14 @@ function applyLang() {
   $("langSel").value = LANG;
   $("settingsBtn").title = t("settings_title");
   $("settingsBtn").setAttribute("aria-label", t("settings_title"));
-  $("settingsPanel").setAttribute("aria-label", t("settings_title"));
+  $("settingsView").setAttribute("aria-label", t("settings_title"));
+  $("setSecLook").textContent = t("set_sec_look");
+  $("setSecOnedrive").textContent = t("set_sec_onedrive");
+  $("setSecJira").textContent = t("set_sec_jira");
+  $("setSecApp").textContent = t("set_sec_app");
+  $("graphEmailLbl").textContent = t("set_lbl_account");
+  $("onedriveRootLbl").textContent = t("set_lbl_extra_onedrive");
+  $("jiraLbl").textContent = t("set_lbl_jira");
   document.querySelector('label[for="themeSel"]').textContent = t("theme_title");
   document.querySelector('label[for="langSel"]').textContent = t("lang_title");
   applyInsightsLang();
@@ -232,7 +239,16 @@ function graphAccountLine() {
   return `<br><span class="graphAcct" style="opacity:.75">${esc(lbl)}: ${esc(quem)}</span>`;
 }
 
+// a página das definições é lida quando se entra nela: o estado do Jira e o do
+// OneDrive podem ter mudado noutra janela desde a última vez
+function renderSettingsPage() {
+  if (typeof refreshJiraSettings === "function") refreshJiraSettings();
+  graphAction("state");
+}
+
 function renderGraphState() {
+  // sem fonte web configurada o cartão inteiro do OneDrive não tem nada dentro
+  $("setCardOnedrive").classList.toggle("hidden", !graphInfo.configured);
   $("graphBox").classList.toggle("hidden", !graphInfo.configured);
   renderConnBadge();
   if (!graphInfo.configured) return;
@@ -470,9 +486,8 @@ function renderConnBadge() {
   badge.title = `${texto}${extra} — ${t("conn_title")}`;
 }
 
-$("connBadge").addEventListener("click", e => {
-  e.stopPropagation();
-  setSettingsOpen($("settingsPanel").classList.contains("hidden"));
+$("connBadge").addEventListener("click", () => {
+  setSettingsOpen(currentView !== "settings");
 });
 
 async function graphAction(action) {

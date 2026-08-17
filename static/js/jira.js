@@ -748,8 +748,6 @@ async function saveJiraSettings() {
 }
 
 $("jiraSaveBtn").addEventListener("click", saveJiraSettings);
-// abrir as Definições volta a ler o estado (pode ter mudado noutra janela)
-$("settingsBtn").addEventListener("click", () => {
-  if (!$("settingsPanel").classList.contains("hidden")) refreshJiraSettings();
-});
+// entrar na página das Definições volta a ler o estado (pode ter mudado noutra
+// janela) — quem chama é o renderSettingsPage() em settings.js
 refreshJiraSettings();

@@ -61,66 +61,8 @@
       <button data-view="jira" data-icon="" draggable="true" class="hidden"><img src="/static/img/jira.svg" alt="" width="17" height="17" style="flex-shrink:0">Jira</button>
       <button id="addWorkbookBtn" type="button" class="addWbBtn" title="Abrir um livro de Excel"
         aria-label="Abrir um livro de Excel" aria-expanded="false">&#43;</button>
-      <button id="settingsBtn" type="button" title="Definições" aria-label="Definições"
-        aria-expanded="false">&#9881;</button>
+      <button id="settingsBtn" type="button" title="Definições" aria-label="Definições">&#9881;</button>
     </nav>
-
-    <div id="settingsPanel" class="settingsPanel hidden" role="dialog" aria-label="Definições">
-      <div class="setRow">
-        <label for="themeSel">Tema</label>
-        <select id="themeSel">
-          <option value="auto">Auto</option>
-          <option value="light">Claro</option>
-          <option value="dark">Escuro</option>
-        </select>
-      </div>
-      <div class="setRow">
-        <label for="langSel">Língua</label>
-        <select id="langSel">
-          <option value="pt">PT</option>
-          <option value="en">EN</option>
-        </select>
-      </div>
-      <div class="setRow">
-        <label for="staleSel">Paradas a partir de</label>
-        <select id="staleSel" title="Dias sem mexer a partir dos quais uma tarefa conta como parada">
-          <option value="2">2 dias</option>
-          <option value="3">3 dias</option>
-          <option value="5">5 dias</option>
-          <option value="7">7 dias</option>
-          <option value="14">14 dias</option>
-        </select>
-      </div>
-      <div class="setNote hidden" id="graphBox">
-        <span id="graphState"></span>
-        <button type="button" class="mini" id="graphBtn"></button>
-        <label class="graphAutoLbl hidden" id="graphAutoRow">
-          <input type="checkbox" id="graphAutoReconnect">
-          <span id="graphAutoReconnectTxt"></span>
-        </label>
-      </div>
-      <div class="setNote hidden" id="graphEmailBox">
-        <input type="email" id="graphEmailInput" placeholder="nome@empresa.com">
-        <button type="button" class="mini" id="graphEmailSaveBtn">Gravar</button>
-        <span id="graphEmailState"></span>
-      </div>
-      <div class="setNote hidden" id="onedriveRootBox">
-        <input type="url" id="onedriveRootUrl" placeholder="https://tenant-my.sharepoint.com/personal/nome_dominio_com">
-        <button type="button" class="mini" id="onedriveRootSaveBtn">Gravar</button>
-        <span id="onedriveRootState"></span>
-      </div>
-      <div class="setNote" id="jiraBox">
-        <input type="url" id="jiraUrl" placeholder="https://jira.empresa.pt">
-        <input type="password" id="jiraToken" placeholder="Personal Access Token">
-        <button type="button" class="mini" id="jiraSaveBtn">Gravar</button>
-        <span id="jiraState"></span>
-      </div>
-      <div class="setRow setRowUpdate">
-        <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
-        <button type="button" class="mini" id="changelogBtn">Novidades</button>
-        <button type="button" class="mini" id="shareAppBtn">↗</button>
-      </div>
-    </div>
 
     <div id="panes">
       <div id="paneMain">
@@ -452,6 +394,84 @@
             <h2>Sem issues do Jira ligadas.</h2>
             <p>Liga uma issue a uma tarefa do TODO (Enter no campo do Jira dentro de um item) para ela aparecer aqui.
             </p>
+          </div>
+        </div>
+
+        <div id="settingsView" class="hidden" aria-label="Definições">
+          <div class="setPage">
+            <section class="setCard">
+              <h2 class="setCardTitle" id="setSecLook">Aparência</h2>
+              <div class="setRow">
+                <label for="themeSel">Tema</label>
+                <select id="themeSel">
+                  <option value="auto">Auto</option>
+                  <option value="light">Claro</option>
+                  <option value="dark">Escuro</option>
+                </select>
+              </div>
+              <div class="setRow">
+                <label for="langSel">Língua</label>
+                <select id="langSel">
+                  <option value="pt">PT</option>
+                  <option value="en">EN</option>
+                </select>
+              </div>
+              <div class="setRow">
+                <label for="staleSel">Paradas a partir de</label>
+                <select id="staleSel" title="Dias sem mexer a partir dos quais uma tarefa conta como parada">
+                  <option value="2">2 dias</option>
+                  <option value="3">3 dias</option>
+                  <option value="5">5 dias</option>
+                  <option value="7">7 dias</option>
+                  <option value="14">14 dias</option>
+                </select>
+              </div>
+            </section>
+
+            <section class="setCard hidden" id="setCardOnedrive">
+              <h2 class="setCardTitle" id="setSecOnedrive">OneDrive</h2>
+              <div class="setNote hidden" id="graphBox">
+                <span id="graphState"></span>
+                <button type="button" class="mini" id="graphBtn"></button>
+                <label class="graphAutoLbl hidden" id="graphAutoRow">
+                  <input type="checkbox" id="graphAutoReconnect">
+                  <span id="graphAutoReconnectTxt"></span>
+                </label>
+              </div>
+              <div class="setNote hidden" id="graphEmailBox">
+                <span class="setNoteLbl" id="graphEmailLbl">Conta do OneDrive</span>
+                <input type="email" id="graphEmailInput" placeholder="nome@empresa.com">
+                <button type="button" class="mini" id="graphEmailSaveBtn">Gravar</button>
+                <span id="graphEmailState"></span>
+              </div>
+              <div class="setNote hidden" id="onedriveRootBox">
+                <span class="setNoteLbl" id="onedriveRootLbl">OneDrive extra</span>
+                <input type="url" id="onedriveRootUrl"
+                  placeholder="https://tenant-my.sharepoint.com/personal/nome_dominio_com">
+                <button type="button" class="mini" id="onedriveRootSaveBtn">Gravar</button>
+                <span id="onedriveRootState"></span>
+              </div>
+            </section>
+
+            <section class="setCard">
+              <h2 class="setCardTitle" id="setSecJira">Jira</h2>
+              <div class="setNote" id="jiraBox">
+                <span class="setNoteLbl" id="jiraLbl">Servidor e token</span>
+                <input type="url" id="jiraUrl" placeholder="https://jira.empresa.pt">
+                <input type="password" id="jiraToken" placeholder="Personal Access Token">
+                <button type="button" class="mini" id="jiraSaveBtn">Gravar</button>
+                <span id="jiraState"></span>
+              </div>
+            </section>
+
+            <section class="setCard">
+              <h2 class="setCardTitle" id="setSecApp">Aplicação</h2>
+              <div class="setRow setRowUpdate">
+                <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
+                <button type="button" class="mini" id="changelogBtn">Novidades</button>
+                <button type="button" class="mini" id="shareAppBtn">↗</button>
+              </div>
+            </section>
           </div>
         </div>
       </div><!-- /paneMain -->

@@ -281,32 +281,45 @@ body.topShrunk .ios-top #chatBtn {
   color: var(--text);
 }
 
-.settingsPanel {
-  position: fixed;
-  left: 50%;
-  bottom: 84px;
-  transform: translateX(-50%);
-  z-index: 60;
+/* ---------- página das definições (vista #settingsView) ----------
+   Deixou de ser um balão por cima dos separadores: é uma página como as
+   outras, com um cartão por assunto (aparência, OneDrive, Jira, app). */
+.setPage {
   display: grid;
-  gap: 10px;
-  min-width: 230px;
-  padding: 12px;
-  background: var(--ios-glass-bg);
-  backdrop-filter: var(--ios-blur);
-  -webkit-backdrop-filter: var(--ios-blur);
-  border: 1px solid var(--ios-glass-border);
-  border-radius: var(--ios-radius-card);
-  box-shadow: var(--ios-shadow-lg);
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  padding: 12px 0;
+  align-items: start;
 }
 
-.settingsPanel .setRow {
+.setCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  box-shadow: var(--ios-shadow);
+  padding: 14px 16px 16px;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.setCardTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.setPage .setRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
 
-.settingsPanel label {
+.setPage label,
+.setPage .setNoteLbl {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
@@ -315,84 +328,79 @@ body.topShrunk .ios-top #chatBtn {
   color: var(--muted);
 }
 
-.settingsPanel select {
+.setPage select {
   font: inherit;
   font-weight: 600;
-  background: var(--surface);
+  background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--ios-radius-btn);
   padding: 7px 10px;
 }
 
-.settingsPanel .setNote {
+.setPage .setNote {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  max-width: 280px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 12px;
   color: var(--muted);
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
   overflow-wrap: anywhere;
 }
 
-.settingsPanel .setNote button {
+/* linhas seguintes do mesmo cartão ganham o traço que as separa */
+.setPage .setNote + .setNote,
+.setPage .setRow + .setNote {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.setPage .setNote button {
   flex: 0 0 auto;
+  margin-left: 0;
 }
 
 /* a regra .hidden é menos específica do que as de cima */
-.settingsPanel .setRow.hidden,
-.settingsPanel .setNote.hidden {
+.setPage .setRow.hidden,
+.setPage .setNote.hidden,
+.setPage .graphAutoLbl.hidden,
+.setCard.hidden {
   display: none;
 }
 
-/* Jira, o OneDrive extra e a conta do OneDrive: URL/email (+ token, no Jira) e
-   Gravar não cabem numa linha só como os outros .setNote, e os tipos
-   url/password/email não são apanhados pelas regras de forms.css. O OneDrive
-   ganha a mesma disposição quando a linha "Ligar automaticamente" está à
-   vista. */
-.settingsPanel #jiraBox,
-.settingsPanel #onedriveRootBox,
-.settingsPanel #graphEmailBox,
-.settingsPanel #graphBox {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 8px;
+/* etiqueta, estado e "Ligar automaticamente" ocupam a largura toda do cartão;
+   os campos (url/email/password, que forms.css não apanha) também, para o
+   botão Gravar ficar por baixo e não espremido ao lado */
+.setPage .setNoteLbl,
+.setPage .graphAutoLbl,
+.setPage #jiraBox input,
+.setPage #onedriveRootBox input,
+.setPage #graphEmailBox input,
+.setPage #jiraBox #jiraState,
+.setPage #onedriveRootBox #onedriveRootState,
+.setPage #graphEmailBox #graphEmailState,
+.setPage #graphBox #graphState {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
-.settingsPanel .graphAutoLbl {
-  flex: 1 1 100%;
+.setPage .graphAutoLbl {
   display: flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
 }
 
-.settingsPanel #jiraBox input,
-.settingsPanel #onedriveRootBox input,
-.settingsPanel #graphEmailBox input {
-  flex: 1 1 100%;
-  min-width: 0;
+.setPage #jiraBox input,
+.setPage #onedriveRootBox input,
+.setPage #graphEmailBox input {
   font: inherit;
   padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: var(--ios-radius-btn);
-  background: var(--surface);
+  background: var(--bg);
   color: var(--text);
-}
-
-.settingsPanel #jiraBox button,
-.settingsPanel #onedriveRootBox button,
-.settingsPanel #graphEmailBox button {
-  margin-left: 0;
-}
-
-.settingsPanel #jiraBox #jiraState,
-.settingsPanel #onedriveRootBox #onedriveRootState,
-.settingsPanel #graphEmailBox #graphEmailState {
-  flex: 1 1 100%;
 }
 
 /* janela "vista resumida desta aba": mapa de colunas (ver viewmap.js) */
@@ -648,9 +656,7 @@ body.topShrunk .ios-top #chatBtn {
   min-width: 90px;
 }
 
-.settingsPanel .setRowUpdate {
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
+.setPage .setRowUpdate {
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 8px;
