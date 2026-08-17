@@ -4,7 +4,7 @@
     "file_name": "BSP-G2_Daily_Tracker.xlsx",
     "use_azure_cli": true,
     "client_id": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
-    "scopes": "https://graph.microsoft.com/.default",
+    "scopes": "https://graph.microsoft.com/.default offline_access",
     "tenant_id": "organizations",
     "_alternativas": {
         "file_url": "https://criticalsoftwaresa.sharepoint.com/:x:/r/sites/WRSHALLOWFORD/.../BSP-G2_Daily_Tracker.xlsx",

@@ -37,7 +37,10 @@ GRAPH_SCOPE = "offline_access Files.ReadWrite.All Sites.ReadWrite.All"
 # Command Line Tools", 14d82eec-…, exige consentimento de admin nesta
 # organização). Com este cliente os âmbitos têm de ser pedidos como ".default".
 GRAPH_DEFAULT_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
-GRAPH_DEFAULT_SCOPES = "https://graph.microsoft.com/.default"
+# ".default" sozinho NÃO traz refresh token: os âmbitos OIDC não vão implícitos
+# num pedido ".default", têm de ser nomeados. Sem ele a sessão morria ao fim da
+# hora e obrigava a autenticar no browser de hora a hora (ver graph_config)
+GRAPH_DEFAULT_SCOPES = "https://graph.microsoft.com/.default offline_access"
 
 _graph_lock = threading.Lock()
 _graph_login = {}      # estado do device code flow em curso
@@ -98,6 +101,12 @@ def graph_config():
     # com o cliente por omissão (Azure CLI) tem de ser ".default"
     cfg.setdefault("scopes", GRAPH_DEFAULT_SCOPES
                    if cfg["client_id"] == GRAPH_DEFAULT_CLIENT_ID else GRAPH_SCOPE)
+    # os graph_config.json já instalados trazem os âmbitos gravados sem
+    # offline_access (o setdefault acima não lhes chega): sem ele a Microsoft não
+    # devolve refresh token e o login tinha de ser repetido de hora a hora.
+    # Acerta-se aqui, em memória, sem mexer no ficheiro do utilizador
+    if "offline_access" not in cfg["scopes"]:
+        cfg["scopes"] = f"{cfg['scopes']} offline_access".strip()
     cfg.setdefault("use_azure_cli", True)
     cfg.setdefault("tenant_id", "organizations")
     cfg.setdefault("authority", "https://login.microsoftonline.com")
@@ -270,6 +279,12 @@ def _graph_save_tokens(out, account=None):
         tokens["account_email"] = email
     if name:
         tokens["account_name"] = name
+    if not tokens["refresh_token"]:
+        # sem refresh token a sessão não se renova e o browser volta a abrir ao
+        # fim de uma hora. Deixa rasto: até aqui a falha era silenciosa (o
+        # `_graph_own_token` desistia sem dizer nada) e passava por "normal"
+        log_event("aviso: a Microsoft não devolveu refresh token - a sessão do "
+                  "OneDrive expira dentro de uma hora (falta offline_access?)")
     _write_tokens(tokens)
     return tokens
 
