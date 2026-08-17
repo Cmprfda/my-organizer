@@ -48,6 +48,8 @@ from . import cli
 
 STATIC_ROOT = os.path.join(HERE, "static")
 _SERVER = None          # ThreadingHTTPServer em uso (preciso para o reinicio)
+# janelas nativas abertas pelo ⧉, por endereço (ver open_extra_window)
+_EXTRA_WINDOWS = {}
 STATIC_TYPES = {
     ".css": "text/css", ".js": "application/javascript", ".json": "application/json",
     ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
@@ -62,6 +64,27 @@ def _is_local(ip):
     dono) ou abrem janelas: quem chega pela rede local usa a app, não a
     configura."""
     return ip in ("127.0.0.1", "::1", "localhost")
+
+
+def _local_origin(host_header):
+    """Origem (esquema + nome + porto) onde abrir outra janela desta app.
+
+    Tem de ser a MESMA da janela que a pediu: o localStorage é por origem, e
+    uma janela nascida em http://127.0.0.1 não via nada do que está guardado em
+    http://localhost — abria sem livros nenhuns, com cara de app acabada de
+    instalar (ver openWorkbookWindow em static/js/workbooks.js). Só se aceita um
+    nome deste computador; o porto é sempre o nosso."""
+    host = str(host_header or "").strip()
+    if host.startswith("["):                       # [::1]:8765
+        host = host[1:].split("]", 1)[0]
+    else:
+        host = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    host = host.lower()
+    if host not in ("localhost", "127.0.0.1", "::1"):
+        host = "localhost"     # a janela abre neste PC: mais nada serve
+    if ":" in host:
+        host = f"[{host}]"     # ::1
+    return f"http://{host}:{config.SERVER_PORT}"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -688,14 +711,15 @@ class Handler(BaseHTTPRequestHandler):
                 # de fora ("//outro.site", "http://…") numa janela nossa
                 if not destino.startswith("/") or destino.startswith("//"):
                     destino = "/"
-                url = f"http://127.0.0.1:{config.SERVER_PORT}{destino}"
+                url = f"{_local_origin(self.headers.get('Host'))}{destino}"
                 aberta = open_extra_window(url)
                 log_event(f"{ip} abriu outra janela em {destino}"
                           f"{'' if aberta else ' (no browser)'}")
                 self._send(200, json.dumps({"ok": True, "native": aberta}), "application/json")
             except Exception as exc:
                 log_event(f"{ip} /api/window FALHOU: {exc!r}")
-                self._send(500, json.dumps({"ok": False, "error": "erro interno"}),
+                self._send(500, json.dumps({"ok": False,
+                                            "error": "não consegui abrir outra janela"}),
                            "application/json")
             return
         if path == "/api/announcement":
@@ -1046,17 +1070,34 @@ def port_free(port, wait=0.0):
 def open_extra_window(url):
     """Abre outra janela da app (ver /api/window). True se for janela nativa.
 
-    Com a interface na janela nativa (pywebview) abre-se outra janela igual;
-    sem ela — a app está a ser usada numa aba do browser — abre-se lá o
-    endereço, que é o que o browser faria."""
+    Quem está a usar a app na janela nativa (pywebview) pediu OUTRA JANELA DA
+    APP — nunca o browser: é a mesma app, o mesmo servidor e a mesma sessão do
+    OneDrive, só noutra janela. Se a janela não puder abrir, o cliente mostra o
+    erro em vez de aparecer uma aba do browser. Só quando a app está a ser usada
+    numa aba do browser é que se abre lá o endereço, que é o que o browser faria.
+
+    Carregar duas vezes no ⧉ do mesmo livro traz à frente a janela que já está
+    aberta, em vez de abrir outra igual (é o que o nome da janela já fazia no
+    browser)."""
     if config.WEBVIEW_WINDOW is not None:
+        import webview
+        aberta = _EXTRA_WINDOWS.get(url)
+        if aberta is not None:
+            try:
+                aberta.show()
+                return True
+            except Exception as exc:
+                # janela já destruída sem passarmos pelo evento 'closed'
+                log_event(f"janela de {url} já não existe ({exc!r}) - a abrir outra")
+                _EXTRA_WINDOWS.pop(url, None)
+        janela = webview.create_window("My Organizer", url, width=1300, height=850,
+                                       min_size=(1000, 650))
+        _EXTRA_WINDOWS[url] = janela
         try:
-            import webview
-            webview.create_window("My Organizer", url, width=1300, height=850,
-                                  min_size=(1000, 650))
-            return True
-        except Exception as exc:
-            log_event(f"segunda janela nativa falhou ({exc!r}) - a abrir no browser")
+            janela.events.closed += lambda *a: _EXTRA_WINDOWS.pop(url, None)
+        except Exception:
+            pass   # sem o evento perde-se só o "trazer à frente"
+        return True
     webbrowser.open(url)
     return False
 

@@ -59,21 +59,25 @@ function openWorkbookTab(spec) {
    livros à frente ao mesmo tempo: o ecrã dividido não serve para isso, porque o
    painel das tarefas é um só e mostra sempre o livro do separador ativo.
 
-   Primeiro tenta-se aqui (é um clique do utilizador, o browser não bloqueia);
-   quando a interface é a janela nativa da app o window.open não abre nada e é o
-   servidor que abre a janela (/api/window), como já acontece com o login da
-   Microsoft. */
+   No browser tenta-se aqui (é um clique do utilizador, não é bloqueado); na
+   janela nativa da app NÃO se tenta: lá o window.open não abre janela nenhuma —
+   manda o endereço para o browser do sistema, que não é o que se pede ao ⧉.
+   Quem está na app quer outra janela da app, por isso pede-se ao servidor
+   (/api/window), como já acontece com o login da Microsoft. */
 async function openWorkbookWindow(id) {
   const tab = tabById(id);
   if (!tab) return;
   const caminho = `/?wb=${encodeURIComponent(id)}`;
   let janela = null;
-  try {
-    // nome próprio por livro: carregar duas vezes no ⧉ traz à frente a janela
-    // que já está aberta em vez de abrir outra igual
-    janela = window.open(caminho, `myorg_wb_${id}`, "width=1280,height=860");
-  } catch (err) {
-    janela = null;
+  // window.pywebview só existe dentro da janela nativa da app
+  if (!window.pywebview) {
+    try {
+      // nome próprio por livro: carregar duas vezes no ⧉ traz à frente a janela
+      // que já está aberta em vez de abrir outra igual
+      janela = window.open(caminho, `myorg_wb_${id}`, "width=1280,height=860");
+    } catch (err) {
+      janela = null;
+    }
   }
   if (janela) {
     try { janela.focus(); } catch (err) { /* algumas janelas não deixam */ }
