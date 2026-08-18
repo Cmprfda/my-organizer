@@ -65,6 +65,36 @@ def _post_github_issue(nome, folder):
         raise OSError(f"gh issue create falhou: {out[:300]}")
 
 
+def github_issue_url(folder):
+    """Link para abrir uma issue no GitHub já preenchida com este feedback.
+
+    Serve quem não alcança a partilha: num repositório público qualquer conta
+    GitHub pode abrir issues, mesmo sem ser colaborador. Ao contrário das
+    outras vias, esta não entrega nada sozinha — é o utilizador que confirma a
+    issue no browser (e é lá que arrasta as imagens, que a API não aceita).
+    Vazio se GITHUB_REPO não estiver definido ou não houver feedback.txt.
+    """
+    import urllib.parse
+    if not GITHUB_REPO or not os.path.isdir(folder):
+        return ""
+    caminho = os.path.join(folder, "feedback.txt")
+    if not os.path.isfile(caminho):
+        return ""
+    nome = os.path.basename(folder)
+    with open(caminho, encoding="utf-8", errors="replace") as f:
+        body = f.read()
+    # o IP sai daqui: a issue fica pública
+    body = re.sub(r"^(De: .*?) \(.*\)\s*$", r"\1", body, count=1, flags=re.M)
+    body = body[:5000]
+    images = [n for n in sorted(os.listdir(folder))
+              if n.lower().endswith((".png", ".jpg", ".jpeg"))]
+    if images:
+        body += ("\n\n_Imagens por anexar (arrasta-as para a issue), em "
+                 "feedback_pending\\" + nome + ": " + ", ".join(images) + "_")
+    query = urllib.parse.urlencode({"title": f"[Feedback] {nome}", "body": body})
+    return f"https://github.com/{GITHUB_REPO}/issues/new?{query}"
+
+
 def _relay_server():
     """URL do servidor de relay lido de latest.json; vazio se nao configurado
     ou se aponta para a propria maquina."""

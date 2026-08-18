@@ -11,4 +11,15 @@ signature in [bug_reports.json](bug_reports.json) + appended
 [tracker.log](tracker.log); repeats write `repeticao_NN.txt` in the same
 folder.
 
+When nothing delivers — the case for whoever runs the app from outside
+Critical Software, with no access to the shared folder and no LAN relay in
+reach — the response of `/api/feedback` carries `issue_url`, built by
+`feedback.github_issue_url()`, and the form shows a button that opens GitHub's
+new-issue page with the title and body already filled in. The repository is
+public, so any GitHub account can submit it without being a collaborator; the
+person confirms the issue themselves and drags the screenshots in there, since
+the issue API accepts no attachments. The reporter's IP is stripped from the
+body (the issue is public) and the images stay behind in
+`feedback_pending\<folder>`, listed in the body by name.
+
 ---

@@ -146,6 +146,8 @@ $("fbSend").addEventListener("click", async () => {
         ? t("fb_pending")
         : `${t("fb_sent")} feedback\\${out.folder}.`;
       $("fbStatus").classList.remove("hidden");
+      // sem via de entrega: sobra a issue pública, aberta pelo próprio
+      showFbIssue(out.pending ? out.issue_url : "");
       toast(t("fb_sent"), "ok");
     } else {
       toast(`${t("err_save")} ` + (out.error || "?"), "err");
@@ -155,4 +157,23 @@ $("fbSend").addEventListener("click", async () => {
   }
   $("fbSend").disabled = false;
   $("fbSend").textContent = t("btn_send");
+});
+
+// Botão que leva o feedback para uma issue no GitHub. Só aparece quando nenhuma
+// via de entrega funcionou: o repositório é público, logo qualquer conta GitHub
+// abre a issue sem ser colaborador. É o utilizador que a confirma no browser —
+// e é lá que arrasta as imagens, que o formulário de issues não recebe por URL.
+let fbIssueUrl = "";
+
+function showFbIssue(url) {
+  fbIssueUrl = url || "";
+  const row = $("fbIssueRow");
+  if (!fbIssueUrl) { row.classList.add("hidden"); return; }
+  $("fbIssue").textContent = t("fb_issue");
+  $("fbIssue").title = t("t_fb_issue");
+  row.classList.remove("hidden");
+}
+
+$("fbIssue").addEventListener("click", () => {
+  if (fbIssueUrl) window.open(fbIssueUrl, "_blank", "noopener");
 });

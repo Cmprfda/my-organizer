@@ -22,7 +22,7 @@ from .chat import answer as chat_answer
 from .config import APP_VERSION, DOWNLOAD_URL, HERE, SHARE_URL, lan_ip
 from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, flush_pending,
-                       report_bug, stage_feedback_folder)
+                       github_issue_url, report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
                     graph_logout, graph_pick, graph_state, graph_state_public,
                     save_login_email, save_onedrive_root)
@@ -885,13 +885,18 @@ class Handler(BaseHTTPRequestHandler):
                 attach_server_log(folder)
                 nome = os.path.basename(folder)
                 pendente = not deliver(folder, allow_relay=not payload.get("relay"))
+                # sem via de entrega: fica a saída pública — uma issue no
+                # GitHub, aberta pelo próprio no browser (repo público, não
+                # precisa de ser colaborador)
+                issue = github_issue_url(folder) if pendente else ""
                 flush_pending()      # aproveita para entregar o que ficou para trás
                 log_event(f"{ip} feedback de {payload.get('name', '?')}: "
                           f"{text[:80]!r} + {count} imagem(ns) -> {nome}"
                           + (f" [pagina: {page}]" if page else "")
                           + (" (pendente: sem acesso à partilha)" if pendente else ""))
                 self._send(200, json.dumps({"ok": True, "folder": nome,
-                                            "pending": pendente}),
+                                            "pending": pendente,
+                                            "issue_url": issue}),
                            "application/json")
             except Exception as exc:
                 log_event(f"{ip} feedback FALHOU: {exc}")

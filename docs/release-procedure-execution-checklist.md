@@ -14,6 +14,6 @@
 7. Verify release: `Invoke-RestMethod http://localhost:8766/api/tasks` -> verify `app_version` and `mode=dev`.
 8. Inform user to refresh browser (F5).
 
-> **Git:** the repository is `https://github.com/Cmprfda/my-organizer` (private, remote `origin`, branch `main`). Committing and pushing as part of a release is pre-authorised; `gh` lives at `"$env:ProgramFiles\GitHub CLI\gh.exe"` (not on PATH).
+> **Git:** the repository is `https://github.com/Cmprfda/my-organizer` (public — anyone can open issues, only collaborators can push; remote `origin`, branch `main`). Committing and pushing as part of a release is pre-authorised; `gh` lives at `"$env:ProgramFiles\GitHub CLI\gh.exe"` (not on PATH).
 
 ---
