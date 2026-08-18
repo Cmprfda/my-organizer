@@ -618,6 +618,8 @@ const TR = {
     "Duplicate the note (boxes, drawings and screenshots)"],
   note_copy_title: ["{0} (cópia)", "{0} (copy)"],
   note_duplicated: ["Nota duplicada: {0}", "Note duplicated: {0}"],
+  t_note_side_drawer: ["Notas e pastas", "Notes and folders"],
+  t_tool_box_add: ["Nova caixa no meio do quadro", "New box in the middle of the board"],
   t_note_side_open: ["Prender a coluna das notas aberta", "Keep the notes column open"],
   t_note_side_close: ["Recolher a coluna das notas", "Collapse the notes column"],
   t_note_path: ["Escreve o caminho completo (pasta/título) — pastas em falta são criadas; se corresponder a outra nota, abre-a; termina em \"/\" para ver essa pasta",

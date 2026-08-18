@@ -226,9 +226,12 @@
               <input type="text" id="noteFilter" placeholder="Procurar notas…">
               <div class="noteTree" id="noteTree"></div>
             </aside>
+            <div class="noteSideBack" id="noteSideBack"></div>
             <div class="noteSideResize" id="noteSideResize"></div>
             <section class="notesMain">
               <div class="notesHead" id="notesHead">
+                <button type="button" class="noteSideMobile" id="noteSideMobile"
+                  title="Notas e pastas" aria-label="Notas e pastas" aria-expanded="false">&#9776;</button>
                 <div class="notePath">
                   <span class="notePathSlash">/</span>
                   <input type="text" id="notePathInput" placeholder="pasta/título">
@@ -238,6 +241,11 @@
                 <button type="button" class="ccr-x" id="noteDel" title="Apagar nota">✕</button>
               </div>
               <div class="noteToolbar" id="noteToolbar">
+                <button type="button" class="noteToolBtn" id="noteBoxAddBtn"
+                  title="Nova caixa no meio do quadro">
+                  <span class="noteToolIcon">&#43;</span><span class="noteToolLabel">Caixa</span>
+                </button>
+                <span class="noteToolSep"></span>
                 <button type="button" class="noteToolBtn active" data-tool="select" title="Selecionar / mover">
                   <span class="noteToolIcon">↖</span><span class="noteToolLabel">Selecionar</span>
                 </button>

@@ -61,6 +61,7 @@ function currentNote() {
 
 function setCurrentNote(id) {
   noteId = id || "";
+  setNoteDrawer(false);   // escolheu a nota: a gaveta já não serve de nada
   localStorage.setItem("bsp-tracker-note", noteId);
   noteSelBoxes = [];
   noteDrawSel = [];
@@ -1673,6 +1674,50 @@ function toggleNoteFullscreen() {
   fitNoteCanvas();
 }
 $("noteFullscreenBtn").addEventListener("click", toggleNoteFullscreen);
+
+// ---------- coluna das notas como gaveta (ecrã estreito) ----------
+// no telemóvel a coluna empilhada por cima do quadro comia metade do ecrã: aqui
+// fica fora do fluxo e abre-se pelo botão "☰" do cabeçalho
+function setNoteDrawer(open) {
+  document.body.classList.toggle("notes-drawer", !!open);
+  const btn = $("noteSideMobile");
+  if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+$("noteSideMobile").addEventListener("click", () => {
+  setNoteDrawer(!document.body.classList.contains("notes-drawer"));
+});
+
+$("noteSideBack").addEventListener("click", () => setNoteDrawer(false));
+
+// em captura, antes do Esc do ecrã inteiro e do das caixas
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !document.body.classList.contains("notes-drawer")) return;
+  e.stopImmediatePropagation();
+  setNoteDrawer(false);
+}, true);
+
+// ---------- nova caixa sem a arrastar ----------
+// a arrastar o quadro vazio o dedo move a vista (ver startCanvasPan), por isso
+// no telemóvel não havia forma de criar uma caixa. Este botão põe-na no meio do
+// que se está a ver, afastando-a de quem já lá esteja no mesmo sítio.
+function addNoteBoxHere() {
+  const note = currentNote();
+  if (!note) return;
+  const canvas = $("noteCanvas");
+  const w = 200, h = 130;
+  let x = (canvas.scrollLeft + canvas.clientWidth / 2) / noteZoom - w / 2;
+  let y = (canvas.scrollTop + canvas.clientHeight / 2) / noteZoom - h / 2;
+  const taken = p => note.boxes.some(b => Math.abs(b.x - p.x) < 12 && Math.abs(b.y - p.y) < 12);
+  for (let i = 0; i < 12 && taken({ x, y }); i++) { x += 24; y += 24; }
+  x = Math.max(0, Math.min(NOTE_BOARD - w, Math.round(x)));
+  y = Math.max(0, Math.min(NOTE_BOARD - h, Math.round(y)));
+  pushNoteUndo(note);
+  postNotepad({ action: "add_box", id: note.id, x, y, w, h });
+}
+
+$("noteBoxAddBtn").addEventListener("click", addNoteBoxHere);
+
 $("noteSideToggle").addEventListener("click", () => setNoteRail(!noteRail));
 applyNoteRail();
 
@@ -1690,6 +1735,42 @@ $("noteCanvas").addEventListener("wheel", e => {
   e.preventDefault();
   setNoteZoom(noteZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX, e.clientY);
 }, { passive: false });
+
+// dois dedos no quadro: beliscar dá zoom, com o ponto entre os dedos parado
+// (o `touch-action: none` tambem tira o zoom nativo, por isso é feito aqui)
+const notePinch = new Map();
+let notePinchFrom = null;
+
+function notePinchSpan() {
+  const [a, b] = [...notePinch.values()];
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+}
+
+// em captura: chega antes dos tratadores que arrastam/desenham
+$("noteCanvas").addEventListener("pointerdown", e => {
+  if (e.pointerType !== "touch") return;
+  notePinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (notePinch.size !== 2) return;
+  // o segundo dedo transforma o arrasto do primeiro num zoom
+  if (noteCancelPan) noteCancelPan();
+  notePinchFrom = { d: notePinchSpan().d, zoom: noteZoom };
+}, true);
+
+window.addEventListener("pointermove", e => {
+  if (e.pointerType !== "touch" || !notePinch.has(e.pointerId)) return;
+  notePinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (notePinch.size !== 2 || !notePinchFrom || !notePinchFrom.d) return;
+  const span = notePinchSpan();
+  setNoteZoom(notePinchFrom.zoom * (span.d / notePinchFrom.d), span.x, span.y);
+});
+
+const noteFingerUp = e => {
+  if (e.pointerType !== "touch") return;
+  notePinch.delete(e.pointerId);
+  if (notePinch.size < 2) notePinchFrom = null;
+};
+window.addEventListener("pointerup", noteFingerUp);
+window.addEventListener("pointercancel", noteFingerUp);
 
 // coluna da esquerda: arrastar a barra lateral para redimensionar
 $("noteSideResize").addEventListener("pointerdown", e => {
@@ -1837,10 +1918,38 @@ function noteItemsInRect(note, r) {
   return { boxes, draw };
 }
 
+// dedo em cima do quadro vazio: arrastar move a vista. O quadro tem
+// `touch-action: none` (senão o browser levava o gesto para o scroll e não
+// sobrava nada para desenhar), por isso sem isto os 4000x4000 do quadro eram
+// inalcançáveis no telemóvel. Com o rato continua a ser o retângulo de seleção.
+let noteCancelPan = null;
+
+function startCanvasPan(e) {
+  const canvas = $("noteCanvas");
+  const sx = e.clientX, sy = e.clientY;
+  const fromL = canvas.scrollLeft, fromT = canvas.scrollTop;
+  clearNoteSel();
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    noteCancelPan = null;
+  };
+  const move = ev => {
+    canvas.scrollLeft = fromL - (ev.clientX - sx);
+    canvas.scrollTop = fromT - (ev.clientY - sy);
+  };
+  noteCancelPan = stop;
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
 // arrastar no espaço vazio do quadro: se a área apanhar caixas ou desenhos,
 // seleciona-os; se não apanhar nada, é ali que nasce a caixa nova
 // (com Ctrl/Shift a área só seleciona, juntando ao que já estava escolhido)
 function startCanvasBand(e) {
+  if (e.pointerType === "touch") { startCanvasPan(e); return; }
   const note = currentNote();
   if (!note) return;
   const start = canvasPoint(e);

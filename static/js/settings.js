@@ -96,6 +96,9 @@ function applyLang() {
   $("notePathInput").title = t("t_note_path");
   $("noteLinkBtn").textContent = t("note_link_btn");
   $("noteDel").title = t("t_note_del");
+  $("noteSideMobile").title = t("t_note_side_drawer");
+  $("noteSideMobile").setAttribute("aria-label", t("t_note_side_drawer"));
+  $("noteBoxAddBtn").title = t("t_tool_box_add");
   $("noteToolbar").querySelector('[data-tool="select"]').title = t("t_tool_select");
   $("noteToolbar").querySelector('[data-tool="pen"]').title = t("t_tool_pen");
   $("noteToolbar").querySelector('[data-tool="line"]').title = t("t_tool_line");

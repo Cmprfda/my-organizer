@@ -1278,9 +1278,50 @@ body.notes-full .noteTree {
     color: var(--accent-text);
 }
 
-@media (max-width: 860px) {
+/* ---------- gaveta das notas: fundo que a fecha (só em ecrã estreito) ------- */
+.noteSideBack {
+    display: none;
+}
+
+/* ---------- botão que abre a gaveta (só em ecrã estreito) ---------- */
+.noteSideMobile {
+    display: none;
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+    line-height: 1;
+    padding: 8px 11px;
+    cursor: pointer;
+}
+
+/* ---------- ecrãs estreitos: o quadro é que manda ----------
+   No telemóvel a coluna das notas empilhada por cima do quadro comia metade do
+   ecrã e o quadro ficava escondido por baixo da pílula dos separadores. Aqui a
+   coluna passa a gaveta (fora do fluxo, aberta pelo ☰ do cabeçalho) e o quadro
+   fica com a altura que sobra da janela.
+   Largura alinhada com o resto da app (responsive.css / views.css usam 900px). */
+@media (max-width: 900px) {
     .notesLayout {
         flex-direction: column;
+    }
+
+    /* altura fixa: o topo de vidro (~70px + margem) e a pílula flutuante lá em
+       baixo (~98px) não são do quadro, o resto é. Com isto a vista das notas
+       cabe na janela e deixa de haver dois scrolls a lutar um com o outro. */
+    .notesMain {
+        height: calc(100dvh - 190px);
+        min-height: 360px;
+    }
+
+    /* o quadro come tudo o que o cabeçalho e a barra deixarem */
+    .noteCanvas {
+        flex: 1 1 auto;
+        height: auto;
+        min-height: 0;
     }
 
     /* a barra de ferramentas partia-se em três filas desiguais e os
@@ -1289,8 +1330,19 @@ body.notes-full .noteTree {
     .noteToolbar {
         flex-wrap: nowrap;
         overflow-x: auto;
-        scrollbar-width: thin;
+        scrollbar-width: none;
         -webkit-overflow-scrolling: touch;
+        /* sem esta sombra na margem direita nada dizia que a barra tem mais
+           ferramentas do que as que se veem */
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+        /* espaço a mais no fim: sem ele a última ferramenta ficava debaixo do
+           esbatimento mesmo com a barra rolada até ao fim */
+        padding-right: 26px;
+    }
+
+    .noteToolbar::-webkit-scrollbar {
+        display: none;
     }
 
     .noteToolBtn,
@@ -1300,20 +1352,133 @@ body.notes-full .noteTree {
         flex: 0 0 auto;
     }
 
+    /* numa fila com scroll o ecrã inteiro ficava a dez ferramentas de distância
+       — e é ele que dá ao quadro a janela toda, que é o que faz falta num
+       telemóvel. Passa para a frente, antes do "+ Caixa". */
+    #noteFullscreenBtn {
+        order: -1;
+    }
+
+    /* dedo em vez de rato: alvos de 44px, como manda a HIG */
+    .noteToolBtn {
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+        padding: 6px 8px;
+    }
+
+    .noteToolColor {
+        width: 26px;
+        height: 26px;
+    }
+
+    .noteToolSep {
+        height: 24px;
+    }
+
+    /* os botões da caixa (B / S / ⧉ / cor / ✕) eram alvos de 12px */
+    .noteBoxBar {
+        height: 30px;
+        gap: 2px;
+    }
+
+    .noteBoxBar button {
+        min-width: 28px;
+        padding: 6px 5px;
+        font-size: 13px;
+    }
+
+    .noteBoxBar .noteBoxColor {
+        width: 16px;
+        height: 16px;
+        min-width: 0;
+        padding: 0;
+    }
+
+    /* o canto de redimensionar também tem de dar para o dedo */
+    .noteBoxSize {
+        width: 22px;
+        height: 22px;
+    }
+
+    .noteSideMobile {
+        display: block;
+    }
+
+    /* abaixo de 16px o iOS dá zoom ao ecrã inteiro quando o campo (ou a vista
+       onde se escreve) recebe o cursor, e depois não volta atrás */
+    #notePathInput,
+    .noteBoxTextView {
+        font-size: 16px;
+    }
+
+    /* arrastar uma caixa fazia aparecer a lupa de marcar texto do iOS; onde se
+       escreve a sério (a vista da caixa) continua tudo como estava */
+    .noteCanvas {
+        -webkit-touch-callout: none;
+    }
+
+    .noteBoxTextView {
+        -webkit-touch-callout: default;
+    }
+
+    /* o caminho da nota fica com a fila para ele: os botões passam para baixo */
+    .notesHead .notePath {
+        flex: 1 1 140px;
+    }
+
+    /* a coluna das notas sai do fluxo e passa a gaveta */
     .notesSide {
-        flex: 1 1 auto;
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 66;
+        width: min(320px, 86vw);
+        flex: 0 0 auto;
+        border-radius: 0 var(--ios-radius-card) var(--ios-radius-card) 0;
+        box-shadow: var(--ios-shadow-lg);
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
+        transform: translateX(-102%);
+        transition: transform .22s ease;
+        overflow: auto;
+    }
+
+    body.notes-drawer .notesSide {
+        transform: none;
+    }
+
+    body.notes-drawer .noteSideBack {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 65;
+        background: rgba(0, 0, 0, .35);
+    }
+
+    /* na gaveta a árvore usa a altura toda que lá cabe */
+    .noteTree,
+    body.notes-full .noteTree {
+        max-height: none;
+    }
+
+    .notesSideBar button {
+        padding: 11px 8px;
+    }
+
+    #noteFilter {
+        padding: 11px 10px;
+        /* abaixo de 16px o iOS dá zoom ao ecrã inteiro quando o campo recebe
+           o cursor, e depois não volta atrás */
+        font-size: 16px;
     }
 
     .noteSideResize {
         display: none;
     }
 
-    .noteTree {
-        max-height: 220px;
-    }
-
-    /* janela estreita: a coluna já fica por cima do quadro (layout de uma só
-       coluna), por isso a faixa do ecrã inteiro não se aplica */
+    /* janela estreita: a coluna já é uma gaveta por cima do quadro, por isso a
+       faixa do ecrã inteiro (e o botão que a prende) não se aplicam */
     body.notes-full .noteSideToggle {
         display: none;
     }
@@ -1322,11 +1487,15 @@ body.notes-full .noteTree {
         padding-left: 0;
     }
 
-    body.notes-full.notes-rail .notesSide {
-        position: static;
-        width: auto;
-        padding: 12px;
-        overflow: visible;
+    /* a regra da faixa (position/width/padding) tem mais peso do que a da
+       gaveta: aqui é desfeita para a gaveta continuar a ser gaveta */
+    body.notes-full.notes-rail .notesSide,
+    body.notes-full.notes-rail .notesSide:hover,
+    body.notes-full.notes-rail .notesSide:focus-within {
+        position: fixed;
+        width: min(320px, 86vw);
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
+        overflow: auto;
     }
 
     body.notes-full.notes-rail .notesSide .notesSideBar {
@@ -1338,7 +1507,8 @@ body.notes-full .noteTree {
         display: block;
     }
 
-    body.notes-full .noteTree {
-        max-height: 220px;
+    /* em ecrã inteiro o quadro fica mesmo com a janela toda */
+    body.notes-full .notesMain {
+        height: auto;
     }
 }
