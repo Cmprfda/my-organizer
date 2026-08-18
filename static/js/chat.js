@@ -1,4 +1,4 @@
-// My Organizer — assistente (💬): perguntar e mandar fazer, por escrito
+// My Organizer — assistente (✨): perguntar e mandar fazer, por escrito
 //
 // A app tem muita coisa em vistas diferentes; isto é uma caixa onde se pergunta
 // pelo que interessa agora ("as minhas tarefas em curso", "o que está parado")

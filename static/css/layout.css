@@ -156,6 +156,20 @@ body.topShrunk .ios-top #chatBtn {
   transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.15s, color 0.2s;
 }
 
+/* o assistente traz o desenho das faíscas em vez de um emoji de balão: segue a
+   cor do botão (currentColor), por isso acende no hover como o "?" ao lado */
+.ios-top #chatBtn svg {
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+body.topShrunk .ios-top #chatBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .ios-top #helpBtn:active,
 .ios-top #chatBtn:active {
   transform: scale(0.94);

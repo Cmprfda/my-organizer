@@ -38,8 +38,9 @@ from .store import (load_announcement, load_ccrs, load_notes, load_overrides,
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
                     forget_web_cache, known_headers, pending_overrides_summary,
                     push_overrides, queue_cellcat_override)
-from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT, load_todo,
-                    normalize_ref, normalize_todo_item, save_todo, sort_todos_by_priority,
+from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
+                    archive_done_todo, load_todo, normalize_ref,
+                    normalize_todo_item, save_todo, sort_todos_by_priority,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
                     todo_link_target, todo_sources)
 from .updates import (GITHUB_REPO, check_update, find_releases_dir, github_latest,
@@ -540,6 +541,11 @@ class Handler(BaseHTTPRequestHandler):
                         pos = max([i for i, t in enumerate(todos) if t.get("col") == col], default=-1) + 1
                         todos.insert(pos, item)
                 elif action == "delete":
+                    # o que já estava concluido fica arquivado: sai do quadro,
+                    # mas continua a contar no relatório do período
+                    for t in todos:
+                        if t.get("id") == payload.get("id"):
+                            archive_done_todo(t)
                     todos = [t for t in todos if t.get("id") != payload.get("id")]
                     log_event(f"{ip} TODO apagado: {payload.get('id')}")
                 elif action == "move":

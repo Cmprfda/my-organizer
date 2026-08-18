@@ -29,6 +29,7 @@ nesse caso a resposta cai no motor local com um aviso.
 import json
 import os
 import re
+from datetime import datetime
 
 from .config import HERE
 from .report import build_report
@@ -68,7 +69,7 @@ LBL = {
                   "- `ccrs` · `ccrs prontas a fechar`\n"
                   "- `o que tenho por fazer` · `em curso`\n"
                   "- `notas sobre <texto>`\n"
-                  "- `relatório da semana` · `resumo`\n"
+                  "- `relatório da semana` · `o meu dia` · `resumo`\n"
                   "- qualquer outro texto procura em tudo o que está aberto",
                   "**Questions**\n"
                   "- `my tasks` · `tasks in progress` · `unfinished tasks`\n"
@@ -459,6 +460,16 @@ def _do_report(_m, _ctx, lang):
     return _reply(data.get("markdown") or _lbl("report_fail", lang))
 
 
+def _do_report_day(_m, _ctx, lang):
+    """O mesmo relatório, mas só de hoje — o que o botão "O meu dia" mostra."""
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    try:
+        data = build_report(since=hoje, until=hoje, lang=lang)
+    except Exception:
+        return _reply(_lbl("report_fail", lang))
+    return _reply(data.get("markdown") or _lbl("report_fail", lang))
+
+
 # filtros de estado reconhecidos no texto: (padrão, classe). Os rótulos de cada
 # classe estão em _STATE_LABELS, que é o que `_describe` usa para responder.
 _STATE_FILTERS = [
@@ -802,6 +813,8 @@ INTENTS = [
                   r"acaba|acabar|mark|complete|finish|close)\b", _do_todo_done),
     ("status_set", r"\b(?:estado|status)\b.*\b(?:para|como|to|=|->|passa a|fica)\b", _do_status_set),
     ("note_add", r"^\s*(?:nota|note|anota|anotar|apontamento)\b.*[:\-–]", _do_note_add),
+    ("report_day", r"\b(?:o meu dia|my day|relatorio do dia|resumo do dia|"
+                   r"day report|daily report)\b", _do_report_day),
     ("report", r"\b(?:relatorio|report|a minha semana|my week|resumo da semana)\b", _do_report),
     ("summary", r"\b(?:resumo|panorama|situacao|estado geral|overview|summary|"
                 r"como (?:esta|estamos))\b", _do_summary),

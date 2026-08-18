@@ -383,3 +383,43 @@ def load_todo():
 def save_todo(data):
     with open(TODO_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
+
+
+# Itens concluídos que foram apagados do quadro. Apagar um item do quadro é
+# arrumar a lista, não desfazer o trabalho: sem este arquivo o relatório perdia
+# o que já tinha sido feito no período (o relatório lê o todo.json, e o item
+# deixara de lá estar). Guarda-se só o que o relatório usa.
+DONE_ARCHIVE_FILE = os.path.join(HERE, "todo_done_archive.json")
+DONE_ARCHIVE_MAX = 500
+
+
+def load_done_archive():
+    """Concluídos já apagados do quadro (lista; [] quando não há arquivo)."""
+    try:
+        with open(DONE_ARCHIVE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
+
+def archive_done_todo(item):
+    """Guarda um item concluído antes de ele sair do quadro.
+
+    Só os concluídos com data de fecho: sem `done_at` o relatório não saberia
+    a que período o item pertence e não o mostraria de qualquer maneira.
+    """
+    if not isinstance(item, dict) or not item.get("done") or not item.get("done_at"):
+        return
+    entrada = {"id": str(item.get("id") or ""),
+               "title": str(item.get("title") or ""),
+               "kind": str(item.get("kind") or "manual"),
+               "elapsed_ms": _int_or_zero(item.get("elapsed_ms")),
+               "done_at": str(item.get("done_at") or ""),
+               "done": True,
+               "jiraLoggedSeconds": _int_or_zero(item.get("jiraLoggedSeconds")),
+               "jiraIssues": [j for j in (item.get("jiraIssues") or []) if isinstance(j, dict)]}
+    arquivo = [x for x in load_done_archive() if x.get("id") != entrada["id"]]
+    arquivo.append(entrada)
+    with open(DONE_ARCHIVE_FILE, "w", encoding="utf-8") as f:
+        json.dump(arquivo[-DONE_ARCHIVE_MAX:], f, ensure_ascii=False, indent=1)

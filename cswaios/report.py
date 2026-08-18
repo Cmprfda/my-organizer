@@ -11,13 +11,15 @@ se copia para o chat/e-mail.
 from datetime import datetime, timedelta
 
 from .history import iso_day, recent_events
-from .todos import load_todo
+from .todos import load_done_archive, load_todo
 
 # rótulos do relatório (o resto da app usa i18n.msg, mas aqui são muitos e só
 # servem para este ficheiro)
 LBL = {
     "title": ("A minha semana", "My week"),
+    "title_day": ("O meu dia", "My day"),
     "period": ("de {a} a {b}", "{a} to {b}"),
+    "period_day": ("{a}", "{a}"),
     "app_changes": ("Alterações que levei à folha", "Changes I pushed to the sheet"),
     "todo_done": ("Por fazer concluído", "TODO completed"),
     "todo_doing": ("Ainda em curso", "Still in progress"),
@@ -98,7 +100,12 @@ def build_report(days=7, lang="pt", since="", until=""):
     app_changes = [e for e in events if e.get("via") == "app"]
     team_changes = [e for e in events if e.get("via") != "app"]
 
+    # os concluídos que entretanto foram apagados do quadro contam na mesma:
+    # apagar o item arruma a lista, não desfaz o trabalho do período
     todos = load_todo()
+    vivos = {str(t.get("id")) for t in todos if isinstance(t, dict)}
+    todos = todos + [a for a in load_done_archive()
+                     if str(a.get("id")) not in vivos]
     done, doing = [], []
     for item in todos:
         if not isinstance(item, dict):
@@ -145,7 +152,12 @@ def build_report(days=7, lang="pt", since="", until=""):
 def _markdown(data, lang):
     since = _fmt_ts(data["since"])
     until = _fmt_ts(data["until"])
-    out = [f"# {_lbl('title', lang)} — {_lbl('period', lang, a=since, b=until)}", ""]
+    if data["days"] == 1:
+        # um dia só: "O meu dia — 18/08", em vez de repetir a mesma data duas vezes
+        dia = _fmt_ts(data["since"])[:5]
+        out = [f"# {_lbl('title_day', lang)} — {_lbl('period_day', lang, a=dia)}", ""]
+    else:
+        out = [f"# {_lbl('title', lang)} — {_lbl('period', lang, a=since, b=until)}", ""]
 
     out.append(f"## {_lbl('app_changes', lang)} ({len(data['app_changes'])})")
     if data["app_changes"]:

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cswaios import history, report, tasks
+from cswaios import history, report, tasks, todos
 from cswaios.excel import _RAW_CACHE
 
 LIVRO = "C:/qualquer/livro_de_teste.xlsx"
@@ -175,12 +175,15 @@ class TestRelatorio(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.real_hist = history.HISTORY_FILE
         self.real_todo = report.load_todo
+        self.real_arquivo = report.load_done_archive
         history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
         history._APP_WRITES.clear()
+        report.load_done_archive = lambda: []
 
     def tearDown(self):
         history.HISTORY_FILE = self.real_hist
         report.load_todo = self.real_todo
+        report.load_done_archive = self.real_arquivo
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_separa_o_que_eu_fiz_do_que_a_equipa_fez(self):
@@ -243,12 +246,15 @@ class TestPeriodoEscolhido(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.real_hist = history.HISTORY_FILE
         self.real_todo = report.load_todo
+        self.real_arquivo = report.load_done_archive
         history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
         report.load_todo = lambda: []
+        report.load_done_archive = lambda: []
 
     def tearDown(self):
         history.HISTORY_FILE = self.real_hist
         report.load_todo = self.real_todo
+        report.load_done_archive = self.real_arquivo
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def semear(self, *marcas):
@@ -305,6 +311,90 @@ class TestPeriodoEscolhido(unittest.TestCase):
         ]
         dados = report.build_report(since="2026-06-01", until="2026-06-30", lang="pt")
         self.assertEqual([x["title"] for x in dados["todo_done"]], ["Fechado no intervalo"])
+
+
+class TestConcluidosApagados(unittest.TestCase):
+    """Apagar um item concluído arruma o quadro; não apaga o trabalho do
+    relatório do período (feedback de 18/08/2026)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.real_hist = history.HISTORY_FILE
+        self.real_todo = report.load_todo
+        self.real_arq = todos.DONE_ARCHIVE_FILE
+        history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
+        todos.DONE_ARCHIVE_FILE = os.path.join(self.tmp, "todo_done_archive.json")
+        report.load_todo = lambda: []
+
+    def tearDown(self):
+        history.HISTORY_FILE = self.real_hist
+        report.load_todo = self.real_todo
+        todos.DONE_ARCHIVE_FILE = self.real_arq
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_o_concluido_apagado_continua_a_contar(self):
+        agora = datetime.now()
+        todos.archive_done_todo(
+            {"id": "a", "title": "Fechado e apagado", "done": True, "col": "done",
+             "elapsed_ms": 3600000, "jiraLoggedSeconds": 1800,
+             "jiraIssues": [{"key": "BSP-9", "summary": "x"}],
+             "done_at": (agora - timedelta(days=1)).isoformat()})
+        dados = report.build_report(days=7, lang="pt")
+        self.assertEqual([x["title"] for x in dados["todo_done"]], ["Fechado e apagado"])
+        self.assertEqual(dados["jira"], [{"key": "BSP-9", "seconds": 1800}])
+
+    def test_o_que_esta_no_quadro_nao_aparece_duas_vezes(self):
+        agora = datetime.now()
+        item = {"id": "a", "title": "Fechado", "done": True, "col": "done",
+                "elapsed_ms": 0, "jiraLoggedSeconds": 0,
+                "done_at": (agora - timedelta(days=1)).isoformat()}
+        todos.archive_done_todo(item)
+        report.load_todo = lambda: [dict(item)]
+        dados = report.build_report(days=7, lang="pt")
+        self.assertEqual(len(dados["todo_done"]), 1)
+
+    def test_por_fazer_e_sem_data_de_fecho_nao_se_arquivam(self):
+        todos.archive_done_todo({"id": "a", "title": "Por fazer", "done": False,
+                                 "col": "todo"})
+        todos.archive_done_todo({"id": "b", "title": "Sem data", "done": True,
+                                 "col": "done"})
+        self.assertEqual(todos.load_done_archive(), [])
+
+    def test_arquivo_ilegivel_nao_parte_o_relatorio(self):
+        with open(todos.DONE_ARCHIVE_FILE, "w", encoding="utf-8") as f:
+            f.write("{isto não é json")
+        self.assertEqual(todos.load_done_archive(), [])
+
+
+class TestRelatorioDeUmDia(unittest.TestCase):
+    """O botão "O meu dia" pede um período de um dia só — o título do relatório
+    acompanha (feedback de 18/08/2026)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.real_hist = history.HISTORY_FILE
+        self.real_todo = report.load_todo
+        self.real_arquivo = report.load_done_archive
+        history.HISTORY_FILE = os.path.join(self.tmp, "history.json")
+        report.load_todo = lambda: []
+        report.load_done_archive = lambda: []
+
+    def tearDown(self):
+        history.HISTORY_FILE = self.real_hist
+        report.load_todo = self.real_todo
+        report.load_done_archive = self.real_arquivo
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_titulo_do_dia_em_vez_do_da_semana(self):
+        dados = report.build_report(since="2026-06-10", until="2026-06-10", lang="pt")
+        self.assertEqual(dados["days"], 1)
+        self.assertTrue(dados["markdown"].startswith("# O meu dia — 10/06"))
+        em_ingles = report.build_report(since="2026-06-10", until="2026-06-10", lang="en")
+        self.assertTrue(em_ingles["markdown"].startswith("# My day — 10/06"))
+
+    def test_varios_dias_mantem_o_titulo_do_periodo(self):
+        dados = report.build_report(since="2026-06-10", until="2026-06-12", lang="pt")
+        self.assertTrue(dados["markdown"].startswith("# A minha semana"))
 
 
 if __name__ == "__main__":

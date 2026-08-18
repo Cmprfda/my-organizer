@@ -395,16 +395,20 @@ function renderMetrics() {
     metricCard(t("metric_todo"), metricBars(metricsTodoItems()));
 }
 
-// ---------- relatório da semana ----------
+// ---------- relatório do período e do dia ----------
 let weekReportText = "";
 
-async function openWeekReport() {
+// `dia` a true: o resumo de hoje, sem depender do período escolhido na vista —
+// é o botão "O meu dia", para o ponto de situação do fim do dia
+async function openWeekReport(dia) {
   $("reportOverlay").classList.remove("hidden");
+  $("reportTitle").textContent = t(dia ? "report_title_day" : "report_title");
   $("reportBody").textContent = t("loading");
   weekReportText = "";
   try {
     // o relatório segue o período escolhido na vista, seja janela ou datas
-    const r = metricsRange();
+    const hoje = metricsIsoDay(new Date());
+    const r = dia ? { from: hoje, to: hoje, days: 1 } : metricsRange();
     const res = await fetch(`/api/report/week?since=${r.from}&until=${r.to}` +
       `&days=${r.days}&lang=${LANG}`);
     const out = await res.json();
@@ -454,12 +458,18 @@ function applyInsightsLang() {
   $("metricsFromInput").title = t("t_metric_from");
   $("metricsToInput").title = t("t_metric_to");
   $("metricsReportBtn").textContent = t("btn_week_report");
+  $("metricsDayReportBtn").textContent = t("btn_day_report");
+  $("metricsDayReportBtn").title = t("t_day_report");
   $("metricsView").setAttribute("aria-label", t("tab_metrics"));
   document.querySelector('label[for="staleSel"]').textContent = t("stale_title");
   $("staleSel").title = t("t_stale_sel");
   [...$("staleSel").options].forEach(o => { o.textContent = tf("opt_days", o.value); });
   $("staleSel").value = String(staleDays());
-  $("reportTitle").textContent = t("report_title");
+  // o título é o do relatório aberto (dia ou período); só se repõe com a
+  // janela fechada, para uma troca de língua não trocar o título à frente
+  if ($("reportOverlay").classList.contains("hidden")) {
+    $("reportTitle").textContent = t("report_title");
+  }
   $("reportCopy").textContent = t("btn_copy");
   $("reportClose").title = t("t_close");
   $("reportOverlay").setAttribute("aria-label", t("report_title"));
@@ -521,7 +531,8 @@ $("metricsBody").addEventListener("click", e => {
   if (col) { metricsShowDay(col.dataset.day); return; }
   if (e.target.closest(".metricDayBack")) metricsBackToPeriod();
 });
-$("metricsReportBtn").addEventListener("click", openWeekReport);
+$("metricsReportBtn").addEventListener("click", () => openWeekReport(false));
+$("metricsDayReportBtn").addEventListener("click", () => openWeekReport(true));
 $("reportClose").addEventListener("click", closeWeekReport);
 $("reportCopy").addEventListener("click", copyWeekReport);
 $("reportOverlay").addEventListener("click", e => {
