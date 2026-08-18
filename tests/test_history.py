@@ -394,7 +394,7 @@ class TestRelatorioDeUmDia(unittest.TestCase):
 
     def test_varios_dias_mantem_o_titulo_do_periodo(self):
         dados = report.build_report(since="2026-06-10", until="2026-06-12", lang="pt")
-        self.assertTrue(dados["markdown"].startswith("# A minha semana"))
+        self.assertTrue(dados["markdown"].startswith("# O meu período"))
 
 
 if __name__ == "__main__":

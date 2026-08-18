@@ -62,10 +62,10 @@
   (*datas à escolha*, up to 92 days), or a single day. Clicking a column of the
   daily chart opens that day: every change of every workbook, with the time, the
   task, the column and the before → after — and a button back to the period.
-- **My week** (button in Metrics): a report of what you did — statuses you
-  pushed to the sheet, TODO items closed, time counted, effort logged in Jira,
-  plus how much the team changed the sheet outside the app. Copies as markdown,
-  ready to paste into a meeting or a chat.
+- **My period** (button in Metrics): a report of what you did in the period
+  chosen alongside — statuses you pushed to the sheet, TODO items closed, time
+  counted, effort logged in Jira, plus how much the team changed the sheet
+  outside the app. Copies as markdown, ready to paste into a meeting or a chat.
 - **Search everything** (**Ctrl+K**): one box across the rows of every open
   workbook, CCRs, TODO items, board notes (title and box text), linked Jira
   issues, and app actions. ↑/↓ to move, Enter to jump there, Esc to close.

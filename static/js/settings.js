@@ -644,4 +644,9 @@ $("notifyDesktopChk").addEventListener("change", async e => {
 });
 $("notifyHookSaveBtn").addEventListener("click", saveNotifyHook);
 $("notifyHookTestBtn").addEventListener("click", testNotifyHook);
-loadNotifySettings();
+// notify.js carrega depois deste ficheiro (ver index.html) e é lá que vive
+// desktopNotifyOn(): a primeira leitura espera pelo fim do carregamento, senão
+// o pedido ao servidor pode voltar antes disso e o render rebenta
+if (document.readyState === "loading")
+  window.addEventListener("DOMContentLoaded", loadNotifySettings);
+else loadNotifySettings();

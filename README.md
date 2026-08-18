@@ -95,7 +95,7 @@ table.
   *In progress*, a one-click prompt offers to log it.
 - **Metrics** tab — changes per day, tasks stale the longest, work by status,
   load per person, time counted vs. logged in Jira, TODO per column.
-- **My week** — a copy-ready markdown report of what you did in the period
+- **My period** — a copy-ready markdown report of what you did in the period
   (button in the Metrics tab).
 - **Search everything (Ctrl+K)** — one box across all open workbooks, CCRs,
   TODO, board notes, linked Jira issues and app actions.

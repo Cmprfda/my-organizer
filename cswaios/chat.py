@@ -815,7 +815,8 @@ INTENTS = [
     ("note_add", r"^\s*(?:nota|note|anota|anotar|apontamento)\b.*[:\-–]", _do_note_add),
     ("report_day", r"\b(?:o meu dia|my day|relatorio do dia|resumo do dia|"
                    r"day report|daily report)\b", _do_report_day),
-    ("report", r"\b(?:relatorio|report|a minha semana|my week|resumo da semana)\b", _do_report),
+    ("report", r"\b(?:relatorio|report|o meu periodo|my period|resumo do periodo|"
+               r"a minha semana|my week|resumo da semana)\b", _do_report),
     ("summary", r"\b(?:resumo|panorama|situacao|estado geral|overview|summary|"
                 r"como (?:esta|estamos))\b", _do_summary),
     ("stale", r"\b(?:parad[ao]s?|stale|sem mexer|stuck|esquecid[ao]s?)\b", _do_stale),

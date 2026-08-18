@@ -578,6 +578,7 @@ function applyInsightsLang() {
   $("metricsFromInput").title = t("t_metric_from");
   $("metricsToInput").title = t("t_metric_to");
   $("metricsReportBtn").textContent = t("btn_week_report");
+  $("metricsReportBtn").title = t("t_week_report");
   $("metricsDayReportBtn").textContent = t("btn_day_report");
   $("metricsDayReportBtn").title = t("t_day_report");
   $("metricsView").setAttribute("aria-label", t("tab_metrics"));

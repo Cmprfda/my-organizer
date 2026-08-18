@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Relatório "a minha semana": o que se fez, pronto a colar numa reunião.
+"""Relatório "o meu período": o que se fez, pronto a colar numa reunião.
 
 Junta o que a app já sabe, sem pedir nada ao utilizador: as alterações que
 levou à folha (histórico, cswaios/history.py), o que fechou na lista Por fazer,
@@ -16,7 +16,7 @@ from .todos import load_done_archive, load_todo, timer_ms_in_period
 # rótulos do relatório (o resto da app usa i18n.msg, mas aqui são muitos e só
 # servem para este ficheiro)
 LBL = {
-    "title": ("A minha semana", "My week"),
+    "title": ("O meu período", "My period"),
     "title_day": ("O meu dia", "My day"),
     "period": ("de {a} a {b}", "{a} to {b}"),
     "period_day": ("{a}", "{a}"),
@@ -24,8 +24,8 @@ LBL = {
     "todo_done": ("Por fazer concluído", "TODO completed"),
     "todo_doing": ("Ainda em curso", "Still in progress"),
     "jira": ("Esforço registado no Jira", "Effort logged in Jira"),
-    "jira_total": ("(total acumulado por tarefa, não só desta semana)",
-                   "(running total per task, not just this week)"),
+    "jira_total": ("(total acumulado por tarefa, não só deste período)",
+                   "(running total per task, not just this period)"),
     "team": ("Atividade na folha fora desta app", "Sheet activity outside this app"),
     "timesheet": ("Tempo contado, dia a dia", "Time counted, day by day"),
     "timesheet_total": ("Total do período: {t}", "Period total: {t}"),
