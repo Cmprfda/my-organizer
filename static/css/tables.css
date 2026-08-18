@@ -518,3 +518,57 @@ td.role.unassigned,
   color: var(--muted);
   opacity: .75;
 }
+/* ---------- "a espera de alguem" (ver static/js/waiting.js) ---------- */
+/* mesmo tamanho e forma do ⏳ das paradas, ao lado do nome da tarefa */
+.waitChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+
+/* prazo passado (ou sem prazo): e o que ha a cobrar */
+.waitChip.chase {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+}
+
+.waitBox {
+  display: block;
+}
+
+.waitFields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.waitWho {
+  flex: 1 1 160px;
+  min-width: 120px;
+}
+
+.waitWho,
+.waitUntil {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.waitNote {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}

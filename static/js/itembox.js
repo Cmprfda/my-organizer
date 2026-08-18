@@ -189,6 +189,9 @@ function withTaskHistory(tr, fields) {
   const meta = currentMeta[[...tr.parentNode.children].indexOf(tr)];
   const node = meta ? taskHistoryNode(meta) : null;
   if (node) fields.push({ label: t("ibox_history"), node, wide: true });
+  // "à espera de alguém": também não vem de nenhuma célula da folha — é uma
+  // marca nossa sobre a linha (ver waiting.js)
+  if (meta) fields.push({ label: t("ibox_waiting"), node: waitingNode(meta), wide: true });
   return fields;
 }
 

@@ -47,6 +47,29 @@ def save_notes(data):
         json.dump(data, f, ensure_ascii=False, indent=1)
 
 
+# "À espera de alguém" por tarefa: quem está a segurar a linha, desde quando e
+# até quando é razoável esperar. Serve para distinguir uma tarefa que ninguém
+# mexeu porque foi esquecida de uma que ninguém mexeu porque está à espera de
+# resposta de outra pessoa — a primeira é um esquecimento, a segunda é trabalho
+# a decorrer (ver taskIsStale, static/js/history.js).
+# Chave igual à dos overrides/notas (livro||aba||função||to do).
+WAITING_FILE = os.path.join(HERE, "waiting.json")
+
+
+def load_waiting():
+    try:
+        with open(WAITING_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_waiting(data):
+    with open(WAITING_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+
+
 # CCRs acompanhadas na vista "CCRs": por ID, com os passos de fecho.
 # Partilhadas entre dispositivos porque vivem aqui no servidor.
 CCRS_FILE = os.path.join(HERE, "ccrs.json")

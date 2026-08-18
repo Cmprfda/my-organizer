@@ -330,3 +330,62 @@ body.split #paneSide:has(.noteCanvas) .noteCanvas {
     width: 40vw;
   }
 }
+/* ---------- estado em massa (ver openBulkStatus, static/js/tasks.js) ---------- */
+.bulkCard {
+  width: min(560px, 94vw);
+}
+
+.bulkBody .controls {
+  margin: 8px 0;
+}
+
+.bulkHint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.bulkCount {
+  margin: 10px 0 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.bulkList {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.bulkList li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  padding: 4px 2px;
+  border-top: 1px solid var(--border);
+}
+
+.bulkList li:first-child {
+  border-top: 0;
+}
+
+.bulkName {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulkFrom,
+.bulkMore {
+  color: var(--muted);
+}
+
+.bulkBody .btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

@@ -21,7 +21,7 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
-APP_VERSION = "131"  # semantic versioning (X.Y.Z): incrementado a cada release
+APP_VERSION = "132"  # semantic versioning (X.Y.Z): incrementado a cada release
 # nota: a release publicada como "v108" (ponte para desbloquear quem ficou preso
 # na v107 — ver cswaios/updates.py: _parse_version) tem exatamente este conteúdo;
 # o próximo bump parte daqui, não de "108", senão o make_release.py voltava a

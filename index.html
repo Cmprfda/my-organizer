@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="/static/css/copymenu.css">
   <link rel="stylesheet" href="/static/css/insights.css">
   <link rel="stylesheet" href="/static/css/chat.css">
+  <link rel="stylesheet" href="/static/css/today.css">
   <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 
@@ -47,6 +48,8 @@
       <button type="button" id="connBadge" class="connBadge" title="Fonte dos dados">
         <span class="connDot" id="connDot"></span><span id="connText">…</span>
       </button>
+      <button id="todayBtn" type="button" title="Hoje" aria-label="Hoje"
+        aria-expanded="false">&#9728;</button>
       <button id="chatBtn" type="button" title="Assistente" aria-label="Assistente"
         aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M12 2.6l1.7 4.6 4.6 1.7-4.6 1.7L12 15.2l-1.7-4.6-4.6-1.7 4.6-1.7z"/>
@@ -116,6 +119,8 @@
                 <button class="secondary hidden" id="compoundCatBtn"></button>
                 <button class="secondary hidden" id="viewToggle">Vista completa</button>
                 <button class="secondary" id="toggleAll">Ver tudo</button>
+                <button class="secondary hidden" id="bulkStatusBtn"
+                  title="Mudar o estado de todas as tarefas à vista de uma vez">&#8649; Estado em massa</button>
                 <button class="secondary hidden" id="clearLocals"
                   title="Descarta todas as alterações de estado locais (✎) sem as enviar para o Excel">Descartar
                   locais</button>
@@ -328,6 +333,8 @@
                 </div>
               </div>
               <div class="btns">
+                <button type="button" id="metricsExportBtn" class="secondary"
+                  title="Guardar este período num ficheiro">&#10515; Exportar</button>
                 <button type="button" id="metricsDayReportBtn" class="secondary">O meu dia</button>
                 <button type="button" id="metricsReportBtn">A minha semana</button>
               </div>
@@ -469,6 +476,26 @@
                 <input type="password" id="jiraToken" placeholder="Personal Access Token">
                 <button type="button" class="mini" id="jiraSaveBtn">Gravar</button>
                 <span id="jiraState"></span>
+              </div>
+            </section>
+
+            <section class="setCard">
+              <h2 class="setCardTitle" id="setSecNotify">Avisos</h2>
+              <div class="setNote">
+                <span class="setNoteLbl" id="notifyDesktopLbl">Avisos do sistema</span>
+                <label class="setCheck"><input type="checkbox" id="notifyDesktopChk">
+                  <span id="notifyDesktopHint">Mostra o aviso ao lado do rel&oacute;gio quando a
+                    janela da app est&aacute; em segundo plano.</span></label>
+              </div>
+              <div class="setNote" id="notifyHookBox">
+                <span class="setNoteLbl" id="notifyHookLbl">Webhook (Teams/Slack)</span>
+                <input type="url" id="notifyHookUrl" placeholder="https://….webhook.office.com/…">
+                <div class="setRow setRowUpdate">
+                  <button type="button" class="mini" id="notifyHookSaveBtn">Gravar</button>
+                  <button type="button" class="mini" id="notifyHookTestBtn">Testar</button>
+                </div>
+                <span id="notifyHookHint" class="setHint"></span>
+                <span id="notifyHookState"></span>
               </div>
             </section>
 
@@ -672,7 +699,17 @@
         <input type="text" class="viewMapSearch" id="customFilterSearch">
         <div class="viewMapRows" id="customFilterRows"></div>
         <div class="viewMapActions">
+          <button type="button" class="secondary" id="customFilterCopy"></button>
+          <button type="button" class="secondary" id="customFilterPasteBtn"></button>
           <button type="button" id="customFilterSave"></button>
+        </div>
+        <div class="hidden" id="customFilterPasteBox">
+          <p class="setHint" id="customFilterPasteHint"></p>
+          <textarea id="customFilterPasteText" rows="4"></textarea>
+          <div class="viewMapActions">
+            <button type="button" class="secondary" id="customFilterPasteCancel"></button>
+            <button type="button" id="customFilterPasteOk"></button>
+          </div>
         </div>
       </div>
     </div>
@@ -700,9 +737,79 @@
       <div class="helpHead">
         <strong id="reportTitle">A minha semana</strong>
         <button type="button" class="mini" id="reportCopy">Copiar</button>
+        <button type="button" class="mini" id="reportSave" title="Guardar num ficheiro .md">&#10515; Guardar</button>
         <button type="button" class="ccr-x" id="reportClose" title="Fechar">✕</button>
       </div>
       <pre id="reportBody" class="reportBody"></pre>
+    </div>
+  </div>
+
+  <div id="bulkOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Estado em massa">
+    <div class="helpCard bulkCard">
+      <div class="helpHead">
+        <strong id="bulkTitle">Estado em massa</strong>
+        <button type="button" class="ccr-x" id="bulkClose" title="Fechar">&#10005;</button>
+      </div>
+      <div class="bulkBody">
+        <p class="bulkHint" id="bulkHint"></p>
+        <div class="controls">
+          <div class="field">
+            <label for="bulkColSel">Coluna</label>
+            <select id="bulkColSel"></select>
+          </div>
+          <div class="field grow">
+            <label for="bulkStatusSel">Novo estado</label>
+            <select id="bulkStatusSel"></select>
+          </div>
+        </div>
+        <p class="bulkCount" id="bulkCount"></p>
+        <ul class="bulkList" id="bulkList"></ul>
+        <div class="btns">
+          <button type="button" class="secondary" id="bulkCancel">Cancelar</button>
+          <button type="button" id="bulkApply">Aplicar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="jiraNewOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="Criar issue no Jira">
+    <div class="helpCard jiraLogCard">
+      <div class="helpHead">
+        <strong id="jiraNewTitle">Criar issue no Jira</strong>
+        <button type="button" class="ccr-x" id="jiraNewClose" title="Fechar">&#10005;</button>
+      </div>
+      <div id="jiraNewBody">
+        <div class="field">
+          <label for="jiraNewProject">Projeto</label>
+          <select id="jiraNewProject"></select>
+        </div>
+        <div class="field">
+          <label for="jiraNewType">Tipo</label>
+          <select id="jiraNewType"></select>
+        </div>
+        <div class="field">
+          <label for="jiraNewSummary">Resumo</label>
+          <input type="text" id="jiraNewSummary" maxlength="250">
+        </div>
+        <div class="field">
+          <label for="jiraNewDesc">Descri&ccedil;&atilde;o</label>
+          <textarea id="jiraNewDesc" rows="3" placeholder="Opcional"></textarea>
+        </div>
+        <div class="jiraLogMsg err hidden" id="jiraNewError"></div>
+        <button type="button" id="jiraNewSubmit">Criar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="todayOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Hoje">
+    <div class="helpCard todayCard">
+      <div class="helpHead">
+        <strong id="todayTitle">Hoje</strong>
+        <button type="button" class="ccr-x" id="todayClose" title="Fechar">&#10005;</button>
+      </div>
+      <div id="todayBody" class="todayBody"></div>
     </div>
   </div>
 
@@ -769,6 +876,7 @@
   <script src="/static/js/bugs.js"></script>
   <script src="/static/js/utils.js"></script>
   <script src="/static/js/history.js"></script>
+  <script src="/static/js/waiting.js"></script>
   <script src="/static/js/tasks.js"></script>
   <script src="/static/js/ccrs.js"></script>
   <script src="/static/js/views.js"></script>
@@ -789,6 +897,7 @@
   <script src="/static/js/metrics.js"></script>
   <script src="/static/js/search.js"></script>
   <script src="/static/js/chat.js"></script>
+  <script src="/static/js/today.js"></script>
   <script src="/static/js/announce.js"></script>
   <script src="/static/js/main.js"></script>
 </body>

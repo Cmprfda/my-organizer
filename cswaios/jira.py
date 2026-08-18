@@ -234,3 +234,100 @@ def log_work(key, time_spent, started, comment=None):
     result = _request(f"/rest/api/2/issue/{key}/worklog", method="POST", body=body)
     result = result or {}
     return {"id": result.get("id"), "timeSpentSeconds": int(result.get("timeSpentSeconds") or 0)}
+
+
+def issue_status(key):
+    """Estado atual da issue: {key, status, statusCategory, assignee}.
+
+    Serve o cartão do item, que mostra em que pé está a issue sem obrigar a ir
+    ao Jira. `statusCategory` é a gaveta a que o Jira o atribui ("new",
+    "indeterminate", "done") — é o que dá a cor, porque os NOMES dos estados
+    mudam de projeto para projeto.
+    """
+    key = issue_key(key)
+    body = _request(f"/rest/api/2/issue/{key}?fields=status,assignee,summary") or {}
+    fields = body.get("fields") or {}
+    status = fields.get("status") or {}
+    categoria = (status.get("statusCategory") or {}).get("key") or ""
+    atribuido = fields.get("assignee") or {}
+    return {"key": body.get("key") or key,
+            "summary": fields.get("summary") or "",
+            "status": status.get("name") or "",
+            "statusCategory": categoria,
+            "assignee": atribuido.get("displayName") or ""}
+
+
+def issue_transitions(key):
+    """Passos disponíveis a partir do estado atual: [{id, name, to}].
+
+    O Jira só deixa passar pelos caminhos definidos no fluxo do projeto, e são
+    diferentes em cada um — por isso a lista é pedida em vez de adivinhada.
+    """
+    key = issue_key(key)
+    body = _request(f"/rest/api/2/issue/{key}/transitions") or {}
+    out = []
+    for tr in (body.get("transitions") or []):
+        tid = str(tr.get("id") or "")
+        if not tid:
+            continue
+        out.append({"id": tid, "name": tr.get("name") or "",
+                    "to": ((tr.get("to") or {}).get("name") or "")})
+    return out
+
+
+def transition_issue(key, transition_id):
+    """Faz a issue avançar por um dos passos de issue_transitions.
+
+    Devolve o estado em que ela ficou (relido do Jira, não adivinhado a partir
+    do passo: uma transição pode ter pós-funções que a levem mais longe).
+    """
+    key = issue_key(key)
+    transition_id = str(transition_id or "").strip()
+    if not transition_id.isdigit():
+        raise ValueError("passo inválido")
+    _request(f"/rest/api/2/issue/{key}/transitions", method="POST",
+             body={"transition": {"id": transition_id}})
+    return issue_status(key)
+
+
+def list_projects(limit=50):
+    """Projetos onde se pode criar issues: [{key, name}]."""
+    body = _request("/rest/api/2/issue/createmeta?expand=projects.issuetypes") or {}
+    out = []
+    for proj in (body.get("projects") or [])[:max(1, int(limit or 50))]:
+        chave = str(proj.get("key") or "")
+        if not chave:
+            continue
+        tipos = [{"id": str(t.get("id") or ""), "name": t.get("name") or "",
+                  "subtask": bool(t.get("subtask"))}
+                 for t in (proj.get("issuetypes") or []) if t.get("id")]
+        out.append({"key": chave, "name": proj.get("name") or chave,
+                    "types": [t for t in tipos if not t["subtask"]]})
+    return out
+
+
+def create_issue(project, summary, issue_type="Task", description=""):
+    """Cria uma issue e devolve {key, summary} — o mesmo formato do fetch_issue,
+    para o item do quadro a poder ligar sem mais nada.
+
+    O tipo vai por nome ("Task", "Bug"): é o que o utilizador escolhe da lista
+    que o list_projects trouxe, e o Jira aceita nome ou id.
+    """
+    project = str(project or "").strip().upper()
+    summary = str(summary or "").strip()[:250]
+    issue_type = str(issue_type or "Task").strip() or "Task"
+    if not project:
+        raise ValueError("projeto por indicar")
+    if not summary:
+        raise ValueError("resumo por escrever")
+    campos = {"project": {"key": project},
+              "summary": summary,
+              "issuetype": {"name": issue_type}}
+    descricao = str(description or "").strip()
+    if descricao:
+        campos["description"] = descricao[:4000]
+    body = _request("/rest/api/2/issue", method="POST", body={"fields": campos}) or {}
+    chave = body.get("key")
+    if not chave:
+        raise ValueError("o Jira não devolveu a chave da issue criada")
+    return {"key": chave, "summary": summary}

@@ -23,31 +23,41 @@ from .config import APP_VERSION, DOWNLOAD_URL, HERE, SHARE_URL, lan_ip
 from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, flush_pending,
                        github_issue_url, report_bug, stage_feedback_folder)
-from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
-                    graph_logout, graph_pick, graph_state, graph_state_public,
+from .graph import (GraphError, ensure_graph_config, graph_browse, graph_ids_from_path,
+                    graph_login_start, graph_logout, graph_pick, graph_state,
+                    graph_state_public, graph_versions, is_graph_path,
                     save_login_email, save_onedrive_root)
 from .history import recent_events, sheet_history
-from .jira import (fetch_issue, load_jira_config, log_work, save_jira_config,
-                   search_issues)
+from .jira import (create_issue, fetch_issue, issue_status, issue_transitions,
+                   list_projects, load_jira_config, log_work, save_jira_config,
+                   search_issues, transition_issue)
 from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
+from .notify import load_notify_config, save_notify_config, send_webhook
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
 from .report import build_report
 from .store import (load_announcement, load_ccrs, load_notes, load_overrides,
-                    save_announcement, save_ccrs, save_notes, save_overrides)
+                    load_waiting, save_announcement, save_ccrs, save_notes,
+                    save_overrides, save_waiting)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
                     forget_web_cache, known_headers, pending_overrides_summary,
                     push_overrides, queue_cellcat_override)
-from .todos import (TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
-                    archive_done_todo, load_todo, normalize_ref,
-                    normalize_todo_item, save_todo, sort_todos_by_priority,
+from .todos import (DUE_RE, TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
+                    TODO_REPEATS, archive_done_todo, load_todo, normalize_due,
+                    normalize_ref, normalize_repeat, normalize_todo_item,
+                    save_todo, sort_todos_by_priority, spawn_repeat,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
                     todo_link_target, todo_sources)
+from .export import EXPORT_DIR, write_export
 from .updates import (GITHUB_REPO, check_update, find_releases_dir, github_latest,
                       read_changelog)
 from . import cli
 
 STATIC_ROOT = os.path.join(HERE, "static")
+# linhas que um "estado em massa" pode mexer de uma vez. Não é uma limitação
+# técnica: é para uma vista mal filtrada não encher a folha de ✎ sem se dar por
+# isso (ver /api/update/bulk).
+BULK_MAX = 200
 _SERVER = None          # ThreadingHTTPServer em uso (preciso para o reinicio)
 # janelas nativas abertas pelo ⧉, por endereço (ver open_extra_window)
 _EXTRA_WINDOWS = {}
@@ -266,6 +276,45 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(fetch_issue(key)), "application/json")
             except Exception as exc:
                 self._send(400, json.dumps({"error": str(exc)}), "application/json")
+        elif re.match(r"^/api/jira/issue/[^/]+/state$", parsed.path):
+            # em que pé está a issue e por onde pode seguir (ver jiraStateHtml,
+            # static/js/jira.js). Os passos vêm do fluxo do projeto, que é
+            # diferente em cada um — daí serem pedidos e não adivinhados
+            key = parsed.path.split("/")[4]
+            try:
+                estado = issue_status(key)
+                estado["transitions"] = issue_transitions(key)
+                self._send(200, json.dumps(estado), "application/json")
+            except Exception as exc:
+                self._send(400, json.dumps({"error": str(exc)}), "application/json")
+        elif parsed.path == "/api/notify/config":
+            cfg = load_notify_config()
+            # o endereço de um webhook é um segredo (quem o tiver escreve no
+            # canal): só o próprio computador o vê, como o token do Jira
+            self._send(200, json.dumps({"enabled": cfg["enabled"],
+                                        "url": cfg["url"] if _is_local(ip) else "",
+                                        "canEdit": _is_local(ip)}),
+                       "application/json")
+        elif parsed.path == "/api/history/authors":
+            # quem gravou o livro e quando (ver graph_versions): o histórico
+            # sabe o que mudou e a que horas, mas a folha não diz por quem —
+            # cruzando as horas com as gravações do OneDrive, fica-se a saber
+            # de quem foi a gravação que trouxe cada alteração. Só a fonte web
+            # tem versões; um ficheiro local devolve lista vazia.
+            q = parse_qs(parsed.query)
+            livro = (q.get("file") or [""])[0]
+            try:
+                drive_id, item_id = graph_ids_from_path(livro) if is_graph_path(livro) else ("", "")
+                versoes = graph_versions(drive_id, item_id) if drive_id and item_id else []
+                self._send(200, json.dumps({"versions": versoes}), "application/json")
+            except Exception as exc:
+                self._send(200, json.dumps({"versions": [], "error": str(exc)}),
+                           "application/json")
+        elif parsed.path == "/api/jira/projects":
+            try:
+                self._send(200, json.dumps({"projects": list_projects()}), "application/json")
+            except Exception as exc:
+                self._send(400, json.dumps({"error": str(exc)}), "application/json")
         elif parsed.path == "/logs":
             try:
                 with open(LOG_FILE, encoding="utf-8") as f:
@@ -463,6 +512,8 @@ class Handler(BaseHTTPRequestHandler):
                     if priority not in TODO_PRIORITIES:
                         priority = TODO_PRIORITY_DEFAULT
                     detail = str(payload.get("detail") or "").strip()[:300]
+                    due = normalize_due(payload.get("due"))
+                    repeat = normalize_repeat(payload.get("repeat"))
                     if existing is not None:
                         result = "exists"
                     elif legacy is not None:
@@ -490,6 +541,10 @@ class Handler(BaseHTTPRequestHandler):
                                 "created": datetime.now().strftime("%d/%m %H:%M")}
                         if ref:
                             item["ref"] = ref
+                        if due:
+                            item["due"] = due
+                        if repeat:
+                            item["repeat"] = repeat
                         todos.append(item)
                         result = "added"
                         log_event(f"{ip} TODO + [{kind}] {title[:60]!r}")
@@ -507,12 +562,14 @@ class Handler(BaseHTTPRequestHandler):
                                        if todo_identity(link.get("kind"), link.get("title"),
                                                         link.get("ref")) != ident]
                 elif action == "toggle":
-                    for t in todos:
+                    for t in list(todos):
                         if t.get("id") == payload.get("id"):
                             old_col = str(t.get("col") or "todo")
                             t["done"] = not t.get("done")
                             t["col"] = "done" if t["done"] else "todo"
                             sync_todo_timer_with_column(t, old_col, t["col"])
+                            if spawn_repeat(todos, t) is not None:
+                                result = "repeated"
                             log_event(f'{ip} TODO {"feito" if t["done"] else "reaberto"}: '
                                       f'{t.get("title", "?")[:60]!r}')
                 elif action == "set_col":
@@ -526,6 +583,8 @@ class Handler(BaseHTTPRequestHandler):
                     target["col"] = col
                     target["done"] = (col == "done")
                     sync_todo_timer_with_column(target, old_col, col)
+                    if spawn_repeat(todos, target) is not None:
+                        result = "repeated"
                 elif action == "set_priority":
                     target = next((t for t in todos if t.get("id") == payload.get("id")), None)
                     priority = str(payload.get("priority") or "").strip().lower()
@@ -558,6 +617,8 @@ class Handler(BaseHTTPRequestHandler):
                         # sem alvo explícito: entra no fim da coluna de destino
                         pos = max([i for i, t in enumerate(todos) if t.get("col") == col], default=-1) + 1
                         todos.insert(pos, item)
+                    if spawn_repeat(todos, item) is not None:
+                        result = "repeated"
                 elif action == "delete":
                     # o que já estava concluido fica arquivado: sai do quadro,
                     # mas continua a contar no relatório do período
@@ -587,6 +648,10 @@ class Handler(BaseHTTPRequestHandler):
                     if target is None:
                         raise ValueError("item TODO não encontrado")
                     target["elapsed_ms"] = 0
+                    # o registo diário é a repartição deste total: pôr o total a
+                    # zero e deixar lá os dias antigos dava uma folha de horas
+                    # com tempo que o item já não diz ter
+                    target.pop("segments", None)
                     if str(target.get("col") or "") == "inprogress":
                         target["timer_started"] = int(time.time() * 1000)
                     else:
@@ -599,6 +664,36 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("item TODO não encontrado")
                     target["detail"] = str(payload.get("detail") or "").strip()[:1000]
                     log_event(f'{ip} TODO nota: {str(target.get("title", "?"))[:60]!r}')
+                elif action == "set_due":
+                    # data-limite do item ("" tira-a)
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    raw_due = str(payload.get("due") or "").strip()
+                    due = normalize_due(raw_due)
+                    if raw_due and not due:
+                        raise ValueError("data inválida (usa AAAA-MM-DD)")
+                    if due:
+                        target["due"] = due
+                    else:
+                        target.pop("due", None)
+                    log_event(f'{ip} TODO data-limite {due or "(sem)"}: '
+                              f'{str(target.get("title", "?"))[:60]!r}')
+                elif action == "set_repeat":
+                    # repetição do item ("" deixa de repetir)
+                    target = next((t for t in todos if t.get("id") == payload.get("id")), None)
+                    if target is None:
+                        raise ValueError("item TODO não encontrado")
+                    raw_repeat = str(payload.get("repeat") or "").strip().lower()
+                    if raw_repeat not in TODO_REPEATS:
+                        raise ValueError("repetição inválida")
+                    repeat = normalize_repeat(raw_repeat)
+                    if repeat:
+                        target["repeat"] = repeat
+                    else:
+                        target.pop("repeat", None)
+                    log_event(f'{ip} TODO repetição {repeat or "(sem)"}: '
+                              f'{str(target.get("title", "?"))[:60]!r}')
                 elif action == "add_subtask":
                     # checklist leve dentro do item
                     target = next((t for t in todos if t.get("id") == payload.get("id")), None)
@@ -718,6 +813,105 @@ class Handler(BaseHTTPRequestHandler):
                 log_event(f"{ip} assistente FALHOU: {exc!r}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
+        if path == "/api/waiting":
+            # "à espera de alguém" numa linha (ver waiting.js): quem está a
+            # segurá-la e até quando é razoável esperar. Enquanto a espera
+            # durar, a linha não conta como parada — passado o prazo, volta a
+            # contar e aparece no botão "À espera", que é a lista de quem há a
+            # cobrar
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                livro = str(payload.get("file") or "")
+                sheet = str(payload.get("sheet") or "")
+                fn = str(payload.get("fn") or "")
+                todo = str(payload.get("todo") or "")
+                if not sheet or not fn:
+                    raise ValueError("linha não identificada")
+                waiting = load_waiting()
+                found_key, _ = _override_entry(waiting, livro, sheet, fn, todo)
+                key = _wb_key(livro, sheet, fn, todo)
+                waiting.pop(found_key, None)
+                quem = str(payload.get("who") or "").strip()[:80]
+                if quem:
+                    ate = str(payload.get("until") or "").strip()[:10]
+                    if ate and not DUE_RE.match(ate):
+                        raise ValueError("data inválida (usa AAAA-MM-DD)")
+                    entrada = {"who": quem,
+                               "since": str(payload.get("since") or "").strip()[:10]
+                               or datetime.now().strftime("%Y-%m-%d")}
+                    if ate:
+                        entrada["until"] = ate
+                    waiting[key] = entrada
+                    log_event(f"{ip} à espera de {quem!r} em {fn[:60]!r}"
+                              f'{" até " + ate if ate else ""}')
+                else:
+                    # sem nome é o mesmo que deixar de esperar
+                    waiting.pop(key, None)
+                    log_event(f"{ip} deixou de esperar em {fn[:60]!r}")
+                save_waiting(waiting)
+                self._send(200, json.dumps({"ok": True}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} /api/waiting FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/notify/config":
+            # o endereço do webhook só se escreve a partir deste PC (é ele que
+            # manda os avisos), tal como o token do Jira
+            if not _is_local(ip):
+                self._send(403, json.dumps({"ok": False, "error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                cfg = save_notify_config(payload.get("url"), payload.get("enabled", True))
+                log_event(f"{ip} webhook de avisos {'ligado' if cfg['enabled'] else 'desligado'}")
+                self._send(200, json.dumps({"ok": True, **cfg, "canEdit": True}),
+                           "application/json")
+            except Exception as exc:
+                log_event(f"{ip} configuração do webhook FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/notify":
+            # um aviso para fora (ver notify.js): sem webhook configurado não
+            # sai nada — a resposta diz "sent: false" e a app segue
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                enviado = send_webhook(payload.get("text"), payload.get("title"))
+                if enviado:
+                    log_event(f"{ip} aviso enviado para o webhook")
+                self._send(200, json.dumps({"ok": True, "sent": enviado}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} aviso para o webhook FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/export":
+            # levar o período à vista para um ficheiro (CSV/markdown). O
+            # ficheiro nasce no computador onde a app corre — quem chega pela
+            # rede local recebe o caminho, mas quem o abre é este PC
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                out = write_export(str(payload.get("kind") or ""),
+                                   since=str(payload.get("since") or ""),
+                                   until=str(payload.get("until") or ""),
+                                   days=int(payload.get("days") or 7),
+                                   lang=str(payload.get("lang") or "pt"))
+                # abrir a pasta é uma comodidade de quem está ao computador;
+                # pela rede não faria nada de útil (abriria aqui, não lá)
+                if _is_local(ip) and payload.get("reveal"):
+                    try:
+                        os.startfile(EXPORT_DIR)
+                    except OSError:
+                        pass
+                log_event(f"{ip} exportou {out['kind']}: {out['name']} ({out['rows']} linhas)")
+                self._send(200, json.dumps({"ok": True, **out}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} /api/export FALHOU: {exc!r}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
         if path == "/api/window":
             # segunda janela da app (ver openWorkbookWindow em workbooks.js):
             # só a partir deste PC, porque a janela abre onde a app corre —
@@ -784,6 +978,47 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"ok": True}), "application/json")
             except Exception as exc:
                 log_event(f"{ip} configuração do Jira FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        m = re.match(r"^/api/jira/issue/([^/]+)/transition$", path)
+        if m:
+            # fazer a issue avançar sem sair da app: o passo é um dos que o
+            # /state ofereceu, e o estado devolvido é relido do Jira
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                estado = transition_issue(m.group(1), payload.get("transition"))
+                log_event(f'{ip} Jira {m.group(1)} -> {estado.get("status")!r}')
+                self._send(200, json.dumps({"ok": True, **estado}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} transição do Jira FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/jira/create":
+            # nasce uma issue a partir de um item do quadro (ou de uma CCR): a
+            # issue é criada no Jira e, com item_id, fica logo ligada ao item —
+            # é a mesma ligação do jira_link, feita sem passar pelo Jira à mão
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                issue = create_issue(payload.get("project"), payload.get("summary"),
+                                     payload.get("type"), payload.get("description"))
+                item_id = payload.get("item_id")
+                todos = None
+                if item_id:
+                    todos = load_todo()
+                    alvo = next((t for t in todos if t.get("id") == item_id), None)
+                    if alvo is None:
+                        raise ValueError("item TODO não encontrado")
+                    alvo["jiraIssues"] = [issue]
+                    todos = [normalize_todo_item(t) for t in todos if normalize_todo_item(t)]
+                    save_todo(todos)
+                log_event(f'{ip} criou a issue {issue["key"]} no Jira'
+                          + (f" e ligou-a a {item_id}" if item_id else ""))
+                self._send(200, json.dumps({"ok": True, "issue": issue,
+                                            "todo": todos}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} criação de issue no Jira FALHOU: {exc}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
         m = re.match(r"^/api/jira/issue/([^/]+)/worklog$", path)
@@ -1037,47 +1272,96 @@ class Handler(BaseHTTPRequestHandler):
                 log_event(f"{ip} alteração de categoria livre FALHOU: {exc}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
+        if path == "/api/update/bulk":
+            # o mesmo estado em muitas linhas de uma vez (ver openBulkStatus,
+            # static/js/tasks.js): tudo fica local (✎) à espera do Push, como
+            # uma alteração feita à mão — só se poupa a ida e volta por linha
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                itens = payload.get("items")
+                if not isinstance(itens, list) or not itens:
+                    raise ValueError("nada para alterar")
+                if len(itens) > BULK_MAX:
+                    raise ValueError(f"demasiadas linhas de uma vez (máximo {BULK_MAX})")
+                overrides = load_overrides()
+                feitos, falhas = 0, []
+                for item in itens:
+                    if not isinstance(item, dict):
+                        continue
+                    pedido = {**item,
+                              "file": payload.get("file", ""),
+                              "sheet": payload.get("sheet", ""),
+                              "column": payload.get("column", ""),
+                              "value": payload.get("value")}
+                    try:
+                        queue_column_override(overrides, pedido)
+                        feitos += 1
+                    except Exception as exc:
+                        # uma linha que não dê não deve levar as outras atrás
+                        falhas.append(f'{item.get("fn", "?")}: {exc}')
+                save_overrides(overrides)
+                log_event(f"{ip} estado em massa (local, à espera de Push): "
+                          f'{feitos} linha(s) [{payload.get("column")}] -> '
+                          f'{payload.get("value")!r}'
+                          + (f" | {len(falhas)} falharam" if falhas else ""))
+                self._send(200, json.dumps({"ok": True, "queued": feitos,
+                                            "failed": falhas[:10]}),
+                           "application/json")
+            except Exception as exc:
+                log_event(f"{ip} estado em massa FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                           "application/json")
+            return
         if path != "/api/update":
             self._send(404, "Not found", "text/plain")
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            column = payload["column"]
-            if column not in ("Status TC", "Status TP", "OBS", "Function/TC", "To Do"):
-                headers = known_headers(payload.get("file", ""), payload.get("sheet", ""))
-                if not headers or column not in headers:
-                    raise ValueError(f"coluna inválida: {column}")
-            workbook_id = payload.get("file", "")
-            sheet, fn, todo = payload["sheet"], payload.get("fn", ""), payload.get("todo", "")
-
             # a alteração fica só local (✎) até o utilizador carregar em Push;
             # a escrita no Excel/OneDrive acontece em /api/push
             overrides = load_overrides()
-            found_key, entry = _override_entry(overrides, workbook_id, sheet, fn, todo)
-            entry = dict(entry) if entry else {}
-            if payload.get("value") is None:
-                entry.pop(column, None)          # repor o valor da folha
-            else:
-                # mantém a base original se já havia override para esta célula
-                base = entry.get(column, {}).get("base", payload.get("base", ""))
-                entry[column] = {"value": str(payload["value"]), "base": base}
-            key = _wb_key(workbook_id, sheet, fn, todo)
-            overrides.pop(found_key, None)    # migra para a chave nova (com livro) ao gravar
-            if entry:
-                overrides[key] = entry
-            else:
-                overrides.pop(key, None)
+            what = queue_column_override(overrides, payload)
             save_overrides(overrides)
-            what = (f'{payload.get("fn", "?")} [{column}] -> {payload["value"]!r}'
-                    if payload.get("value") is not None
-                    else f'{payload.get("fn", "?")} [{column}] reposto para o valor da folha')
             log_event(f"{ip} alterou estado (local, à espera de Push): {what}")
             self._send(200, json.dumps({"ok": True, "queued": True}),
                        "application/json")
         except Exception as exc:
             log_event(f"{ip} alteração de estado FALHOU: {exc}")
             self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+
+
+def queue_column_override(overrides, payload):
+    """Põe (ou tira) uma alteração local numa célula, no dicionário recebido.
+
+    É o miolo do /api/update, à parte para o /api/update/bulk poder fazer o
+    mesmo a muitas linhas e gravar o ficheiro uma vez só. Devolve o texto para
+    o registo. Nada aqui escreve no Excel: isso é o /api/push."""
+    column = payload["column"]
+    if column not in ("Status TC", "Status TP", "OBS", "Function/TC", "To Do"):
+        headers = known_headers(payload.get("file", ""), payload.get("sheet", ""))
+        if not headers or column not in headers:
+            raise ValueError(f"coluna inválida: {column}")
+    workbook_id = payload.get("file", "")
+    sheet, fn, todo = payload["sheet"], payload.get("fn", ""), payload.get("todo", "")
+    found_key, entry = _override_entry(overrides, workbook_id, sheet, fn, todo)
+    entry = dict(entry) if entry else {}
+    if payload.get("value") is None:
+        entry.pop(column, None)          # repor o valor da folha
+    else:
+        # mantém a base original se já havia override para esta célula
+        base = entry.get(column, {}).get("base", payload.get("base", ""))
+        entry[column] = {"value": str(payload["value"]), "base": base}
+    key = _wb_key(workbook_id, sheet, fn, todo)
+    overrides.pop(found_key, None)    # migra para a chave nova (com livro) ao gravar
+    if entry:
+        overrides[key] = entry
+    else:
+        overrides.pop(key, None)
+    return (f'{payload.get("fn", "?")} [{column}] -> {payload["value"]!r}'
+            if payload.get("value") is not None
+            else f'{payload.get("fn", "?")} [{column}] reposto para o valor da folha')
 
 
 def port_free(port, wait=0.0):

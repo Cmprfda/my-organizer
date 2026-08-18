@@ -129,6 +129,11 @@ function setCustomFilterOpen(open) {
     $("customFilterTitle").textContent = t("customfilter_title");
     $("customFilterHint").textContent = t("customfilter_hint");
     $("customFilterSave").textContent = t("viewmap_save");
+    $("customFilterCopy").textContent = t("cf_share_copy");
+    $("customFilterCopy").title = t("cf_share_copy_hint");
+    $("customFilterPasteBtn").textContent = t("cf_share_paste");
+    $("customFilterPasteBtn").title = t("cf_share_paste_hint");
+    closeCustomFilterPaste();
     // interruptor desta aba, comum a todos os filtros (ver
     // loadCustomFilterHideCols/customFilterHiddenCols, tasks.js)
     $("customFilterHideCols").checked = loadCustomFilterHideCols(lastData);
@@ -258,3 +263,104 @@ document.addEventListener("keydown", e => {
     setCustomFilterOpen(false);
   }
 }, { capture: true });
+
+/* ---------- levar os filtros a um colega ----------
+   Os filtros vivem no localStorage deste browser (ver loadCustomFilters,
+   tasks.js): quem monta um bom conjunto de botões para uma aba não tem como o
+   passar a ninguém, e o colega ao lado remonta tudo à mão.
+
+   O formato é o mesmo que já se guarda, embrulhado com a aba de onde veio para
+   quem cola saber o que está a receber. Vai pela área de transferência e não
+   por um ficheiro: é o caminho mais curto para uma mensagem de chat, e não
+   precisa de escrita em disco nenhuma.
+
+   As listas predefinidas que as condições usem (listId) viajam com eles —
+   senão um filtro "estado do lado do autor" chegava do outro lado sem saber
+   que estados são esses. */
+const CUSTOMFILTER_SHARE_KIND = "my-organizer/custom-filters";
+
+function customFilterShareText() {
+  const usadas = new Set();
+  (customFilterDraft || []).forEach(f => (f.groups || []).forEach(g =>
+    (g.conditions || []).forEach(cond => { if (cond.listId) usadas.add(cond.listId); })));
+  const listas = loadPredefLists(lastData).filter(l => usadas.has(l.id));
+  return JSON.stringify({
+    kind: CUSTOMFILTER_SHARE_KIND,
+    sheet: (lastData && lastData.sheet) || "",
+    filters: customFilterDraft || [],
+    lists: listas,
+  }, null, 1);
+}
+
+async function copyCustomFilters() {
+  if (!customFilterDraft || !customFilterDraft.length) { toast(t("cf_share_empty"), ""); return; }
+  const texto = customFilterShareText();
+  try {
+    await navigator.clipboard.writeText(texto);
+    toast(tf("cf_share_copied", customFilterDraft.length), "ok");
+  } catch (e) {
+    // sem permissão para a área de transferência: mostra-se o texto para um
+    // Ctrl+C à mão, em vez de não fazer nada
+    openCustomFilterPaste(texto);
+    toast(t("cf_share_copy_manual"), "");
+  }
+}
+
+function openCustomFilterPaste(texto) {
+  $("customFilterPasteBox").classList.remove("hidden");
+  $("customFilterPasteText").value = texto || "";
+  $("customFilterPasteHint").textContent = t("cf_share_paste_hint");
+  $("customFilterPasteOk").textContent = t("cf_share_paste_ok");
+  $("customFilterPasteCancel").textContent = t("btn_cancel");
+  $("customFilterPasteText").focus();
+  if (texto) $("customFilterPasteText").select();
+}
+
+function closeCustomFilterPaste() {
+  $("customFilterPasteBox").classList.add("hidden");
+  $("customFilterPasteText").value = "";
+}
+
+// Colar ACRESCENTA ao que já existe (nunca substitui): quem recebe um conjunto
+// de um colega continua com os seus. Os repetidos (mesmo nome) ficam de fora.
+function importCustomFilters() {
+  let pacote;
+  try {
+    pacote = JSON.parse($("customFilterPasteText").value);
+  } catch (e) {
+    toast(t("cf_share_bad"), "bad");
+    return;
+  }
+  if (!pacote || pacote.kind !== CUSTOMFILTER_SHARE_KIND || !Array.isArray(pacote.filters)) {
+    toast(t("cf_share_bad"), "bad");
+    return;
+  }
+  const jaTem = new Set((customFilterDraft || []).map(f => norm(f.name)));
+  const novos = pacote.filters
+    .filter(f => f && String(f.name || "").trim() && !jaTem.has(norm(f.name)))
+    .map(f => ({
+      // id novo: dois colegas podem ter criado filtros diferentes com o mesmo
+      // id (é um carimbo de tempo), e um id repetido faria o botão do outro
+      // desaparecer
+      id: `cf${Date.now()}${Math.floor(Math.random() * 1000)}`,
+      name: String(f.name).trim(),
+      color: String(f.color || ""),
+      groups: (f.groups || []).map(g => ({ conditions: (g.conditions || []).map(x => ({ ...x })) })),
+    }))
+    .filter(f => f.groups.length);
+  if (!novos.length) { toast(t("cf_share_none"), ""); return; }
+  // as listas predefinidas que vieram com eles, só as que faltam aqui
+  const listas = loadPredefLists(lastData);
+  const idsCa = new Set(listas.map(l => l.id));
+  const listasNovas = (pacote.lists || []).filter(l => l && l.id && !idsCa.has(l.id));
+  if (listasNovas.length) savePredefLists(lastData, listas.concat(listasNovas));
+  customFilterDraft = (customFilterDraft || []).concat(novos);
+  closeCustomFilterPaste();
+  renderCustomFilterRows();
+  toast(tf("cf_share_imported", novos.length), "ok");
+}
+
+$("customFilterCopy").addEventListener("click", copyCustomFilters);
+$("customFilterPasteBtn").addEventListener("click", () => openCustomFilterPaste(""));
+$("customFilterPasteCancel").addEventListener("click", closeCustomFilterPaste);
+$("customFilterPasteOk").addEventListener("click", importCustomFilters);

@@ -6,6 +6,7 @@ function clearFilters() {
   roleFilters.clear();
   customFilterActive.clear();
   staleOnly = false;
+  chaseOnly = false;
 }
 
 $("clearNotes").addEventListener("click", async () => {
@@ -162,6 +163,8 @@ $("summary").addEventListener("click", e => {
   } else if (pill.dataset.stale) {
     // combina-se com tudo o resto (AND), como os filtros personalizados
     staleOnly = !staleOnly;
+  } else if (pill.dataset.chase) {
+    chaseOnly = !chaseOnly;
   } else if (pill.dataset.customfilter) {
     // não exclusivo: vários filtros personalizados podem estar ligados ao
     // mesmo tempo, combinados em AND (ver render(), tasks.js)
@@ -207,7 +210,13 @@ if (SOLO_WB && activeTab()) {
 }
 // o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
 // (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
-loadAllTabs().then(() => { notifyTaskChanges(); });
+// o painel "Hoje" abre logo (uma vez por dia): as secções que dependem dos
+// livros preenchem-se quando a leitura chegar, ver refreshTodayIfOpen
+maybeOpenToday();
+loadAllTabs().then(() => {
+  notifyTaskChanges();
+  refreshTodayIfOpen();
+});
 // a conta OneDrive memorizada só vem do /api/graph (localhost-only); o
 // /api/tasks nunca a traz, por estar exposto na LAN — um pedido único no
 // arranque chega, os polls seguintes ao /api/tasks preservam-na (graphInfo é

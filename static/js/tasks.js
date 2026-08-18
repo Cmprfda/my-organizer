@@ -1190,6 +1190,11 @@ function render() {
   const temHistorico = !!activeHistory();
   const staleN = temHistorico ? rows.filter(r => taskIsStale(metaFor(r))).length : 0;
   if (staleOnly && temHistorico) rows = rows.filter(r => taskIsStale(metaFor(r)));
+  // "À espera": linhas com uma espera marcada cujo prazo já passou (ou sem
+  // prazo) — é a lista do que há a cobrar a alguém (ver waiting.js). Ao
+  // contrário das paradas, não depende do histórico: a marca é nossa.
+  const chaseN = rows.filter(r => waitingOverdue(metaFor(r))).length;
+  if (chaseOnly) rows = rows.filter(r => waitingOverdue(metaFor(r)));
 
   let summaryHtml = `<span class="pill">${rows.length} ${rows.length === 1 ? t("tasks_one") : t("tasks_many")}` +
     (showAll ? ` ${t("of_all")}` : ` ${t("of_person")} ${esc(PERSON)}`) + `</span>`;
@@ -1217,6 +1222,10 @@ function render() {
   if (temHistorico && (staleN || staleOnly)) {
     summaryHtml += `<span class="${pillClasses("stalepill", staleOnly, staleN)}" ` +
       `data-stale="1" title="${esc(tf("t_stale", staleDays()))}">⏳ ${esc(t("pill_stale"))}: ${staleN}</span>`;
+  }
+  if (chaseN || chaseOnly) {
+    summaryHtml += `<span class="${pillClasses("chasepill", chaseOnly, chaseN)}" ` +
+      `data-chase="1" title="${esc(t("t_chase"))}">⏸ ${esc(t("pill_chase"))}: ${chaseN}</span>`;
   }
   $("summary").innerHTML = summaryHtml;
 
@@ -1278,6 +1287,10 @@ function render() {
   currentMeta = rows.map(metaFor);
   currentObs = rows.map(() => "");
   currentStatuses = data.statuses || [];
+  // "estado em massa" só faz sentido com linhas à vista e uma lista de estados
+  // de onde escolher (ver openBulkStatus)
+  $("bulkStatusBtn").classList.toggle("hidden",
+    !currentStatuses.length || !bulkColsAvailable().length);
 
   function statusCell(r, ri, i) {
     const meta = currentMeta[ri];
@@ -1312,7 +1325,7 @@ function render() {
   function firstColExtras(ri) {
     const m = currentMeta[ri];
     if (!m) return "";
-    return taskNoteFlagHtml(m) + staleChipHtml(m);
+    return taskNoteFlagHtml(m) + staleChipHtml(m) + waitingChipHtml(m);
   }
 
   function cellHtmlOf(r, ri, i2) {
@@ -1943,6 +1956,107 @@ function openFnEditor(span) {
     else { editorOpen = false; refreshTaskViews(); }
   });
 }
+
+/* ---------- estado em massa ----------
+   Uma ronda de rework mexe no mesmo estado de meia dúzia de linhas seguidas, e
+   uma a uma são meia dúzia de idas ao Excel. Aqui a SELEÇÃO é a vista: as
+   linhas que estão à frente dos olhos depois dos filtros (currentMeta) — nada
+   de caixas de marcar novas na tabela. Como qualquer alteração de estado, o
+   resultado fica local (✎) à espera do Push, por isso um clique a mais
+   desfaz-se com o "Descartar locais". */
+const BULK_COLS = ["Status TC", "Status TP"];
+const BULK_PREVIEW = 8;         // linhas mostradas na janela antes de aplicar
+
+// Linhas à vista em que esta coluna existe e quer dizer algo: "N/A" é "não se
+// aplica a esta linha" e escrever lá um estado seria inventar trabalho.
+function bulkRowsFor(col) {
+  return (currentMeta || []).filter(meta => {
+    const valor = String(((meta && meta.cur) || {})[col] || "").trim();
+    return !!valor && norm(valor) !== "n/a";
+  });
+}
+
+function bulkColsAvailable() {
+  return BULK_COLS.filter(col => bulkRowsFor(col).length);
+}
+
+function renderBulkStatus() {
+  const col = $("bulkColSel").value;
+  const alvo = bulkRowsFor(col);
+  $("bulkCount").textContent = tf("bulk_count", alvo.length, col);
+  $("bulkList").innerHTML = alvo.slice(0, BULK_PREVIEW).map(meta => {
+    const de = String(((meta.cur) || {})[col] || "").trim();
+    return `<li><span class="bulkName">${esc(meta.fn || `linha ${meta.xlrow}`)}</span>` +
+      `<span class="bulkFrom">${esc(de)}</span></li>`;
+  }).join("") + (alvo.length > BULK_PREVIEW
+    ? `<li class="bulkMore">${esc(tf("bulk_more", alvo.length - BULK_PREVIEW))}</li>` : "");
+  $("bulkApply").disabled = !alvo.length || !$("bulkStatusSel").value;
+}
+
+function openBulkStatus() {
+  const cols = bulkColsAvailable();
+  if (!cols.length) { toast(t("bulk_none"), ""); return; }
+  $("bulkColSel").innerHTML = cols.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  $("bulkStatusSel").innerHTML = (currentStatuses || [])
+    .map(sv => `<option value="${esc(sv)}">${esc(sv)}</option>`).join("");
+  $("bulkHint").textContent = t("bulk_hint");
+  $("bulkOverlay").classList.remove("hidden");
+  renderBulkStatus();
+}
+
+function closeBulkStatus() {
+  $("bulkOverlay").classList.add("hidden");
+}
+
+async function applyBulkStatus() {
+  const col = $("bulkColSel").value;
+  const valor = $("bulkStatusSel").value;
+  const alvo = bulkRowsFor(col);
+  if (!alvo.length || !valor) return;
+  $("bulkApply").disabled = true;
+  try {
+    const res = await fetch("/api/update/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: lastData.file, sheet: lastData.sheet, column: col, value: valor,
+        // a base é o valor CRU da folha de cada linha (meta.orig), como no
+        // editor de uma célula: é o que permite ao Push perceber que a folha
+        // mudou entretanto e desistir dessa linha
+        items: alvo.map(meta => ({
+          fn: meta.fn, todo: meta.todo, xlrow: meta.xlrow,
+          base: (meta.orig || {})[col] || "",
+        })),
+      }),
+    });
+    const out = await res.json();
+    if (!out.ok) { alert(`${t("err_save")} ` + (out.error || "?")); return; }
+    closeBulkStatus();
+    toast(tf("bulk_done", out.queued, col), "ok");
+    if ((out.failed || []).length) clientLog(`estado em massa: falhas ${out.failed.join(" | ")}`);
+  } catch (err) {
+    alert("Não foi possível contactar o servidor: " + err);
+  } finally {
+    $("bulkApply").disabled = false;
+  }
+  load();
+}
+
+$("bulkStatusBtn").addEventListener("click", openBulkStatus);
+$("bulkClose").addEventListener("click", closeBulkStatus);
+$("bulkCancel").addEventListener("click", closeBulkStatus);
+$("bulkApply").addEventListener("click", applyBulkStatus);
+$("bulkColSel").addEventListener("change", renderBulkStatus);
+$("bulkStatusSel").addEventListener("change", renderBulkStatus);
+$("bulkOverlay").addEventListener("click", e => {
+  if (e.target === $("bulkOverlay")) closeBulkStatus();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("bulkOverlay").classList.contains("hidden")) {
+    e.stopPropagation();
+    closeBulkStatus();
+  }
+}, true);
 
 function openStatusEditor(badge) {
   const col = badge.dataset.col;

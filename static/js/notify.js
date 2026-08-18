@@ -23,6 +23,69 @@ const NOTIFY_LINES = 3;     // colunas mostradas por cartão
 const notifySnaps = new Map();
 let notifySeq = 0;
 
+/* ---------- avisos fora da app ----------
+   Os cartões daqui só se veem com a app à frente. Quem passa o dia no Excel (ou
+   com a janela minimizada) fica sem eles, que é precisamente quando são úteis:
+   a bola passou para o meu lado e eu não estou a olhar.
+
+   Duas saídas, as duas apagadas por omissão e ligadas nas Definições:
+   - a notificação do sistema, que o browser mostra ao lado do relógio. Só se
+     dispara com a janela em segundo plano — com a app à frente já lá está o
+     cartão, e dois avisos da mesma coisa são ruído.
+   - o webhook (Teams/Slack), que sai do servidor e por isso chega mesmo com a
+     app fechada nesse dia. Ver cswaios/notify.py. */
+const NOTIFY_DESKTOP_KEY = "bsp-tracker-notify-desktop";
+
+function desktopNotifyOn() {
+  return localStorage.getItem(NOTIFY_DESKTOP_KEY) === "1"
+    && typeof Notification !== "undefined" && Notification.permission === "granted";
+}
+
+// Ligar isto é pedir uma permissão ao browser: só se pede quando o utilizador
+// carrega no interruptor, nunca no arranque (um pedido de permissão que nasce
+// sozinho é o género de coisa que se recusa por reflexo).
+async function setDesktopNotify(on) {
+  if (!on) { localStorage.removeItem(NOTIFY_DESKTOP_KEY); return false; }
+  if (typeof Notification === "undefined") { toast(t("notify_desktop_unsupported"), ""); return false; }
+  let permissao = Notification.permission;
+  if (permissao === "default") permissao = await Notification.requestPermission();
+  if (permissao !== "granted") { toast(t("notify_desktop_denied"), ""); return false; }
+  localStorage.setItem(NOTIFY_DESKTOP_KEY, "1");
+  return true;
+}
+
+function desktopNotify(titulo, texto) {
+  if (!desktopNotifyOn() || !document.hidden) return;
+  try {
+    const n = new Notification(titulo, { body: texto, icon: "/static/img/app-icon.ico" });
+    // clicar traz a janela da app para a frente, que é o que se quer fazer a
+    // seguir a ler o aviso
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (e) { /* alguns browsers recusam Notification fora de um service worker */ }
+}
+
+// o webhook é do servidor: aqui só se lhe entrega a linha a dizer o que mudou
+async function webhookNotify(texto, titulo) {
+  try {
+    await fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: texto, title: titulo }),
+    });
+  } catch (e) { /* sem webhook configurado o servidor responde sent:false */ }
+}
+
+// resumo de uma ronda de avisos, em texto corrido — serve as duas saídas
+function notifySummaryText(mudou, livro) {
+  return mudou.slice(0, NOTIFY_MAX).map(row => {
+    const nome = String(row.fn || row.todo || "").trim() || `linha ${row.xlrow}`;
+    const cols = (row.changes || []).slice(0, NOTIFY_LINES)
+      .map(c => `${c.col}: ${String(c.to || "").trim() || "—"}`).join(", ");
+    return `- ${nome}${cols ? ` — ${cols}` : ""}`;
+  }).join("\n") + (mudou.length > NOTIFY_MAX
+    ? `\n- ${tf("notify_more_rows", mudou.length - NOTIFY_MAX)}` : "");
+}
+
 // ---------- pilha de cartões ----------
 
 function notifyStackEl() {
@@ -181,6 +244,11 @@ async function notifyTabChanges(tab) {
   if (mudou.length > NOTIFY_MAX)
     notifyCard(notifyHeadHtml(livro) +
       `<div class="notifyTitle">${esc(tf("notify_more_rows", mudou.length - NOTIFY_MAX))}</div>`);
+  // as mesmas alterações, para fora da janela (ver o bloco no topo do ficheiro)
+  const resumo = notifySummaryText(mudou, livro);
+  const titulo = tf("notify_out_title", mudou.length, livro);
+  desktopNotify(titulo, resumo);
+  webhookNotify(resumo, titulo);
 }
 
 // chamada no arranque (só semeia) e depois de cada recarga por gravação de um

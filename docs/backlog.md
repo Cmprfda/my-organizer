@@ -1,5 +1,77 @@
 ## Backlog
 
+### [DONE] Data-limite, repetição, folha de horas, "Hoje", estado em massa, desfazer, "à espera de", Jira a dois tempos, avisos fora da app, filtros partilháveis e motor LLM
+- **Source:** ronda de sugestões funcionais pedida pelo Carlos Andrade (2026-08-18).
+- **What landed:**
+  - `cswaios/todos.py`: `due`/`repeat`/`segments` nos itens (`normalize_due`,
+    `normalize_repeat`, `merge_segments`, `split_by_day`, `add_timer_segments`,
+    `next_due`, `spawn_repeat`, `timer_ms_in_period`), ações `set_due`/`set_repeat`
+    no `/api/todo`, chip 📅 + editor e limite WIP por coluna em `static/js/todo.js`.
+  - `cswaios/report.py`: secção da folha de horas + os dias sem registo no Jira;
+    cartão *Folha de horas* e menu *Exportar* em `static/js/metrics.js`.
+  - `cswaios/export.py` (novo) + `POST /api/export`: CSV das alterações e da folha
+    de horas, markdown do relatório, na pasta `exports`.
+  - `static/js/today.js` + `static/css/today.css` (novos): painel "Hoje", uma vez
+    por dia e depois a pedido.
+  - `POST /api/update/bulk` + `queue_column_override()` (o miolo do `/api/update`,
+    agora partilhado) e a janela do estado em massa em `static/js/tasks.js`.
+  - `undoHistoryChange()` em `static/js/history.js`: ↺ por linha do histórico.
+  - `waiting.json` (`load_waiting`/`save_waiting`), `POST /api/waiting`,
+    `meta.waiting` em `read_sheet` e `static/js/waiting.js` (novo) com o chip, o
+    campo na caixa e o botão-resumo **À espera**.
+  - `graph_versions()` em `cswaios/graph.py` + `GET /api/history/authors`: o ☁ do
+    histórico passa a dizer quem gravou.
+  - `cswaios/jira.py`: `issue_status`, `issue_transitions`, `transition_issue`,
+    `list_projects`, `create_issue`; `GET /api/jira/issue/<k>/state`,
+    `GET /api/jira/projects`, `POST /api/jira/issue/<k>/transition`,
+    `POST /api/jira/create`; chip de estado e janela de criar em `static/js/jira.js`.
+  - `cswaios/notify.py` (novo) + `GET`/`POST /api/notify/config` e `POST /api/notify`;
+    notificação do sistema e webhook em `static/js/notify.js`, cartão *Avisos* nas
+    Definições.
+  - Copiar/colar de filtros personalizados em `static/js/customfilters.js`.
+  - `_llm_reply()` implementado em `cswaios/chat.py` com o SDK oficial da
+    Anthropic (import dentro da função; `anthropic` é opcional em
+    `requirements.txt`).
+- **Design:**
+  - O tempo dos cronómetros passa a ter um registo **por dia** (`segments`); o
+    `elapsed_ms` continua a ser o total. Só o registo diário sabe dizer a que dia
+    pertence o tempo — os itens anteriores a esta versão não o têm, e isso é dito
+    à parte em vez de o tempo ser atirado para um dia qualquer.
+  - O estado em massa e o desfazer não são caminhos novos até ao Excel: fazem
+    exatamente o que o editor de uma célula faz (uma alteração local, ✎, com a
+    base a valer para o Push), só a muitas linhas ou ao contrário.
+  - "À espera de" é uma marca NOSSA sobre a linha (não uma coluna da folha), com
+    a mesma chave dos overrides/notas, e por isso é igual em todos os
+    dispositivos.
+  - O motor LLM nunca escreve: as ordens continuam no motor local, que devolve a
+    `action` e a confirmação. Qualquer falha do modelo cai no motor local com
+    aviso.
+  - Os avisos para fora são opt-in e o webhook só aceita `https` dos domínios do
+    Teams/Slack — um endereço colado por engano não vira uma fuga de informação.
+- **Released in:** v132.
+- **Known limits (worth revisiting):**
+  - A repetição de um item nasce quando ele é dado como feito, não à hora certa:
+    um item diário que não se fecha durante três dias dá UM seguinte, não três.
+  - O `restart_timer` apaga o registo diário do item junto com o total (é a
+    repartição do mesmo tempo) — o tempo já registado no Jira a partir desse item
+    não é afetado, mas a folha de horas perde aqueles dias.
+  - "Quem gravou" é por GRAVAÇÃO, não por célula: duas pessoas a gravar no mesmo
+    minuto (ou uma a gravar o trabalho de outra em coautoria) dão o mesmo nome. E
+    só existe na fonte web — um ficheiro local não tem versões.
+  - O estado em massa usa a vista como seleção: numa vista mal filtrada aplica-se
+    a muitas linhas de uma vez (com pré-visualização e um teto de 200). Não há
+    seleção linha a linha.
+  - O ↺ do histórico repõe o valor de UMA célula de cada vez, e só das colunas
+    que a app escreve; nas outras o histórico continua a ser leitura.
+  - O painel "Hoje" abre-se antes de os livros estarem lidos e preenche-se quando
+    eles chegam; se a leitura falhar, as secções das tarefas ficam vazias.
+  - O motor LLM manda no pedido as primeiras 120 linhas e 60 itens de cada lista:
+    numa folha grande responde sobre essa parte. E não tem ferramentas — não pede
+    mais contexto do que o que lhe foi dado.
+  - Os avisos do sistema só saem com a janela em segundo plano e com a app aberta;
+    o webhook é que chega com a app fechada, e só a partir do computador onde ela
+    corre.
+
 ### [DONE] Assistant (💬 / Ctrl+I)
 - **What landed:** `cswaios/chat.py` (`answer()`, local intent engine, `POST /api/chat`),
   `static/js/chat.js` + `static/css/chat.css` (docked panel, context builder,

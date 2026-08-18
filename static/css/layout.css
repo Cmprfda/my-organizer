@@ -70,6 +70,7 @@ body.topShrunk .connBadge {
 }
 
 body.topShrunk .ios-top #helpBtn,
+body.topShrunk .ios-top #todayBtn,
 body.topShrunk .ios-top #chatBtn {
   width: 24px;
   height: 24px;
@@ -132,9 +133,10 @@ body.topShrunk .ios-top #chatBtn {
   border-color: rgba(192, 0, 0, .45);
 }
 
-/* botões redondos da barra do topo: assistente e "como usar", à direita do
-   estado da ligação */
+/* botões redondos da barra do topo: "hoje", assistente e "como usar", à
+   direita do estado da ligação */
 .ios-top #helpBtn,
+.ios-top #todayBtn,
 .ios-top #chatBtn {
   flex: 0 0 auto;
   box-sizing: border-box;
@@ -171,6 +173,7 @@ body.topShrunk .ios-top #chatBtn svg {
 }
 
 .ios-top #helpBtn:active,
+.ios-top #todayBtn:active,
 .ios-top #chatBtn:active {
   transform: scale(0.94);
   opacity: 0.82;
@@ -178,6 +181,8 @@ body.topShrunk .ios-top #chatBtn svg {
 
 .ios-top #helpBtn.active,
 .ios-top #helpBtn:hover,
+.ios-top #todayBtn.active,
+.ios-top #todayBtn:hover,
 .ios-top #chatBtn.active,
 .ios-top #chatBtn:hover {
   color: var(--text);
@@ -395,6 +400,10 @@ body.topShrunk .ios-top #chatBtn svg {
 .setPage #announceEditBox input,
 .setPage #announceEditBox textarea,
 .setPage #announceEditBox .setRow,
+.setPage #notifyHookBox input,
+.setPage #notifyHookBox .setRow,
+.setPage #notifyHookBox #notifyHookState,
+.setPage #notifyHookBox .setHint,
 .setPage #jiraBox #jiraState,
 .setPage #onedriveRootBox #onedriveRootState,
 .setPage #graphEmailBox #graphEmailState,
@@ -732,4 +741,34 @@ header .sub {
   color: var(--muted);
   font-size: 13px;
   margin: 0;
+}
+
+/* interruptor com a explicacao ao lado (avisos do sistema, ver notify.js) */
+.setPage .setCheck {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 100%;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.setPage .setCheck input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.setPage .setHint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* sem permissao para escrever (quem chega pela rede local) o campo fica
+   apagado, como acontece nos outros cartoes */
+.setPage .setNote.readonly input {
+  opacity: .6;
 }

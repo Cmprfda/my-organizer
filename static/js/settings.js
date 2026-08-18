@@ -17,6 +17,7 @@ function applyLang() {
   document.querySelector('label[for="themeSel"]').textContent = t("theme_title");
   document.querySelector('label[for="langSel"]').textContent = t("lang_title");
   applyInsightsLang();
+  applyTodayLang();
   applyChatLang();
   applyAnnounceLang();
   renderGraphState();
@@ -48,6 +49,30 @@ function applyLang() {
   $("taskModeCards").classList.toggle("active", taskLayout === "cards");
   $("toggleAll").textContent = showAll ? `${t("btn_only")} ${PERSON.split(" ")[0]}` : t("btn_all");
   $("clearLocals").textContent = t("btn_locals");
+  $("setSecNotify").textContent = t("set_sec_notify");
+  $("notifyDesktopLbl").textContent = t("notify_desktop_lbl");
+  $("notifyDesktopHint").textContent = t("notify_desktop_hint");
+  $("notifyHookLbl").textContent = t("notify_hook_lbl");
+  $("notifyHookHint").textContent = t("notify_hook_hint");
+  $("notifyHookSaveBtn").textContent = t("btn_save");
+  $("notifyHookTestBtn").textContent = t("notify_hook_test");
+  $("jiraNewTitle").textContent = t("jira_new_title");
+  $("jiraNewClose").title = t("t_close");
+  $("jiraNewSubmit").textContent = t("jira_new_submit");
+  $("jiraNewOverlay").setAttribute("aria-label", t("jira_new_title"));
+  document.querySelector('label[for="jiraNewProject"]').textContent = t("lbl_project");
+  document.querySelector('label[for="jiraNewType"]').textContent = t("lbl_type");
+  document.querySelector('label[for="jiraNewSummary"]').textContent = t("lbl_summary");
+  document.querySelector('label[for="jiraNewDesc"]').textContent = t("lbl_description");
+  $("bulkStatusBtn").textContent = `↹ ${t("btn_bulk")}`;
+  $("bulkStatusBtn").title = t("t_bulk");
+  $("bulkTitle").textContent = t("bulk_title");
+  $("bulkClose").title = t("t_close");
+  $("bulkCancel").textContent = t("btn_cancel");
+  $("bulkApply").textContent = t("btn_apply");
+  $("bulkOverlay").setAttribute("aria-label", t("bulk_title"));
+  document.querySelector('label[for="bulkColSel"]').textContent = t("lbl_column");
+  document.querySelector('label[for="bulkStatusSel"]').textContent = t("lbl_new_status");
   $("clearNotes").textContent = t("btn_notes");
   $("fetchBtn").textContent = t("btn_fetch");
   $("reloadOnly").textContent = t("btn_reload_only");
@@ -553,4 +578,67 @@ $("graphAutoReconnect").addEventListener("change", () => {
   }
 });
 
+/* ---------- avisos fora da app (ver static/js/notify.js) ---------- */
+// O interruptor dos avisos do sistema é por browser (é o browser que os
+// mostra); o webhook é do servidor e vale para a instalação toda, por isso só
+// se escreve a partir do computador onde a app corre.
+let notifyCfg = { enabled: false, url: "", canEdit: false };
 
+function renderNotifySettings() {
+  $("notifyDesktopChk").checked = desktopNotifyOn();
+  $("notifyHookUrl").value = notifyCfg.url || "";
+  $("notifyHookUrl").disabled = !notifyCfg.canEdit;
+  $("notifyHookSaveBtn").disabled = !notifyCfg.canEdit;
+  $("notifyHookTestBtn").disabled = !notifyCfg.canEdit;
+  $("notifyHookState").textContent = notifyCfg.enabled ? "✓" : "";
+  $("notifyHookBox").classList.toggle("readonly", !notifyCfg.canEdit);
+}
+
+async function loadNotifySettings() {
+  try {
+    const res = await fetch("/api/notify/config");
+    notifyCfg = await res.json();
+  } catch (e) { /* fica o que já lá estava */ }
+  renderNotifySettings();
+}
+
+async function saveNotifyHook() {
+  const url = $("notifyHookUrl").value.trim();
+  try {
+    const res = await fetch("/api/notify/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, enabled: !!url }),
+    });
+    const out = await res.json();
+    if (!out.ok) { toast(out.error || t("err_server"), "bad"); return; }
+    notifyCfg = out;
+    renderNotifySettings();
+    toast(t("notify_hook_saved"), "ok");
+  } catch (e) {
+    toast(t("err_server"), "bad");
+  }
+}
+
+async function testNotifyHook() {
+  try {
+    const res = await fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: t("notify_hook_test_text"), title: "My Organizer" }),
+    });
+    const out = await res.json();
+    if (!out.ok) { toast(out.error || t("err_server"), "bad"); return; }
+    toast(out.sent ? t("notify_hook_sent") : t("notify_hook_off"), out.sent ? "ok" : "");
+  } catch (e) {
+    toast(t("err_server"), "bad");
+  }
+}
+
+$("notifyDesktopChk").addEventListener("change", async e => {
+  const ligado = await setDesktopNotify(e.target.checked);
+  e.target.checked = ligado;
+});
+$("notifyHookSaveBtn").addEventListener("click", saveNotifyHook);
+$("notifyHookTestBtn").addEventListener("click", testNotifyHook);
+loadNotifySettings();

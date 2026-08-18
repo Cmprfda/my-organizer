@@ -28,6 +28,17 @@
   border-color: var(--status-doing-fg);
 }
 
+/* botao-resumo "A espera": o que ha a cobrar a alguem (ver waiting.js) */
+.pill.chasepill {
+  border-color: var(--status-info-fg);
+}
+
+.pill.chasepill.active {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+  border-color: var(--status-info-fg);
+}
+
 /* contagem no pino da nota, quando há mais do que uma ligada à mesma linha */
 .taskNoteCount {
   margin-left: 2px;
@@ -625,4 +636,61 @@ button.metricDayBack:hover {
   .histVals {
     grid-column: 1 / -1;
   }
+}
+
+/* ---------- exportar o periodo ---------- */
+/* usa a mesma caixa flutuante do painel das colunas do quadro (todoColsPop),
+   so com as opcoes em lista */
+.exportPop {
+  min-width: 190px;
+  padding: 6px;
+}
+
+.exportOpt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.exportOpt:hover { background: var(--accent-soft); }
+
+/* ---------- desfazer uma alteracao a partir do historico ---------- */
+/* discreto (o historico e sobretudo para ler) mas ao alcance do dedo: acende
+   quando o rato passa pela linha */
+.histUndo {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: .55;
+}
+
+.histRow:hover .histUndo {
+  opacity: 1;
+  border-color: var(--border);
+}
+
+.histUndo:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* quem gravou a versao que trouxe a alteracao (ver histWho, history.js) */
+.histWho {
+  font-size: 11px;
+  color: var(--muted);
 }

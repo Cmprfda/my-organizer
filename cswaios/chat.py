@@ -843,34 +843,181 @@ def answer_local(message, ctx, lang="pt"):
     return {**_do_search(message, ctx, lang), "intent": "search", "engine": "local"}
 
 
-# ---------------------------------------------------------------- motor LLM (encaixe)
-def _llm_reply(message, ctx, lang, cfg):
-    """Encaixe para um motor LLM. Ainda não implementado — por desenho.
+# ---------------------------------------------------------------- motor LLM
+# Modelo por omissão. O motor local percebe um conjunto fechado de frases (ver
+# INTENTS); este responde a perguntas escritas à maneira de cada um — mas
+# continua a só saber o que a app tem aberto, porque é isso (e nada mais) que
+# vai no pedido.
+LLM_MODEL = "claude-opus-5"
+# Não se mede em palavras: com o pensamento adaptável ligado (o normal nos
+# modelos atuais) o raciocínio conta para este limite, e um limite curto corta a
+# resposta a meio. Isto é um teto, não um alvo — só se paga o que for gerado.
+LLM_MAX_TOKENS = 16000
+# Quantas linhas de cada lista vão no pedido. O contexto já chega cortado
+# (normalize_context), mas uma folha grande continua a dar centenas de linhas —
+# e o que interessa a uma pergunta são as primeiras.
+LLM_ROWS = 120
+LLM_ITEMS = 60
 
-    O contrato para quem o ligar (e o que já está preparado para isso):
+LLM_SYSTEM = {
+    "pt": (
+        "És o assistente do My Organizer, uma app que um engenheiro de V&V usa "
+        "para acompanhar as tarefas dele numa folha de Excel partilhada, uma "
+        "lista Por fazer, CCRs e notas.\n"
+        "Respondes SÓ com o que vem no contexto desta mensagem: é o retrato do "
+        "que a app tem aberta neste momento. Nunca leste a folha nem o "
+        "OneDrive.\n"
+        "Se a resposta não estiver no contexto, di-lo com todas as letras e "
+        "diz onde é que ela se poderia encontrar (que vista, que botão) — não "
+        "inventes tarefas, estados, números nem nomes.\n"
+        "Não mudas nada: não tens forma de escrever na folha, na lista ou nas "
+        "notas. Se te pedirem uma alteração, explica que ela se pede em "
+        "linguagem direta (\"adiciona à minha lista: X\", \"estado de X para "
+        "Done\") e que a app mostra sempre o que vai fazer e espera por "
+        "Confirmar.\n"
+        "Escreve em português de Portugal, curto e direto, sem saudações nem "
+        "fecho. Podes usar listas com \"-\" e **negrito**."
+    ),
+    "en": (
+        "You are the My Organizer assistant, an app a V&V engineer uses to "
+        "follow their own tasks on a shared Excel sheet, a TODO list, CCRs and "
+        "notes.\n"
+        "Answer ONLY from the context in this message: it is a snapshot of what "
+        "the app has open right now. You have never read the sheet or "
+        "OneDrive.\n"
+        "If the answer is not in the context, say so plainly and say where it "
+        "could be found (which view, which button) — never invent tasks, "
+        "statuses, numbers or names.\n"
+        "You change nothing: you have no way to write to the sheet, the list or "
+        "the notes. If asked for a change, explain that it is asked in plain "
+        "words (\"add to my list: X\", \"status of X to Done\") and that the app "
+        "always shows what it is about to do and waits for Confirm.\n"
+        "Write in short, direct English, no greeting and no sign-off. Lists "
+        "with \"-\" and **bold** are fine."
+    ),
+}
 
-    * Configuração em `chat_config.json`:
-          {"engine": "llm",
-           "llm": {"provider": "anthropic", "model": "claude-opus-5",
-                   "api_key": "sk-ant-…"}}
-    * Material do pedido: `context_digest(ctx, lang)` dá o resumo do que a app
-      tem à frente; `ctx` tem as listas completas (já cortadas a tamanhos
-      seguros por `normalize_context`) para servirem de resultado de
-      ferramentas — uma por cada leitura que o motor local já sabe fazer
-      (`_do_tasks`, `_do_todos`, `_do_ccrs`, `_do_notes`, `_do_stale`, …).
-    * Escritas: o LLM não escreve nada. Devolve a MESMA `action` que os
-      handlers `_do_todo_add`/`_do_todo_done`/`_do_status_set`/`_do_note_add`
-      devolvem, e o cliente continua a pedir confirmação antes de a executar.
-    * Resposta: o mesmo dicionário de `answer_local`
-      ({reply, items, action, confirm, intent, engine}).
-    * Dependência: o `anthropic` (SDK oficial) NÃO é requisito da app — o
-      import tem de ficar dentro desta função, e a falta dele é só mais um
-      motivo para `ChatEngineError` (a resposta cai no motor local).
 
-    Enquanto não estiver ligado, isto falha de forma explícita em vez de
-    inventar uma resposta.
+def _llm_context_text(ctx, lang):
+    """O contexto em texto, que é o que vai no pedido.
+
+    Sai das mesmas listas que o motor local lê, no formato mais curto que ainda
+    se percebe — cada linha é uma tarefa/item, com o que a distingue."""
+    partes = [context_digest(ctx, lang)]
+    if ctx["books"]:
+        partes.append("\n## " + ("Linhas da folha" if lang == "pt" else "Sheet rows"))
+        for row in ctx["rows"][:LLM_ROWS]:
+            estados = " · ".join(_row_states(row)) or "—"
+            idade = f" · {'>=' if row['age_est'] else ''}{row['age_days']}d" if row["age_days"] else ""
+            # a aba pertence ao livro, não à linha (ver _norm_row)
+            partes.append(f"- [{row['book']['name']}/{row['book']['sheet']}] "
+                          f"{row['fn'] or '?'} | {_short(row['todo'], 90)} | {estados}"
+                          f"{' | minha' if row['mine'] else ''}{idade}")
+        if len(ctx["rows"]) > LLM_ROWS:
+            partes.append(f"- (+{len(ctx['rows']) - LLM_ROWS} …)")
+    if ctx["todos"]:
+        partes.append("\n## " + ("Por fazer" if lang == "pt" else "TODO"))
+        for item in ctx["todos"][:LLM_ITEMS]:
+            jira = f" | Jira {', '.join(item['jira'])}" if item.get("jira") else ""
+            partes.append(f"- {item['title']} | {item['col_label']} | "
+                          f"{item['priority']}{jira}"
+                          + (f" | {_short(item['detail'], 90)}" if item.get("detail") else ""))
+    if ctx["ccrs"]:
+        partes.append("\n## CCRs")
+        for c in ctx["ccrs"][:LLM_ITEMS]:
+            marca = "fechada" if c["closed"] else ("pronta a fechar" if c["ready"] else "aberta")
+            partes.append(f"- {c['id']} | {marca}"
+                          + (f" | {_short(c['note'], 90)}" if c.get("note") else ""))
+    if ctx["notes"]:
+        partes.append("\n## " + ("Notas" if lang == "pt" else "Notes"))
+        for n in ctx["notes"][:LLM_ITEMS]:
+            partes.append(f"- {n['title'] or '(sem título)'}"
+                          + (f" ({n['folder']})" if n.get("folder") else "")
+                          + f" | {_short(n['text'], 120)}")
+    return "\n".join(partes)
+
+
+def _llm_client(cfg_llm):
+    """Cliente da Anthropic. A chave pode vir do chat_config.json ou do
+    ambiente (ANTHROPIC_API_KEY) — sem nenhuma delas o SDK ainda encontra um
+    perfil de `ant auth login`, por isso não se exige nada aqui.
+
+    O SDK não é requisito da app (ver requirements.txt): o import fica cá
+    dentro, e a falta dele é só mais um motivo para cair no motor local.
     """
-    raise ChatEngineError("motor LLM não implementado")
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise ChatEngineError("o pacote `anthropic` não está instalado") from exc
+    chave = str((cfg_llm or {}).get("api_key") or "").strip()
+    try:
+        return anthropic.Anthropic(api_key=chave) if chave else anthropic.Anthropic()
+    except Exception as exc:                       # sem credencial nenhuma
+        raise ChatEngineError(f"cliente da Anthropic: {exc}") from exc
+
+
+def _llm_reply(message, ctx, lang, cfg):
+    """Resposta pelo modelo, para as perguntas que o motor local não cobre.
+
+    O que este motor NÃO faz é escrever: as ordens (adicionar à lista, mudar um
+    estado, escrever uma nota) continuam a passar pelo motor local, que devolve
+    a `action` com a confirmação que o cliente sabe executar. Assim o caminho
+    das escritas é o mesmo com ou sem LLM ligado — o modelo nunca é o que
+    decide mexer nos dados de ninguém.
+
+    Configuração (`chat_config.json`, estado local, fora das releases):
+        {"engine": "llm",
+         "llm": {"provider": "anthropic", "model": "claude-opus-5",
+                 "api_key": "sk-ant-…"}}
+
+    Qualquer falha (sem SDK, sem chave, sem rede, resposta recusada) sai como
+    ChatEngineError e a pergunta é respondida pelo motor local.
+    """
+    cfg_llm = cfg.get("llm") if isinstance(cfg.get("llm"), dict) else {}
+    provider = str(cfg_llm.get("provider") or "anthropic").strip().lower()
+    if provider != "anthropic":
+        raise ChatEngineError(f"provider desconhecido: {provider}")
+
+    # ordens continuam a ser do motor local (ver o texto acima)
+    texto = normalize(message)
+    for nome, padrao, handler in _INTENTS:
+        if nome in LLM_LOCAL_FIRST and padrao.search(texto):
+            out = handler(message, ctx, lang)
+            out.setdefault("intent", nome)
+            out["engine"] = "local"
+            return out
+
+    client = _llm_client(cfg_llm)
+    modelo = str(cfg_llm.get("model") or LLM_MODEL).strip() or LLM_MODEL
+    conteudo = (f"{_llm_context_text(ctx, lang)}\n\n"
+                f"## {'Pergunta' if lang == 'pt' else 'Question'}\n{message}")
+    try:
+        resposta = client.messages.create(
+            model=modelo,
+            max_tokens=LLM_MAX_TOKENS,
+            system=LLM_SYSTEM["en" if lang == "en" else "pt"],
+            messages=[{"role": "user", "content": conteudo}],
+        )
+    except Exception as exc:                       # rede, chave errada, 429…
+        raise ChatEngineError(f"pedido ao modelo: {exc}") from exc
+    if getattr(resposta, "stop_reason", "") == "refusal":
+        raise ChatEngineError("o modelo recusou responder")
+    partes = [b.text for b in (resposta.content or []) if getattr(b, "type", "") == "text"]
+    reply = "\n".join(p for p in partes if p).strip()
+    if not reply:
+        raise ChatEngineError("resposta vazia do modelo")
+    # Os itens continuam a sair da pesquisa local sobre o mesmo contexto: são
+    # eles que dão os atalhos clicáveis, e são verificáveis — ao contrário de
+    # uma lista que o modelo escrevesse.
+    achados = _do_search(message, ctx, lang).get("items") or []
+    return {"reply": reply, "items": achados[:8], "action": None, "confirm": None,
+            "intent": "llm", "engine": "llm"}
+
+
+# intents que continuam a ser do motor local mesmo com o LLM ligado: as ordens
+# (que devolvem uma `action` a confirmar) e a ajuda (que descreve a app, não o
+# modelo)
+LLM_LOCAL_FIRST = {"help", "todo_add", "todo_done", "status_set", "note_add"}
 
 
 ENGINES = {"local": None, "llm": _llm_reply}   # None = answer_local (o motor de base)

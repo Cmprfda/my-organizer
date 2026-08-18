@@ -5,7 +5,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from .config import HERE
 from .text import normalize
@@ -56,6 +56,14 @@ TODO_COLUMNS = _TodoColumns()
 # criados sem a indicar) ficam em "normal" — é o valor neutro.
 TODO_PRIORITIES = ("low", "normal", "high", "urgent")
 TODO_PRIORITY_DEFAULT = "normal"
+# repetição de um item: quando ele é dado como feito, nasce outro igual com a
+# data-limite seguinte. "" = não repete (o valor de todos os itens antigos).
+TODO_REPEATS = ("", "daily", "weekdays", "weekly", "biweekly", "monthly")
+# data-limite: só o dia interessa (a hora não diz nada num quadro destes)
+DUE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# dias guardados no registo do cronómetro. 400 é mais do que qualquer período
+# que as Métricas saibam mostrar (92 dias) e chega para um ano de trabalho.
+TIMER_SEGMENTS_MAX = 400
 # origens que um item pode ter ligadas além da sua (só as que sabem apontar
 # para uma linha: escrever à mão não tem para onde ir)
 TODO_LINK_KINDS = ("task", "ccr")
@@ -127,6 +135,44 @@ def normalize_jira_issue(issue):
     return out
 
 
+def normalize_due(value):
+    """Data-limite aceitável (YYYY-MM-DD) ou "" quando não há/não presta."""
+    text = str(value or "").strip()[:10]
+    return text if DUE_RE.match(text) else ""
+
+
+def normalize_repeat(value):
+    """Repetição aceitável ou "" (não repete)."""
+    text = str(value or "").strip().lower()
+    return text if text in TODO_REPEATS else ""
+
+
+def normalize_segment(seg):
+    """Um dia do registo do cronómetro: {d: YYYY-MM-DD, ms: int}."""
+    if not isinstance(seg, dict):
+        return None
+    day = normalize_due(seg.get("d"))
+    ms = _int_or_zero(seg.get("ms"))
+    if not day or ms <= 0:
+        return None
+    return {"d": day, "ms": ms}
+
+
+def merge_segments(segments):
+    """Junta o tempo do mesmo dia numa entrada só, por ordem de data.
+
+    O cronómetro pára e arranca várias vezes por dia (e um item pode ser
+    reaberto dias depois), por isso a lista chega aqui com repetições."""
+    total = {}
+    for seg in segments:
+        clean = normalize_segment(seg)
+        if clean is None:
+            continue
+        total[clean["d"]] = total.get(clean["d"], 0) + clean["ms"]
+    ordered = [{"d": day, "ms": total[day]} for day in sorted(total)]
+    return ordered[-TIMER_SEGMENTS_MAX:]
+
+
 def normalize_todo_item(item):
     if not isinstance(item, dict):
         return None
@@ -189,6 +235,25 @@ def normalize_todo_item(item):
     # (ver todoUnloggedMs em static/js/todo.js)
     out["jiraLoggedFromTimerMs"] = min(out["elapsed_ms"],
                                        max(0, _int_or_zero(out.get("jiraLoggedFromTimerMs"))))
+    # data-limite (YYYY-MM-DD) e repetição: os itens gravados antes desta
+    # versão não as têm — ficam sem data e sem repetir, que é o neutro
+    due = normalize_due(out.get("due"))
+    if due:
+        out["due"] = due
+    else:
+        out.pop("due", None)
+    out["repeat"] = normalize_repeat(out.get("repeat"))
+    if not out["repeat"]:
+        out.pop("repeat")
+    # registo do cronómetro dia a dia: é o que permite dizer QUANDO o tempo foi
+    # contado (o elapsed_ms sozinho é só um total que não sabe a que dia
+    # pertence — ver o relatório e as Métricas)
+    raw_segs = out.get("segments")
+    segs = merge_segments(raw_segs if isinstance(raw_segs, list) else [])
+    if segs:
+        out["segments"] = segs
+    else:
+        out.pop("segments", None)
     # quando o item foi fechado (ISO): é o que permite dizer o que se fechou
     # nesta semana. Os itens fechados antes desta versão não o têm.
     done_at = str(out.get("done_at") or "").strip()[:32]
@@ -210,6 +275,39 @@ def _now_iso():
     return datetime.now().replace(microsecond=0).isoformat()
 
 
+def split_by_day(start_ms, end_ms):
+    """Um intervalo do cronómetro repartido pelos dias que atravessa.
+
+    Devolve [{d, ms}]. Um cronómetro esquecido a correr de um dia para o outro
+    contava tudo ao dia em que se carregou no stop — e o registo diário
+    (a folha de horas, o "tempo contado" do relatório) ficava a mentir."""
+    if end_ms <= start_ms:
+        return []
+    out = []
+    cursor = start_ms
+    while cursor < end_ms:
+        day = datetime.fromtimestamp(cursor / 1000.0).date()
+        # meia-noite do dia seguinte, no fuso local (a hora legal muda duas
+        # vezes por ano: usa-se o timestamp real da data, não +24h)
+        next_day = datetime.combine(day + timedelta(days=1), datetime.min.time())
+        boundary = int(next_day.timestamp() * 1000)
+        chunk_end = min(end_ms, boundary)
+        ms = chunk_end - cursor
+        if ms > 0:
+            out.append({"d": day.isoformat(), "ms": ms})
+        cursor = chunk_end
+    return out
+
+
+def add_timer_segments(item, start_ms, end_ms):
+    """Acrescenta ao registo diário do item o tempo entre dois instantes."""
+    novos = split_by_day(int(start_ms), int(end_ms))
+    if not novos:
+        return
+    antigos = item.get("segments")
+    item["segments"] = merge_segments((antigos if isinstance(antigos, list) else []) + novos)
+
+
 def stop_todo_timer(item, now_ms=None):
     now_ms = int(now_ms if now_ms is not None else time.time() * 1000)
     started = item.get("timer_started")
@@ -226,6 +324,8 @@ def stop_todo_timer(item, now_ms=None):
     except (TypeError, ValueError):
         base = 0
     item["elapsed_ms"] = max(0, base + delta)
+    # o mesmo tempo, mas arrumado por dia (ver split_by_day)
+    add_timer_segments(item, started, now_ms)
     item["timer_started"] = None
 
 
@@ -244,6 +344,99 @@ def sync_todo_timer_with_column(item, old_col, new_col):
     elif new_col != "done" and old_col == "done":
         # reaberto: a data de fecho antiga já não diz nada
         item.pop("done_at", None)
+
+
+def next_due(due, repeat, today=None):
+    """A data-limite seguinte de um item que se repete.
+
+    Anda sempre para a frente a partir de HOJE: um item semanal esquecido três
+    semanas não devolve outras três em atraso, devolve a próxima."""
+    repeat = normalize_repeat(repeat)
+    if not repeat:
+        return ""
+    today = today or date.today()
+    try:
+        base = date.fromisoformat(due) if normalize_due(due) else today
+    except ValueError:
+        base = today
+    passo = {"daily": timedelta(days=1), "weekdays": timedelta(days=1),
+             "weekly": timedelta(days=7), "biweekly": timedelta(days=14)}.get(repeat)
+    nova = base
+    for _ in range(400):          # trava de segurança: nunca é preciso mais
+        if repeat == "monthly":
+            # o dia do mês é sempre o do original: sem isso um item do dia 31
+            # ia escorregando (31 → 28 → 28 …) a cada mês curto que passasse
+            nova = _add_month(nova, base.day)
+        else:
+            nova = nova + passo
+            if repeat == "weekdays" and nova.weekday() >= 5:
+                continue          # sábado/domingo não contam num item de dias úteis
+        if nova > today:
+            return nova.isoformat()
+    return nova.isoformat()
+
+
+def _add_month(day, anchor=0):
+    """O mesmo dia do mês seguinte (dia 31 cai no último dia do mês curto)."""
+    ano = day.year + (1 if day.month == 12 else 0)
+    mes = 1 if day.month == 12 else day.month + 1
+    ultimo = (date(ano + (1 if mes == 12 else 0), 1 if mes == 12 else mes + 1, 1)
+              - timedelta(days=1)).day
+    return date(ano, mes, min(anchor or day.day, ultimo))
+
+
+def spawn_repeat(todos, item):
+    """Nasce a ocorrência seguinte de um item que se repete, se for o caso.
+
+    Chamado quando um item passa a feito. O item fechado fica onde está (é o
+    registo do que se fez); o novo entra por fazer, sem tempo e com a checklist
+    outra vez por marcar. Devolve o item novo ou None."""
+    if not isinstance(item, dict) or not item.get("done"):
+        return None
+    repeat = normalize_repeat(item.get("repeat"))
+    if not repeat:
+        return None
+    nova_data = next_due(item.get("due"), repeat)
+    novo = {"id": f"t{int(time.time() * 1000)}r",
+            "title": str(item.get("title") or ""),
+            "kind": str(item.get("kind") or "manual"),
+            "done": False, "col": "todo",
+            "priority": str(item.get("priority") or TODO_PRIORITY_DEFAULT),
+            "detail": str(item.get("detail") or ""),
+            "elapsed_ms": 0, "timer_started": None,
+            "repeat": repeat,
+            "created": datetime.now().strftime("%d/%m %H:%M")}
+    if nova_data:
+        novo["due"] = nova_data
+    if isinstance(item.get("ref"), dict) and item.get("ref"):
+        novo["ref"] = dict(item["ref"])
+    subs = item.get("subtasks") if isinstance(item.get("subtasks"), list) else []
+    novo["subtasks"] = [{"id": f"{s.get('id')}r{int(time.time() * 1000)}",
+                         "title": str(s.get("title") or ""), "done": False}
+                        for s in subs if isinstance(s, dict) and s.get("title")]
+    # o item que se repete deixa de o fazer depois de fechado: quem repete
+    # agora é o novo (senão fechar o antigo outra vez fazia nascer um terceiro)
+    item.pop("repeat", None)
+    todos.append(novo)
+    return novo
+
+
+def timer_ms_in_period(item, since="", until=""):
+    """Tempo do cronómetro deste item dentro do período (ms), pelo registo
+    diário. Sem registo (itens anteriores a esta versão) devolve 0 — é o que
+    permite dizer "isto não sabe a que dia pertence" em vez de mentir."""
+    segs = item.get("segments") if isinstance(item.get("segments"), list) else []
+    total = 0
+    for seg in segs:
+        clean = normalize_segment(seg)
+        if clean is None:
+            continue
+        if since and clean["d"] < since:
+            continue
+        if until and clean["d"] > until:
+            continue
+        total += clean["ms"]
+    return total
 
 
 def sort_todos_by_priority(items):

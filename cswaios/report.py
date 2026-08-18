@@ -11,7 +11,7 @@ se copia para o chat/e-mail.
 from datetime import datetime, timedelta
 
 from .history import iso_day, recent_events
-from .todos import load_done_archive, load_todo
+from .todos import load_done_archive, load_todo, timer_ms_in_period
 
 # rótulos do relatório (o resto da app usa i18n.msg, mas aqui são muitos e só
 # servem para este ficheiro)
@@ -27,6 +27,14 @@ LBL = {
     "jira_total": ("(total acumulado por tarefa, não só desta semana)",
                    "(running total per task, not just this week)"),
     "team": ("Atividade na folha fora desta app", "Sheet activity outside this app"),
+    "timesheet": ("Tempo contado, dia a dia", "Time counted, day by day"),
+    "timesheet_total": ("Total do período: {t}", "Period total: {t}"),
+    "timesheet_old": ("Há ainda {t} contados por itens anteriores a esta versão, "
+                      "que não sabem a que dia pertencem.",
+                      "There is another {t} counted by items older than this version, "
+                      "which do not know which day they belong to."),
+    "timesheet_gap": ("Dias com tempo contado e nada registado no Jira: {d}.",
+                      "Days with counted time and nothing logged in Jira: {d}."),
     "team_line": ("{n} alteração(ões) em {r} tarefa(s).", "{n} change(s) across {r} task(s)."),
     "nothing": ("(nada a registar)", "(nothing to report)"),
     "empty": ("Sem atividade registada neste período.", "No activity recorded in this period."),
@@ -57,6 +65,12 @@ def _fmt_ts(iso):
     except (TypeError, ValueError):
         return str(iso or "")
     return d.strftime("%d/%m %H:%M")
+
+
+def _fmt_day(iso):
+    """18/08 a partir de AAAA-MM-DD (o dia como se lê num relatório)."""
+    partes = str(iso or "").split("-")
+    return f"{partes[2]}/{partes[1]}" if len(partes) == 3 else str(iso or "")
 
 
 def _task_label(event):
@@ -95,6 +109,10 @@ def build_report(days=7, lang="pt", since="", until=""):
         inicio = fim - timedelta(days=days)
         events = recent_events(days=days, limit=2000)
     since_iso, until_iso = inicio.isoformat(), fim.isoformat()
+    # o período em dias inteiros: é assim que o registo diário do cronómetro
+    # sabe dizer o que é deste período (as horas não entram — um segmento é um
+    # dia todo)
+    dia_de, dia_ate = inicio.date().isoformat(), fim.date().isoformat()
 
 
     app_changes = [e for e in events if e.get("via") == "app"]
@@ -112,6 +130,9 @@ def build_report(days=7, lang="pt", since="", until=""):
             continue
         elapsed = int(item.get("elapsed_ms") or 0)
         entry = {"title": str(item.get("title") or ""), "elapsed_ms": elapsed,
+                 # o tempo que o cronómetro contou DENTRO do período (o
+                 # elapsed_ms é o total de sempre do item)
+                 "period_ms": timer_ms_in_period(item, dia_de, dia_ate),
                  "kind": str(item.get("kind") or "manual"),
                  "done_at": str(item.get("done_at") or "")}
         if item.get("done"):
@@ -121,6 +142,25 @@ def build_report(days=7, lang="pt", since="", until=""):
                 done.append(entry)
         elif str(item.get("col") or "") == "inprogress":
             doing.append(entry)
+
+    # folha de horas: o tempo de todos os itens, arrumado por dia. Os itens
+    # anteriores a esta versão não têm registo diário — o que contaram fica de
+    # fora e é dito à parte, em vez de ser atirado para um dia qualquer.
+    por_dia, sem_registo = {}, 0
+    for item in todos:
+        if not isinstance(item, dict):
+            continue
+        segs = item.get("segments") if isinstance(item.get("segments"), list) else []
+        if not segs and int(item.get("elapsed_ms") or 0):
+            sem_registo += int(item.get("elapsed_ms") or 0)
+            continue
+        for seg in segs:
+            if not isinstance(seg, dict):
+                continue
+            dia = str(seg.get("d") or "")
+            if not dia or dia < dia_de or dia > dia_ate:
+                continue
+            por_dia[dia] = por_dia.get(dia, 0) + int(seg.get("ms") or 0)
 
     jira = {}
     for item in todos:
@@ -143,9 +183,13 @@ def build_report(days=7, lang="pt", since="", until=""):
         "todo_done": done,
         "todo_doing": doing,
         "jira": [{"key": k, "seconds": v} for k, v in sorted(jira.items())],
+        "timesheet": [{"day": d, "ms": por_dia[d]} for d in sorted(por_dia)],
+        "timesheet_ms": sum(por_dia.values()),
+        "timesheet_untracked_ms": sem_registo,
     }
     data["markdown"] = _markdown(data, lang)
-    data["empty"] = not (app_changes or done or doing or jira or team_changes)
+    data["empty"] = not (app_changes or done or doing or jira or team_changes
+                         or data["timesheet"])
     return data
 
 
@@ -183,6 +227,20 @@ def _markdown(data, lang):
         for it in data["todo_doing"]:
             tempo = f" — {_fmt_hm(it['elapsed_ms'] / 1000)}" if it["elapsed_ms"] else ""
             out.append(f"- {it['title']}{tempo}")
+        out.append("")
+
+    if data["timesheet"]:
+        out.append(f"## {_lbl('timesheet', lang)}")
+        for dia in data["timesheet"]:
+            out.append(f"- {_fmt_day(dia['day'])} — {_fmt_hm(dia['ms'] / 1000)}")
+        out.append(_lbl("timesheet_total", lang, t=_fmt_hm(data["timesheet_ms"] / 1000)))
+        if data.get("timesheet_untracked_ms"):
+            out.append(f"_{_lbl('timesheet_old', lang, t=_fmt_hm(data['timesheet_untracked_ms'] / 1000))}_")
+        # dias em que se contou tempo e nada foi para o Jira: é aqui que se vê
+        # o registo de esforço que ficou por fazer
+        if not data["jira"]:
+            dias = ", ".join(_fmt_day(d["day"]) for d in data["timesheet"])
+            out.append(_lbl("timesheet_gap", lang, d=dias))
         out.append("")
 
     if data["jira"]:

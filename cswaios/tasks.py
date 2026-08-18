@@ -24,8 +24,8 @@ from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_fo
 from .history import HISTORY_COLS, mark_app_write, record_read
 from .i18n import msg
 from .logs import log_event
-from .store import (load_ccrs, load_notes, load_overrides, save_notes,
-                    save_overrides)
+from .store import (load_ccrs, load_notes, load_overrides, load_waiting,
+                    save_notes, save_overrides)
 from .text import cell_to_text, normalize
 from .todos import load_todo, save_todo
 
@@ -226,6 +226,7 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
             col_by_name[col_name] = hidx[want]
     overrides = load_overrides()
     notes = load_notes()
+    waiting_all = load_waiting()
 
     # folha sem as colunas do tracker (qualquer outro livro de Excel): mostra-se
     # tal como está, sem filtrar por pessoa nem sincronizar papéis
@@ -333,10 +334,15 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
 
         if show_all or not person_norm or any(mentions_person(c) for c in cells if c):
             _, note = _override_entry(notes, path, real_sheet, fn_key, todo_key)
+            # "à espera de alguém" desta linha (ver load_waiting): vai com a
+            # linha para o cliente poder mostrar o chip e não a contar como
+            # parada enquanto a espera for razoável
+            _, waiting = _override_entry(waiting_all, path, real_sheet, fn_key, todo_key)
             data_rows.append(cells[:len(headers)])
             row_meta.append({"fn": fn_key, "todo": todo_key, "orig": orig, "over": over,
                              "cur": cur, "note": note, "xlrow": xlrow,
                              "people": people,
+                             "waiting": waiting if isinstance(waiting, dict) else None,
                              "todo_sync_role": role_sync})
 
     if overrides_stale:

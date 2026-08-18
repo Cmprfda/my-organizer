@@ -162,11 +162,40 @@ class TestAssistente(unittest.TestCase):
 
     # ---------- motores ----------
     def test_motor_llm_nao_configurado_cai_no_local_com_aviso(self):
+        """Sem SDK/credencial, uma pergunta livre e respondida pelo motor local
+        — e diz-se que foi (senao parecia que o LLM tinha respondido)."""
         with open(chat.CHAT_CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump({"engine": "llm"}, f)
-        out = chat.answer("ajuda", contexto())
+            json.dump({"engine": "llm", "llm": {"api_key": "sk-ant-invalida"}}, f)
+        out = chat.answer("em que pe e que isto esta afinal?", contexto())
         self.assertEqual(out["engine"], "local")
         self.assertTrue(out["engine_note"])
+
+    def test_ordens_ficam_no_motor_local_com_o_llm_ligado(self):
+        """As escritas nunca passam pelo modelo: e o motor local que devolve a
+        acao e a confirmacao, com ou sem LLM configurado (ver LLM_LOCAL_FIRST)."""
+        with open(chat.CHAT_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"engine": "llm", "llm": {"api_key": "sk-ant-invalida"}}, f)
+        out = chat.answer("adiciona a minha lista: rever o TP", contexto())
+        self.assertEqual(out["engine"], "local")
+        self.assertEqual(out["intent"], "todo_add")
+        self.assertEqual(out["action"]["kind"], "todo_add")
+        self.assertTrue(out["confirm"])
+        # nao houve recurso a motor nenhum: nao e um aviso de falha
+        self.assertNotIn("engine_note", out)
+
+    def test_ajuda_descreve_a_app_mesmo_com_o_llm_ligado(self):
+        with open(chat.CHAT_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"engine": "llm", "llm": {"api_key": "sk-ant-invalida"}}, f)
+        out = chat.answer("ajuda", contexto())
+        self.assertEqual(out["intent"], "help")
+        self.assertNotIn("engine_note", out)
+
+    def test_contexto_do_pedido_ao_modelo_so_leva_o_que_esta_aberto(self):
+        """O texto que vai no pedido sai das listas do contexto — e nada mais."""
+        ctx = chat.normalize_context(contexto([linha("FN_A", 2, todo="fazer isto")]))
+        texto = chat._llm_context_text(ctx, "pt")
+        self.assertIn("FN_A", texto)
+        self.assertIn("fazer isto", texto)
 
     def test_contexto_do_cliente_e_cortado(self):
         muitos = [linha(f"FN_{i}", i + 2) for i in range(chat.MAX_ROWS + 50)]

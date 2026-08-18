@@ -1300,3 +1300,51 @@ def graph_write_status(sheet, xlrow, xlcol, fncol, fn, value, drive_id="", item_
         return True, "OK (OneDrive)"
     except GraphError as exc:
         return False, str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Quem gravou o livro
+#
+# A folha não diz quem mexeu numa célula — o histórico da app sabe o QUE mudou
+# e QUANDO, mas não por quem quando a alteração não saiu daqui. O OneDrive
+# guarda as versões do ficheiro e, em cada uma, quem a gravou: cruzando a hora
+# de uma alteração com a versão que a apanhou, fica-se a saber de quem foi a
+# gravação que a trouxe.
+#
+# É uma atribuição por GRAVAÇÃO, não por célula: se duas pessoas gravarem no
+# mesmo minuto (ou uma gravar as alterações de outra em coautoria), o nome é o
+# de quem gravou, que é o melhor que este ficheiro consegue dizer.
+VERSIONS_TTL = 300          # segundos de cache (a lista muda a cada gravação)
+VERSIONS_MAX = 200          # versões pedidas de uma vez
+_versions_cache = {}        # (drive, item) -> (instante, [versões])
+
+
+def graph_versions(drive_id="", item_id="", force=False):
+    """Versões do livro, das mais recentes para as mais antigas:
+    [{when: ISO UTC, who: nome}]. Lista vazia quando o OneDrive não as dá
+    (ficheiro local, sem sessão, sem permissão)."""
+    if not (drive_id and item_id):
+        drive_id, item_id = graph_item()
+    if not (drive_id and item_id):
+        return []
+    chave = (drive_id, item_id)
+    agora = time.time()
+    em_cache = _versions_cache.get(chave)
+    if em_cache and not force and agora - em_cache[0] < VERSIONS_TTL:
+        return em_cache[1]
+    try:
+        body = graph_api(f"/drives/{drive_id}/items/{item_id}/versions"
+                         f"?$top={VERSIONS_MAX}")
+    except Exception:
+        # sem versões a app funciona como antes (o ☁ fica sem nome)
+        _versions_cache[chave] = (agora, [])
+        return []
+    out = []
+    for v in (body.get("value") or []):
+        quando = str(v.get("lastModifiedDateTime") or "")
+        quem = ((v.get("lastModifiedBy") or {}).get("user") or {}).get("displayName") or ""
+        if quando:
+            out.append({"when": quando, "who": quem})
+    out.sort(key=lambda x: x["when"], reverse=True)
+    _versions_cache[chave] = (agora, out)
+    return out

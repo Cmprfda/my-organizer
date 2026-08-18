@@ -155,7 +155,7 @@ function metricColumns(items) {
         <span class="metricColBarBox">
           <span class="metricColBar${i.value ? "" : " zero"}" style="height:${i.value ? Math.max(4, Math.round(i.value / max * 100)) : 2}%"></span>
         </span>
-        <span class="metricColValue">${i.value || ""}</span>
+        <span class="metricColValue">${esc(i.text != null ? i.text : (i.value || ""))}</span>
         <span class="metricColLabel">${comEtiqueta ? esc(i.label) : ""}</span>
       </button>
     </li>`;
@@ -250,7 +250,12 @@ function metricsDayHtml() {
     const tarefa = String(e.fn || "").trim() || String(e.todo || "").trim()
       || tf("metric_row", e.xlrow);
     const onde = [tarefa, e.sheet].filter(Boolean).join(" · ");
-    const marca = e.via === "app" ? t("hist_via_app") : t("hist_via_sheet");
+    // o dia à lupa junta todos os livros abertos: o nome de quem gravou sai
+    // das versões do livro a que a alteração pertence (ver histWhoInTab)
+    const tabDoEvento = (workbookTabs || []).find(x => x.lastData && x.lastData.file === e.book);
+    const quem = e.via === "app" || !tabDoEvento ? "" : histWhoInTab(tabDoEvento.id, e.ts);
+    const marca = e.via === "app" ? t("hist_via_app")
+      : (quem ? tf("hist_saved_by", quem) : t("hist_via_sheet"));
     return `<li class="histRow metricDayRow${e.via === "app" ? " histApp" : ""}">
       <span class="histWhen">${esc(histWhen(e.ts))}</span>
       <span class="metricDayTask" title="${esc(onde)}">${esc(tarefa)}</span>
@@ -258,7 +263,7 @@ function metricsDayHtml() {
       <span class="histVals"><span class="histFrom">${esc(histValue(e.from))}</span>
         <span class="histArrow">→</span>
         <span class="histTo">${esc(histValue(e.to))}</span></span>
-      <span class="histVia" title="${esc(marca)}">${e.via === "app" ? "✎" : "☁"}</span>
+      <span class="histVia" title="${esc(marca)}">${e.via === "app" ? "✎" : "☁"}${quem ? ` <span class="histWho">${esc(quem)}</span>` : ""}</span>
     </li>`;
   }).join("");
   const demais = eventos.length > METRICS_DAY_ROWS
@@ -324,6 +329,62 @@ function metricsTimeTiles() {
     { value: formatTodoElapsed(noJira), label: t("metric_time_jira") },
     { value: formatTodoElapsed(porRegistar), label: t("metric_time_pending") },
   ]);
+}
+
+// Folha de horas: o que os cronómetros contaram em cada dia do período. Sai do
+// registo diário dos itens (`segments`) e não do total de cada um — o total não
+// sabe a que dia pertence, e é por isso que os itens anteriores a esta versão
+// não aparecem aqui (o relatório di-lo à parte).
+function metricsTimesheetItems() {
+  const r = metricsRange();
+  const porDia = new Map();
+  todos.forEach(it => {
+    (Array.isArray(it.segments) ? it.segments : []).forEach(seg => {
+      const dia = String((seg && seg.d) || "");
+      if (!dia || dia < r.from || dia > r.to) return;
+      porDia.set(dia, (porDia.get(dia) || 0) + (+seg.ms || 0));
+    });
+  });
+  // todos os dias do período, mesmo os de zero: um gráfico só com os dias em
+  // que se contou tempo mentia sobre o ritmo da semana
+  const dias = Math.max(1, metricsDayCount(r.from, r.to));
+  const out = [];
+  for (let i = 0; i < dias; i++) {
+    const iso = metricsShiftDay(r.from, i);
+    const ms = porDia.get(iso) || 0;
+    out.push({
+      // o valor é em minutos (é o que dá a altura da barra); o que se escreve
+      // por cima dela é o tempo, que é como se lê uma folha de horas
+      iso, value: Math.round(ms / 60000),
+      text: ms ? formatTodoElapsed(ms) : "",
+      label: `${iso.slice(8, 10)}/${iso.slice(5, 7)}`,
+      title: `${metricsDayLabel(iso)}: ${ms ? formatTodoElapsed(ms) : "0m"}`,
+    });
+  }
+  return out;
+}
+
+// tempo do período que ficou por arrumar num dia: itens contados antes de esta
+// versão passar a guardar o registo diário
+function metricsTimesheetUntracked() {
+  return todos.reduce((s, it) => {
+    const segs = Array.isArray(it.segments) ? it.segments : [];
+    return s + (segs.length ? 0 : todoLiveElapsed(it));
+  }, 0);
+}
+
+function metricsTimesheetHtml() {
+  const itens = metricsTimesheetItems();
+  const orfao = metricsTimesheetUntracked();
+  const nota = orfao
+    ? `<p class="metricNote">${esc(tf("metric_hours_untracked", formatTodoElapsed(orfao)))}</p>`
+    : "";
+  if (!itens.length) return metricEmpty(t("metric_hours_none")) + nota;
+  const total = itens.reduce((s, i) => s + i.value, 0);
+  if (!total) return metricEmpty(t("metric_hours_none")) + nota;
+  return metricColumns(itens) +
+    `<p class="metricNote">${esc(tf("metric_hours_total", formatTodoElapsed(total * 60000)))}</p>` +
+    nota;
 }
 
 function metricsTodoItems() {
@@ -392,8 +453,67 @@ function renderMetrics() {
       semLivro ? metricEmpty(t("metric_no_book")) : metricBars(metricsPeopleItems()),
       semLivro ? "" : t("metric_people_note")) +
     metricCard(t("metric_time"), metricsTimeTiles(), t("metric_time_note")) +
+    metricCard(t("metric_hours"), metricsTimesheetHtml(), t("metric_hours_note"),
+      metricsRange().days > 7 ? "metricCardWide" : "") +
     metricCard(t("metric_todo"), metricBars(metricsTodoItems()));
 }
+
+// ---------- exportar o período para um ficheiro ----------
+// O ficheiro é escrito pelo servidor, na pasta `exports` ao lado da app: numa
+// janela nativa (pywebview) um download do browser não guardava nada, e pela
+// rede local o caminho devolvido diz onde ele ficou.
+let exportPop = null;
+
+const EXPORT_KINDS = [
+  { kind: "activity", label: "export_activity" },
+  { kind: "timesheet", label: "export_timesheet" },
+  { kind: "report", label: "export_report" },
+];
+
+function closeExportPop() {
+  if (!exportPop) return;
+  exportPop.remove();
+  exportPop = null;
+}
+
+function openExportPop(anchor) {
+  if (exportPop) { closeExportPop(); return; }
+  const el = document.createElement("div");
+  el.className = "todoColsPop exportPop";
+  el.innerHTML = `<div class="todoColsPopHead">${esc(t("export_title"))}</div>` +
+    EXPORT_KINDS.map(k =>
+      `<button type="button" class="exportOpt" data-export="${k.kind}">${esc(t(k.label))}</button>`).join("");
+  document.body.appendChild(el);
+  exportPop = el;
+  const r = anchor.getBoundingClientRect();
+  el.style.left = `${Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.right - el.offsetWidth))}px`;
+  el.style.top = `${r.bottom + 6}px`;
+  el.addEventListener("click", e => {
+    const opt = e.target.closest("[data-export]");
+    if (opt) { closeExportPop(); exportMetrics(opt.dataset.export); }
+  });
+}
+
+async function exportMetrics(kind) {
+  const r = metricsRange();
+  try {
+    const res = await fetch("/api/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, since: r.from, until: r.to, days: r.days, lang: LANG, reveal: true }),
+    });
+    const out = await res.json();
+    if (!out.ok) { toast(out.error || t("err_server"), "bad"); return; }
+    toast(tf("export_done", out.name), "ok");
+  } catch (e) {
+    toast(t("err_server"), "bad");
+  }
+}
+
+document.addEventListener("pointerdown", e => {
+  if (!exportPop || e.target.closest(".exportPop") || e.target.closest("#metricsExportBtn")) return;
+  closeExportPop();
+}, true);
 
 // ---------- relatório do período e do dia ----------
 let weekReportText = "";
@@ -471,6 +591,9 @@ function applyInsightsLang() {
     $("reportTitle").textContent = t("report_title");
   }
   $("reportCopy").textContent = t("btn_copy");
+  $("reportSave").textContent = `⤓ ${t("btn_save_file")}`;
+  $("metricsExportBtn").textContent = `⤓ ${t("btn_export")}`;
+  $("metricsExportBtn").title = t("t_export");
   $("reportClose").title = t("t_close");
   $("reportOverlay").setAttribute("aria-label", t("report_title"));
   $("cmdInput").placeholder = t("ph_cmd");
@@ -531,6 +654,8 @@ $("metricsBody").addEventListener("click", e => {
   if (col) { metricsShowDay(col.dataset.day); return; }
   if (e.target.closest(".metricDayBack")) metricsBackToPeriod();
 });
+$("metricsExportBtn").addEventListener("click", () => openExportPop($("metricsExportBtn")));
+$("reportSave").addEventListener("click", () => exportMetrics("report"));
 $("metricsReportBtn").addEventListener("click", () => openWeekReport(false));
 $("metricsDayReportBtn").addEventListener("click", () => openWeekReport(true));
 $("reportClose").addEventListener("click", closeWeekReport);

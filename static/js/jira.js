@@ -751,3 +751,230 @@ $("jiraSaveBtn").addEventListener("click", saveJiraSettings);
 // entrar na página das Definições volta a ler o estado (pode ter mudado noutra
 // janela) — quem chama é o renderSettingsPage() em settings.js
 refreshJiraSettings();
+
+/* ---------- estado da issue e passos do fluxo ----------
+   O item do quadro mostrava a chave da issue e mais nada: para saber em que pé
+   ela estava (ou para a mover) era preciso ir ao Jira. Aqui o estado vem ao
+   cartão, e com ele os passos que o fluxo do projeto permite — que são
+   diferentes em cada projeto, por isso são pedidos ao Jira e não adivinhados.
+
+   O estado é lido a pedido (clicando no chip) e fica em memória: pedi-lo para
+   cada cartão em cada desenho seriam dezenas de pedidos ao Jira por minuto. */
+const jiraStates = new Map();        // key -> {status, statusCategory, transitions}
+const jiraStateLoading = new Set();
+
+// gaveta do Jira -> classe de cor da app (os NOMES dos estados mudam de
+// projeto para projeto; a gaveta, não)
+const JIRA_CAT_CLASS = { new: "todo", indeterminate: "doing", done: "done" };
+
+function jiraStateChipHtml(key) {
+  const estado = jiraStates.get(key);
+  if (!estado) {
+    return `<button type="button" class="mini jiraStateBtn" data-jirastate="${esc(key)}"` +
+      ` title="${esc(t("jira_state_load"))}">◔</button>`;
+  }
+  const cls = JIRA_CAT_CLASS[estado.statusCategory] || "todo";
+  const passos = (estado.transitions || []).length;
+  return `<button type="button" class="mini jiraStateBtn state-${cls}" data-jirastate="${esc(key)}"` +
+    ` title="${esc(passos ? t("jira_state_move") : t("jira_state_none"))}">` +
+    `${esc(estado.status || "?")}${passos ? " ▾" : ""}</button>`;
+}
+
+async function loadJiraState(key, force) {
+  if (jiraStateLoading.has(key)) return null;
+  if (!force && jiraStates.has(key)) return jiraStates.get(key);
+  jiraStateLoading.add(key);
+  try {
+    const res = await fetch(`/api/jira/issue/${encodeURIComponent(key)}/state`);
+    const out = await res.json();
+    if (out.error) { toast(out.error, "bad"); return null; }
+    jiraStates.set(key, out);
+    return out;
+  } catch (e) {
+    toast(t("err_server"), "bad");
+    return null;
+  } finally {
+    jiraStateLoading.delete(key);
+  }
+}
+
+// menu dos passos possíveis, ancorado no chip (mesmo feitio do painel das
+// colunas do quadro)
+let jiraStatePop = null;
+
+function closeJiraStatePop() {
+  if (!jiraStatePop) return;
+  jiraStatePop.remove();
+  jiraStatePop = null;
+}
+
+function openJiraStatePop(anchor, key) {
+  closeJiraStatePop();
+  const estado = jiraStates.get(key);
+  if (!estado || !(estado.transitions || []).length) {
+    toast(t("jira_state_none"), "");
+    return;
+  }
+  const el = document.createElement("div");
+  el.className = "todoColsPop exportPop jiraStatePop";
+  el.innerHTML = `<div class="todoColsPopHead">${esc(key)} · ${esc(estado.status || "")}</div>` +
+    estado.transitions.map(tr =>
+      `<button type="button" class="exportOpt" data-jiramove="${esc(tr.id)}">` +
+      `${esc(tr.name)}${tr.to && tr.to !== tr.name ? ` → ${esc(tr.to)}` : ""}</button>`).join("");
+  document.body.appendChild(el);
+  jiraStatePop = el;
+  const r = anchor.getBoundingClientRect();
+  el.style.left = `${Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.left))}px`;
+  const abaixo = r.bottom + 6;
+  el.style.top = `${abaixo + el.offsetHeight > window.innerHeight
+    ? Math.max(6, r.top - el.offsetHeight - 6) : abaixo}px`;
+  el.addEventListener("click", async ev => {
+    const opt = ev.target.closest("[data-jiramove]");
+    if (!opt) return;
+    closeJiraStatePop();
+    await moveJiraIssue(key, opt.dataset.jiramove);
+  });
+}
+
+async function moveJiraIssue(key, transitionId) {
+  try {
+    const res = await fetch(`/api/jira/issue/${encodeURIComponent(key)}/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transition: transitionId }),
+    });
+    const out = await res.json();
+    if (!out.ok) { toast(out.error || t("err_server"), "bad"); return; }
+    // o estado que vale é o que o Jira diz DEPOIS do passo (uma transição pode
+    // ter pós-funções que a levem mais longe), e os passos seguintes mudam com
+    // ele: relê-se tudo
+    await loadJiraState(key, true);
+    toast(tf("jira_state_done", key, out.status || ""), "ok");
+    renderTodo();
+    jiraRenderPageIfVisible();
+  } catch (e) {
+    toast(t("err_server"), "bad");
+  }
+}
+
+// clique no chip: da primeira vez vai buscar o estado, depois abre os passos
+async function jiraStateTap(btn) {
+  const key = btn.dataset.jirastate;
+  const tinha = jiraStates.has(key);
+  btn.disabled = true;
+  const estado = await loadJiraState(key, tinha);
+  btn.disabled = false;
+  if (!estado) return;
+  renderTodo();
+  jiraRenderPageIfVisible();
+  if (tinha) {
+    // o botão foi redesenhado: usa-se o que está agora no ecrã como âncora
+    const novo = document.querySelector(`[data-jirastate="${CSS.escape(key)}"]`) || btn;
+    openJiraStatePop(novo, key);
+  }
+}
+
+document.addEventListener("pointerdown", e => {
+  if (!jiraStatePop || e.target.closest(".jiraStatePop") || e.target.closest("[data-jirastate]")) return;
+  closeJiraStatePop();
+}, true);
+
+/* ---------- criar uma issue a partir de um item ----------
+   Nem todo o trabalho nasce no Jira: muito começa como um item escrito à mão
+   aqui. Criar a issue a partir do item (em vez de ir ao Jira e voltar para
+   ligar a chave à mão) deixa o item ligado logo, e com isso o registo de
+   esforço do cronómetro passa a funcionar desde o primeiro minuto. */
+let jiraCreateTarget = null;         // { itemId, projects }
+
+async function openJiraCreate(itemId) {
+  const item = (todos || []).find(x => x.id === itemId);
+  if (!item) return;
+  jiraCreateTarget = { itemId };
+  $("jiraNewSummary").value = item.title || "";
+  $("jiraNewDesc").value = item.detail || "";
+  $("jiraNewProject").innerHTML = `<option value="">${esc(t("loading"))}</option>`;
+  $("jiraNewType").innerHTML = "";
+  jiraLogNote("jiraNewError", "");
+  $("jiraNewSubmit").disabled = true;
+  $("jiraNewOverlay").classList.remove("hidden");
+  try {
+    const res = await fetch("/api/jira/projects");
+    const out = await res.json();
+    if (out.error) { jiraLogNote("jiraNewError", out.error); return; }
+    const projetos = out.projects || [];
+    if (!projetos.length) { jiraLogNote("jiraNewError", t("jira_new_no_projects")); return; }
+    jiraCreateTarget.projects = projetos;
+    // o último projeto usado fica guardado: quem cria issues cria-as quase
+    // sempre no mesmo sítio
+    const ultimo = localStorage.getItem(JIRA_PROJECT_KEY) || "";
+    $("jiraNewProject").innerHTML = projetos.map(p =>
+      `<option value="${esc(p.key)}"${p.key === ultimo ? " selected" : ""}>${esc(p.key)} — ${esc(p.name)}</option>`).join("");
+    renderJiraNewTypes();
+    $("jiraNewSubmit").disabled = false;
+    $("jiraNewSummary").focus();
+    $("jiraNewSummary").select();
+  } catch (e) {
+    jiraLogNote("jiraNewError", t("err_server"));
+  }
+}
+
+const JIRA_PROJECT_KEY = "bsp-tracker-jira-project";
+
+function renderJiraNewTypes() {
+  const projetos = (jiraCreateTarget && jiraCreateTarget.projects) || [];
+  const escolhido = projetos.find(p => p.key === $("jiraNewProject").value);
+  const tipos = (escolhido && escolhido.types) || [];
+  $("jiraNewType").innerHTML = tipos.length
+    ? tipos.map(x => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join("")
+    : `<option value="Task">Task</option>`;
+}
+
+function closeJiraCreate() {
+  $("jiraNewOverlay").classList.add("hidden");
+  jiraCreateTarget = null;
+}
+
+async function submitJiraCreate() {
+  if (!jiraCreateTarget) return;
+  const projeto = $("jiraNewProject").value;
+  const resumo = $("jiraNewSummary").value.trim();
+  if (!projeto || !resumo) { jiraLogNote("jiraNewError", t("jira_new_missing")); return; }
+  jiraLogNote("jiraNewError", "");
+  const btn = $("jiraNewSubmit");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/jira/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project: projeto, summary: resumo, type: $("jiraNewType").value,
+        description: $("jiraNewDesc").value.trim(), item_id: jiraCreateTarget.itemId,
+      }),
+    });
+    const out = await res.json();
+    if (!out.ok) { jiraLogNote("jiraNewError", out.error || t("err_server")); return; }
+    localStorage.setItem(JIRA_PROJECT_KEY, projeto);
+    if (out.todo) todos = out.todo;
+    closeJiraCreate();
+    toast(tf("jira_new_done", out.issue.key), "ok");
+    renderTodo();
+    jiraRenderPageIfVisible();
+  } catch (e) {
+    jiraLogNote("jiraNewError", t("err_server"));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("jiraNewClose").addEventListener("click", closeJiraCreate);
+$("jiraNewSubmit").addEventListener("click", submitJiraCreate);
+$("jiraNewProject").addEventListener("change", renderJiraNewTypes);
+$("jiraNewOverlay").addEventListener("click", e => {
+  if (e.target === $("jiraNewOverlay")) closeJiraCreate();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("jiraNewOverlay").classList.contains("hidden")) {
+    e.stopPropagation();
+    closeJiraCreate();
+  }
+}, true);

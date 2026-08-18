@@ -1256,3 +1256,126 @@ a.todoJiraKey:hover {
     height: 40px;
   }
 }
+/* ---------- data-limite e repeticao ---------- */
+/* Mesma linguagem do chip de prioridade ao lado: pilula pequena, cor so
+   quando ha alguma coisa a dizer (atrasado / hoje / a chegar). */
+.todoDueBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 9px;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+}
+
+/* sem data marcada o chip e so o simbolo, esbatido: esta la para quem o
+   procurar, sem pesar num quadro cheio de cartoes sem data */
+.todoDueBtn.empty {
+  border-color: transparent;
+  opacity: .45;
+  padding: 4px 6px;
+}
+
+.todoDueBtn.empty:hover { opacity: 1; border-color: var(--border); }
+
+.todoDueBtn.due-soon {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+  border-color: transparent;
+}
+
+.todoDueBtn.due-today {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+  border-color: transparent;
+}
+
+.todoDueBtn.due-overdue {
+  background: var(--status-blocked-fg);
+  color: var(--white);
+  border-color: transparent;
+  font-weight: 800;
+}
+
+.todoDueGlyph { font-size: 10px; }
+.todoRepGlyph { opacity: .8; font-weight: 700; }
+
+.todoDueBtn:hover { filter: brightness(1.06); }
+
+/* editor no lugar do chip */
+.todoDueEdit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.todoDueEdit .todoDueInput,
+.todoDueEdit .todoRepSel {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---------- limite de cartoes por coluna (WIP) ---------- */
+.todoColCount.over {
+  background: var(--status-blocked-fg);
+  color: var(--white);
+  font-weight: 800;
+}
+
+/* a coluna acima do limite ganha um risco no topo: ve-se de longe sem ter de
+   ler a contagem */
+.todoCol.wipOver .todoColHead {
+  box-shadow: inset 0 2px 0 0 var(--status-blocked-fg);
+}
+
+.todoColWipInput {
+  width: 38px;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  padding: 2px 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+
+/* ---------- estado da issue do Jira no cartao (ver jira.js) ---------- */
+.jiraStateBtn {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jiraStateBtn.state-todo {
+  background: var(--status-todo-bg, var(--surface));
+  color: var(--muted);
+}
+
+.jiraStateBtn.state-doing {
+  background: var(--status-doing-bg);
+  color: var(--status-doing-fg);
+}
+
+.jiraStateBtn.state-done {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+}

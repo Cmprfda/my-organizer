@@ -13,12 +13,15 @@ projects_to_add
 workbooks.json
 announcement.json
 feedback_pending/
+waiting.json
+exports/
 
 # Credentials / local Graph configuration (NEVER commit)
 graph_config.json
 graph_token.json
 jira_config.json
 chat_config.json
+notify_config.json
 
 # Workbooks (company data)
 *.xlsx

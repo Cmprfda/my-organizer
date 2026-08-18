@@ -99,6 +99,58 @@ table.
   (button in the Metrics tab).
 - **Search everything (Ctrl+K)** — one box across all open workbooks, CCRs,
   TODO, board notes, linked Jira issues and app actions.
+- **Today** (☀ in the top bar) — where things stand right now, in one panel:
+  what is due today (and what is late), what is coming up, the rows where the
+  ball is on your side, what turned stale, what changed on the sheet since you
+  were last here, and the timer time that has not reached Jira. Opens by itself
+  the first time you open the app each day; after that it's the button. Every
+  line jumps to where the thing lives.
+- **Due dates and repeats** on TODO items — the 📅 chip sets the date (red once
+  it passes, *Today*/*Tomorrow* when it applies) and, in the same place, the
+  repeat: daily, weekdays, weekly, fortnightly or monthly. Marking the item done
+  spawns the next one with the right date, no time counted and the checklist
+  unticked again.
+- **Column card limit (WIP)** on the board — set the maximum per column in the
+  ⚙ *Columns* panel. The header shows *3/2* and the column gets a red rule when
+  it goes over. A warning, never a lock.
+- **Timesheet** (Metrics tab) — timer time filed under the day it was counted,
+  with the period total; a timer left running overnight is split across both
+  days. *My week* gained the same section plus the days with counted time and
+  nothing logged in Jira.
+- **Export** (Metrics tab, and *Save* in the report window) — the period in view
+  goes to a file in the `exports` folder next to the app: changes and timesheet
+  as CSV (`;` separated with a BOM, so Excel opens them in columns), the report
+  as `.md`.
+- **Bulk status** (Tasks toolbar) — change the same status across every task in
+  view, with your active filters as the selection. The dialog says how many and
+  shows the first few before applying. Stays local (✎) until you Push.
+- **Undo a change** (↺ in a task's history) — history already kept the before
+  and after of each cell; now one click puts the old value back, as a local (✎)
+  change like any other.
+- **Waiting on someone** (task detail box) — mark who is holding the row and how
+  long it is reasonable to wait. With a date, the task stops counting as *stale*
+  until then; past it (or with no date) it shows up under the **Chasing** button.
+- **Who saved the workbook** — the sheet does not say who touched a cell, but
+  OneDrive keeps the file versions and who saved each one, so the ☁ in history
+  (and in the day view in Metrics) now carries a name.
+- **Jira status on the card** — the chip next to the key fetches where the issue
+  stands and then offers the steps the project's workflow allows, so the issue
+  moves without leaving the app.
+- **Create a Jira issue from an item** (＋ next to the link field) — pick project
+  and type; the issue is created already linked to the item.
+- **Alerts outside the app** (Settings → *Alerts*) — system notifications when
+  the window is in the background, and a Teams/Slack webhook that reaches you
+  even with the app closed. Both off by default; with no webhook address nothing
+  leaves the machine.
+- **Shareable custom filters** — *Copy* puts the filter set on the clipboard
+  (ready to paste into a chat) and *Paste* adds a colleague's filters to yours,
+  bringing along any predefined lists they use. It never replaces your own.
+- **Assistant LLM engine** (optional) — with `chat_config.json` set to
+  `{"engine": "llm", …}` and the `anthropic` package installed, free-form
+  questions are answered by the model, always and only from what the app has
+  open. Orders (*add to my list*, *status of X to Done*) stay with the local
+  engine and its Confirm step. With no SDK, key or network, the local engine
+  answers and says so.
 
 ## Excel open on this PC?
 

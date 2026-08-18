@@ -1,3 +1,6 @@
 openpyxl>=3.1
 # opcional: janela propria em vez de abrir no browser (run-with-server.bat/setup.bat instalam-na)
 pywebview>=5
+# opcional: motor LLM do assistente (chat_config.json com engine=llm).
+# Sem isto o assistente responde na mesma, pelo motor local.
+anthropic>=0.40

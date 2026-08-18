@@ -62,10 +62,10 @@ function todoColSlug(label) {
   return base || "col";
 }
 
-// { order: [id…], hidden: [id…], names: { id: "nome" } }
+// { order: [id…], hidden: [id…], names: { id: "nome" }, wip: { id: n } }
 function sanitizeTodoColConf(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
-  const conf = { order: [], hidden: [], names: {} };
+  const conf = { order: [], hidden: [], names: {}, wip: {} };
   (Array.isArray(src.order) ? src.order : []).forEach(id => {
     const key = String(id || "").trim().toLowerCase();
     if (!TODO_COL_ID_RE.test(key) || conf.order.includes(key)) return;
@@ -83,6 +83,14 @@ function sanitizeTodoColConf(raw) {
   conf.order.forEach(id => {
     if (TODO_BUILTIN_COLS.includes(id)) return;
     conf.names[id] = String(names[id] || "").trim().slice(0, TODO_COL_NAME_MAX) || todoColNiceId(id);
+  });
+  // limite de cartões em curso por coluna: 0 (ou ausente) = sem limite. É um
+  // aviso, nunca uma tranca — o quadro deixa sempre largar o cartão, só passa
+  // a dizer que aquela coluna já leva mais do que devia.
+  const wip = src.wip && typeof src.wip === "object" ? src.wip : {};
+  conf.order.forEach(id => {
+    const n = Math.trunc(Number(wip[id]) || 0);
+    if (n > 0) conf.wip[id] = Math.min(n, 99);
   });
   conf.hidden = (Array.isArray(src.hidden) ? src.hidden : [])
     .map(id => String(id || "").trim().toLowerCase())
@@ -108,6 +116,14 @@ function saveTodoColConf() {
 }
 
 function todoColHidden(id) { return todoColConf.hidden.includes(id); }
+function todoColWip(id) { return todoColConf.wip[id] || 0; }
+
+function setTodoColWip(id, value) {
+  const n = Math.trunc(Number(value) || 0);
+  if (n > 0) todoColConf.wip[id] = Math.min(n, 99);
+  else delete todoColConf.wip[id];
+  saveTodoColConf();
+}
 function todoVisibleColIds() { return todoColConf.order.filter(id => !todoColHidden(id)); }
 function todoColIsCustom(id) { return !TODO_BUILTIN_COLS.includes(id); }
 
@@ -407,6 +423,95 @@ function todoPriorityHtml(it) {
   const tip = `${t("todo_prio_click")}: ${t(TODO_PRIORITY_LABEL[next])}\n${t("todo_prio_back")}: ${t(TODO_PRIORITY_LABEL[prev])}`;
   return `<button type="button" class="todoPrioBtn prio-${prio}" data-tprio="${esc(it.id)}" title="${esc(tip)}">` +
     `<span class="todoPrioGlyph">${TODO_PRIORITY_GLYPH[prio]}</span>${esc(t(TODO_PRIORITY_LABEL[prio]))}</button>`;
+}
+
+// ---------- data-limite e repetição ----------
+// As datas viajam sempre como AAAA-MM-DD (o mesmo que o servidor guarda e o
+// que o <input type="date"> fala); a apresentação é que é dd/mm.
+const TODO_REPEATS = ["", "daily", "weekdays", "weekly", "biweekly", "monthly"];
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// dias entre hoje e a data (negativo = já passou)
+function daysUntil(due) {
+  if (!due) return null;
+  const [y, m, d] = due.split("-").map(Number);
+  const alvo = new Date(y, m - 1, d);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  return Math.round((alvo - hoje) / 86400000);
+}
+
+// estado da data para efeitos de cor: atrasada, hoje, a chegar (≤ 2 dias) ou nada
+function dueState(due) {
+  const dias = daysUntil(due);
+  if (dias === null) return "";
+  if (dias < 0) return "overdue";
+  if (dias === 0) return "today";
+  return dias <= 2 ? "soon" : "";
+}
+
+// dd/mm — com o ano à frente só quando não é o de hoje (senão é ruído)
+function fmtDueShort(due) {
+  if (!due) return "";
+  const [y, m, d] = due.split("-");
+  return String(new Date().getFullYear()) === y ? `${d}/${m}` : `${d}/${m}/${y.slice(2)}`;
+}
+
+function todoDueLabel(it) {
+  const due = String((it && it.due) || "");
+  if (!due) return "";
+  const dias = daysUntil(due);
+  if (dias === 0) return t("due_today");
+  if (dias === 1) return t("due_tomorrow");
+  if (dias === -1) return t("due_late_one");
+  if (dias < 0) return tf("due_late", -dias);
+  return fmtDueShort(due);
+}
+
+function repeatLabel(rep) {
+  const key = TODO_REPEATS.includes(rep) ? rep : "";
+  return key ? t(`todo_rep_${key}`) : t("todo_rep_none");
+}
+
+// chip da data-limite: sem data é só um 📅 esbatido (clicar põe uma). O ↻ ao
+// lado aparece quando o item se repete — é a única pista de que fechá-lo vai
+// fazer nascer o seguinte.
+function todoDueHtml(it) {
+  const due = String(it.due || "");
+  const rep = String(it.repeat || "");
+  const estado = due ? dueState(due) : "";
+  const tip = due
+    ? `${t("todo_due_click")}\n${fmtDueShort(due)}${rep ? ` · ${repeatLabel(rep)}` : ""}`
+    : t("todo_due_add");
+  return `<button type="button" class="todoDueBtn${estado ? ` due-${estado}` : ""}${due ? "" : " empty"}" data-tdue="${esc(it.id)}" title="${esc(tip)}">` +
+    `<span class="todoDueGlyph">📅</span>${due ? esc(todoDueLabel(it)) : ""}` +
+    `${rep ? '<span class="todoRepGlyph">↻</span>' : ""}</button>`;
+}
+
+// editor no lugar do chip: a data e a repetição, que é onde as duas coisas se
+// percebem juntas ("todas as segundas a partir de…"). Gravar re-desenha a
+// lista, por isso o editor fecha-se sozinho.
+function openTodoDue(el) {
+  const id = el.dataset.tdue;
+  const it = todos.find(x => x.id === id);
+  if (!it) return;
+  const host = document.createElement("span");
+  host.className = "todoDueEdit";
+  const opts = TODO_REPEATS.map(r =>
+    `<option value="${r}"${String(it.repeat || "") === r ? " selected" : ""}>${esc(repeatLabel(r))}</option>`).join("");
+  host.innerHTML = `<input type="date" class="todoDueInput" data-tdueset="${esc(id)}" value="${esc(it.due || "")}">` +
+    `<select class="todoRepSel" data-trepset="${esc(id)}" title="${esc(t("todo_rep_title"))}">${opts}</select>` +
+    (it.due || it.repeat
+      ? `<button type="button" class="ccr-x" data-tdueclear="${esc(id)}" title="${esc(t("todo_due_clear"))}">✕</button>`
+      : "");
+  el.replaceWith(host);
+  const input = host.querySelector(".todoDueInput");
+  input.focus();
+  if (input.showPicker) { try { input.showPicker(); } catch (err) { /* browser sem picker */ } }
 }
 
 // De onde veio um item do TODO: {view, ...chaves}. Itens escritos à mão não têm origem.
@@ -725,7 +830,11 @@ function todoJiraHtml(it) {
   const issue = (Array.isArray(it.jiraIssues) ? it.jiraIssues : [])[0];
   if (!issue) {
     return `<ul class="todoJiraList"><li class="todoJiraAddRow">` +
-      `<input type="text" class="todoJiraLinkInput" list="jiraSuggestions" data-tjiranew="${esc(it.id)}" placeholder="${t("jira_link_ph")}"></li></ul>`;
+      `<input type="text" class="todoJiraLinkInput" list="jiraSuggestions" data-tjiranew="${esc(it.id)}" placeholder="${t("jira_link_ph")}">` +
+      // nem todo o trabalho nasce no Jira: daqui cria-se a issue já ligada a
+      // este item (ver openJiraCreate, static/js/jira.js)
+      `<button type="button" class="mini" data-tjiracreate="${esc(it.id)}" title="${esc(t("jira_new_action"))}">＋</button>` +
+      `</li></ul>`;
   }
   const label = issue.parentSummary && issue.summary ? `${issue.parentSummary} — ${issue.summary}` : (issue.summary || issue.key);
   // com tempo por registar, o botão do registo de esforço mostra-o: é assim que
@@ -740,6 +849,7 @@ function todoJiraHtml(it) {
     : t("jira_log_action");
   return `<ul class="todoJiraList"><li class="todoJiraItem">
     ${jiraKeyBadgeHtml(issue.key, label)}
+    ${jiraStateChipHtml(issue.key)}
     <button type="button" class="mini${temPendente ? " todoJiraLogPending" : ""}" data-tjiralog="${esc(it.id)}|${esc(issue.key)}" title="${esc(logTitle)}">${esc(logLabel)}</button>
     <button type="button" class="srcBtn" data-tjiragoto="${esc(issue.key)}" title="${esc(t("jira_goto_action"))}">↗</button>
     <button type="button" class="ccr-x" data-tjiraunlink="${esc(it.id)}|${esc(issue.key)}" title="${esc(t("t_jira_unlink"))}">✕</button>
@@ -941,6 +1051,7 @@ function renderTodo() {
       return `<tr draggable="true" class="todoRow${it.done ? " ccr-done" : ""}${todoIsFlagged(it) ? " flagged" : ""}" data-tid="${esc(it.id)}">
     <td class="todoCtl" style="width:1%"><input type="checkbox" data-tgl="${esc(it.id)}"${it.done ? " checked" : ""}></td>
     <td>${todoMySideFlag(it, false)}${todoKindChips(it)}${todoTitleHtml(it)}${todoSubProgress(it)}${todoNoteFlag(it)}${todoNoteHtml(it, false)}${todoTaskInfoHtml(it)}${todoLinksHtml(it)}${todoSubtasksHtml(it)}${todoJiraHtml(it)}</td>
+    <td class="todoCtl" style="width:1%">${todoDueHtml(it)}</td>
     <td class="todoCtl" style="width:1%">${todoPriorityHtml(it)}</td>
     <td class="todoCtl" style="width:1%">${todoStatusHtml(it)}</td>
     <td class="todoCtl" style="width:1%"><span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span></td>
@@ -971,6 +1082,7 @@ function renderTodo() {
     ${todoSubtasksHtml(it)}
     ${todoJiraHtml(it)}
     <div class="todoCardMeta">
+      ${todoDueHtml(it)}
       ${todoPriorityHtml(it)}
       ${todoStatusHtml(it)}
       <span class="todoTimerCell">${todoTimerHtml(it)}${todoTimerRestartHtml(it)}</span>
@@ -983,8 +1095,17 @@ function renderTodo() {
     const hide = cols.length > 1
       ? `<button type="button" class="todoColHide" data-tcolhide="${esc(col)}" title="${esc(t("todo_col_hide"))}">✕</button>`
       : "";
-    return `<section class="todoCol" data-todocol="${esc(col)}">
-  <div class="todoColHead"><span class="todoColName">${esc(todoColLabel(col))}</span><span class="todoColCount">${byCol[col].length}</span>${hide}</div>
+    // o limite conta os cartões QUE SÃO desta coluna (todoColCount), não os
+    // que aqui são desenhados: os emprestados por uma coluna escondida contam
+    // para a coluna deles
+    const limite = todoColWip(col);
+    const proprios = limite ? todoColCount(col) : 0;
+    const cheia = limite && proprios > limite;
+    const contagem = limite
+      ? `<span class="todoColCount${cheia ? " over" : ""}" title="${esc(tf("todo_wip_tip", limite))}">${proprios}/${limite}</span>`
+      : `<span class="todoColCount">${byCol[col].length}</span>`;
+    return `<section class="todoCol${cheia ? " wipOver" : ""}" data-todocol="${esc(col)}">
+  <div class="todoColHead"><span class="todoColName">${esc(todoColLabel(col))}</span>${contagem}${hide}</div>
   <div class="todoColBody" data-todocol="${esc(col)}">${cards}</div>
 </section>`;
   }).join("") +
@@ -1033,6 +1154,8 @@ async function postTodo(body) {
     const out = await res.json();
     if (!out.ok) { alert("Operação TODO falhou: " + (out.error || "?")); return false; }
     lastTodoResult = out.result || null;
+    // item que se repete: quem o fecha tem de ficar a saber que ja ha outro
+    if (lastTodoResult === "repeated") toast(t("todo_repeated"), "ok");
     todos = out.todo;
     renderTodo();
     // as origens mostram "+ TODO" só enquanto não estiverem na lista
@@ -1165,6 +1288,8 @@ function todoColsPopRowHtml(id, i, total) {
     <input type="checkbox" data-tcolshow="${esc(id)}"${shown ? " checked" : ""} title="${esc(t(shown ? "todo_col_hide" : "todo_col_show"))}">
     ${name}
     <span class="todoColRowCount">${n}</span>
+    <input type="number" class="todoColWipInput" data-tcolwip="${esc(id)}" min="0" max="99"
+      value="${todoColWip(id) || ""}" placeholder="—" title="${esc(t("todo_wip_title"))}">
     <button type="button" class="todoColMove" data-tcolmove="${esc(id)}|-1" title="${esc(t("todo_col_left"))}"${i === 0 ? " disabled" : ""}>↑</button>
     <button type="button" class="todoColMove" data-tcolmove="${esc(id)}|1" title="${esc(t("todo_col_right"))}"${i === total - 1 ? " disabled" : ""}>↓</button>
     ${custom ? `<button type="button" class="todoColMove" data-tcolren="${esc(id)}" title="${esc(t("todo_col_rename"))}">✎</button>` : ""}
@@ -1239,6 +1364,8 @@ function openTodoColsPop(anchor, focusNew) {
     ? Math.max(6, r.top - el.offsetHeight - 6) : below}px`;
   el.addEventListener("click", todoColsPopTap);
   el.addEventListener("change", ev => {
+    const wip = ev.target.closest("[data-tcolwip]");
+    if (wip) { setTodoColWip(wip.dataset.tcolwip, wip.value); renderTodo(); return; }
     const cb = ev.target.closest("[data-tcolshow]");
     if (!cb) return;
     if (!setTodoColHidden(cb.dataset.tcolshow, !cb.checked)) { cb.checked = !cb.checked; return; }
@@ -1297,6 +1424,10 @@ $("todoBoard").addEventListener("click", e => {
 function todoItemChange(e) {
   const cb = e.target.closest("input[data-tgl]");
   if (cb) postTodo({ action: "toggle", id: cb.dataset.tgl });
+  const due = e.target.closest("[data-tdueset]");
+  if (due) postTodo({ action: "set_due", id: due.dataset.tdueset, due: due.value });
+  const rep = e.target.closest("[data-trepset]");
+  if (rep) postTodo({ action: "set_repeat", id: rep.dataset.trepset, repeat: rep.value });
   const sub = e.target.closest("input[data-tsubtgl]");
   if (sub) {
     const [id, subId] = sub.dataset.tsubtgl.split("|");
@@ -1313,6 +1444,15 @@ function todoItemTap(e) {
   if (status) { setTodoStatusById(status.dataset.tocol); return; }
   const prio = e.target.closest("[data-tprio]");
   if (prio) { setTodoPriorityById(prio.dataset.tprio); return; }
+  const due = e.target.closest("[data-tdue]");
+  if (due) { openTodoDue(due); return; }
+  const dueClear = e.target.closest("[data-tdueclear]");
+  if (dueClear) {
+    const id = dueClear.dataset.tdueclear;
+    postTodo({ action: "set_due", id, due: "" })
+      .then(ok => { if (ok) postTodo({ action: "set_repeat", id, repeat: "" }); });
+    return;
+  }
   const subMode = e.target.closest("[data-tsubmode]");
   if (subMode) { toggleSubtasksEdit(subMode.dataset.tsubmode); return; }
   const subDel = e.target.closest("[data-tsubdel]");
@@ -1340,6 +1480,10 @@ function todoItemTap(e) {
     openJiraLogModal(id, key, issue && issue.summary, todoUnloggedMs(item));
     return;
   }
+  const jiraState = e.target.closest("[data-jirastate]");
+  if (jiraState) { jiraStateTap(jiraState); return; }
+  const jiraCreate = e.target.closest("[data-tjiracreate]");
+  if (jiraCreate) { openJiraCreate(jiraCreate.dataset.tjiracreate); return; }
   const jiraGoto = e.target.closest("[data-tjiragoto]");
   if (jiraGoto) { jiraGotoIssue(jiraGoto.dataset.tjiragoto); return; }
   const del = e.target.closest("[data-tdel]");

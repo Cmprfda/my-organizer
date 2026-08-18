@@ -113,6 +113,8 @@ const roleFilters = new Set();     // papéis selecionados (Autor / Reviewer / M
 const customFilterActive = new Set();  // ids dos filtros personalizados ligados (ver customfilters.js)
 // só as tarefas paradas (sem mexer há mais de N dias, ver history.js)
 let staleOnly = false;
+// só as tarefas à espera de alguém cujo prazo já passou (ver waiting.js)
+let chaseOnly = false;
 let searchTerms = [];              // termos de pesquisa fixados (Enter na caixa)
 // como combinar os termos: "or" = qualquer um deles, "and" = todos
 // por omissão "and" — cada termo novo estreita a pesquisa em vez de a alargar
