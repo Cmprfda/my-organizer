@@ -16,6 +16,7 @@ function applyLang() {
   $("jiraLbl").textContent = t("set_lbl_jira");
   document.querySelector('label[for="themeSel"]').textContent = t("theme_title");
   document.querySelector('label[for="langSel"]').textContent = t("lang_title");
+  applyHomeLang();
   applyInsightsLang();
   applyTodayLang();
   applyChatLang();
@@ -224,6 +225,32 @@ $("themeSel").addEventListener("change", () => {
 
 darkQuery.addEventListener("change", applyTheme);
 applyTheme();
+
+// página inicial: a vista onde a app abre (ver homeView/HOME_VIEW_KEY em
+// state.js). Só vale no arranque seguinte — mudá-la não tira ninguém de onde
+// está agora. As opções que são separadores usam as etiquetas deles; "CCRs"
+// é igual nas duas línguas e por isso não tem chave.
+const HOME_OPT_KEYS = {
+  metrics: "tab_metrics", workbook: "home_active_book",
+  todo: "tab_todo", notes: "tab_notes",
+};
+
+function applyHomeLang() {
+  const sel = $("homeSel");
+  document.querySelector('label[for="homeSel"]').textContent = t("home_title");
+  sel.title = t("home_hint");
+  Object.entries(HOME_OPT_KEYS).forEach(([valor, chave]) => {
+    const opt = sel.querySelector(`option[value="${valor}"]`);
+    if (opt) opt.textContent = t(chave);
+  });
+  sel.value = homeView();
+}
+
+$("homeSel").addEventListener("change", () => {
+  localStorage.setItem(HOME_VIEW_KEY, $("homeSel").value);
+  $("homeSel").value = homeView();
+  toast(t("home_saved"), "ok");
+});
 
 // fonte dos dados: ficheiro local ou o livro no OneDrive lido pela API do
 // Excel (Microsoft Graph). O bloco só aparece se o servidor estiver configurado.

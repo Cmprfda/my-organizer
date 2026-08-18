@@ -1542,6 +1542,10 @@ function afterLoad() {
     if (currentView === "ccrs" && !editorOpen) renderCCRs();
   }
   render();
+  // os cartões das Métricas que dependem do livro (estados, pessoas) ficam no
+  // "sem livro" até esta leitura chegar — como as Métricas podem ser a página
+  // inicial, é aqui que apanham os dados sem ser preciso sair e voltar
+  refreshMetricsIfOpen();
   // histórico da folha (idades e "o que aconteceu a esta tarefa"): pedido à
   // parte, depois de desenhar, para nunca atrasar o que já se pode mostrar
   loadTaskHistory(activeTab());

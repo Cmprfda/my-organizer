@@ -48,8 +48,9 @@ async function loadTaskHistory(tab) {
     });
     // o histórico chegou depois do desenho: o botão "Paradas" e as idades só
     // existem com ele, por isso desenha-se outra vez (nunca por cima de um
-    // editor aberto — o render() já se protege disso sozinho)
-    if (tab.id === activeTabId) render();
+    // editor aberto — o render() já se protege disso sozinho). O cartão
+    // "Paradas" das Métricas depende do mesmo histórico.
+    if (tab.id === activeTabId) { render(); refreshMetricsIfOpen(); }
     // quem gravou cada versão do livro: pedido à parte, porque é o OneDrive
     // que responde e pode demorar (ou não responder de todo)
     loadHistoryAuthors(tab);

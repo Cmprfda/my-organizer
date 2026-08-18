@@ -148,8 +148,23 @@ const CCR_POST = [
   ["chk_exec_guardada", "ccr_ceg"],
 ];
 let ccrs = {};
-// vista inicial: o primeiro livro aberto ou, sem nenhum, o painel de boas-vindas
-let currentView = activeTabId ? `wb:${activeTabId}` : "workbooks";
+/* ---------- página inicial ----------
+   Vista onde a app abre (Definições -> Aparência). Guardada neste browser, como
+   o tema: "metrics" por omissão (pedido no feedback), "workbook" é o
+   comportamento antigo — o livro que ficou ativo. Uma janela dedicada a um
+   livro (?wb=) ignora esta escolha: essa janela é para esse livro. */
+const HOME_VIEW_KEY = "bsp-tracker-home-view";
+const HOME_VIEWS = ["metrics", "workbook", "ccrs", "todo", "notes"];
+
+function homeView() {
+  const v = localStorage.getItem(HOME_VIEW_KEY) || "metrics";
+  return HOME_VIEWS.includes(v) ? v : "metrics";
+}
+
+// vista inicial: a página inicial escolhida; a do livro é o separador ativo (ou
+// o painel de boas-vindas, sem nenhum livro aberto)
+const bookStartView = () => activeTabId ? `wb:${activeTabId}` : "workbooks";
+let currentView = (SOLO_WB || homeView() === "workbook") ? bookStartView() : homeView();
 
 function tagClass(tag) {
   const t = norm(tag);

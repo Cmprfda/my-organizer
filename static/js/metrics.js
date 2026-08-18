@@ -87,6 +87,13 @@ let metricsPrevMode = "";
 let metricsActivity = null;      // { from, to, days, events } ou null enquanto não chega
 let metricsActivityAsked = "";
 
+// as Métricas podem ser a página inicial (ver homeView em state.js): os dados
+// dos livros e o histórico chegam DEPOIS do primeiro desenho, por isso quem os
+// recebe volta a pedir este desenho — só se a vista estiver mesmo no ecrã
+function refreshMetricsIfOpen() {
+  if (currentView === "metrics" || sideView === "metrics") renderMetrics();
+}
+
 async function loadMetricsActivity(force = false) {
   const r = metricsRange();
   const token = `${r.from}..${r.to}`;
@@ -100,7 +107,7 @@ async function loadMetricsActivity(force = false) {
   } catch (e) {
     metricsActivity = { ...periodo, events: [] };
   }
-  if (currentView === "metrics" || sideView === "metrics") renderMetrics();
+  refreshMetricsIfOpen();
 }
 
 // ---------- peças de desenho ----------
@@ -599,7 +606,7 @@ function applyInsightsLang() {
   $("reportOverlay").setAttribute("aria-label", t("report_title"));
   $("cmdInput").placeholder = t("ph_cmd");
   $("cmdOverlay").setAttribute("aria-label", t("cmd_title"));
-  if (currentView === "metrics" || sideView === "metrics") renderMetrics();
+  refreshMetricsIfOpen();
 }
 
 $("staleSel").addEventListener("change", () => setStaleDays($("staleSel").value));
