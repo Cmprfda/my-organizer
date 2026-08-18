@@ -229,6 +229,16 @@ let graphAutoGaveUp = false;
 // lá). Mostra-se para se saber qual é a identidade que vai ser reutilizada: o
 // servidor renova a sessão sozinho e, se algum dia tiver de pedir autenticação
 // outra vez, a lista de contas da Microsoft já vem com esta escolhida.
+/* Este cliente é o PC onde a app corre?
+   O servidor di-lo no `local` do /api/graph (ver _graph_state_for em
+   cswaios/server.py). Quem abre a app pelo telemóvel usa a sessão do OneDrive
+   deste PC — lê livros à vontade — mas não liga, não desliga nem configura a
+   conta: esses botões nem sequer lhe aparecem, em vez de aparecerem e darem
+   erro. Enquanto o primeiro /api/graph não responde, `local` é indefinido: aí
+   assume-se que sim, porque é o caso da esmagadora maioria (e o botão só
+   desaparece se o servidor disser mesmo que não). */
+const isLocalClient = () => graphInfo.local !== false;
+
 function graphAccountLine() {
   const mail = graphInfo.account_email || "";
   if (!mail) return "";
@@ -278,17 +288,22 @@ function renderGraphState() {
   $("graphBtn").textContent = graphInfo.connected ? t("graph_disconnect") : t("graph_connect");
   // sem client_id só há a via da Azure CLI, que se gere fora da app
   const usable = graphInfo.connected ? graphInfo.method !== "cli" : graphInfo.can_login;
-  $("graphBtn").classList.toggle("hidden", graphInfo.pending || !usable);
+  $("graphBtn").classList.toggle("hidden",
+    graphInfo.pending || !usable || !isLocalClient());
   // só faz sentido escolher "ligar sozinho" depois de um login feito neste PC
   // (had_login) — o email escrito à mão nas Definições não conta: a app nunca
   // abre o browser sem ter havido primeiro um login manual
-  const podeAuto = graphInfo.method !== "cli" && !!graphInfo.had_login;
+  const podeAuto = graphInfo.method !== "cli" && !!graphInfo.had_login && isLocalClient();
   $("graphAutoRow").classList.toggle("hidden", !podeAuto);
   if (podeAuto) {
     $("graphAutoReconnect").checked = graphAutoReconnect;
     $("graphAutoReconnectTxt").textContent = t("graph_auto");
     $("graphAutoRow").title = tf("t_graph_auto", graphInfo.account_name || graphInfo.account_email);
   }
+  // quem chega pela rede local vê o estado (e abre livros), mas a ligação
+  // vive no PC: dizê-lo aqui evita procurar um botão que não existe
+  $("graphRemoteNote").classList.toggle("hidden", isLocalClient());
+  $("graphRemoteNote").textContent = t("graph_remote_note");
   renderGraphEmailState();
   renderOnedriveRootState();
   maybeAutoReconnectGraph();
@@ -331,6 +346,9 @@ async function startGraphLogin() {
 // aberta sem ninguém abria um separador de login a cada 5 minutos.
 function maybeAutoReconnectGraph() {
   if (!graphAutoReconnect || graphInfo.pending || graphAutoGaveUp) return;
+  // o login abre um browser no PC onde a app corre: pedi-lo do telemóvel só
+  // dava 403 e um aviso de "a religar…" que nunca chegava a lado nenhum
+  if (!isLocalClient()) return;
   if (graphInfo.connected || graphInfo.method === "cli") return;
   // nunca na primeira vez: só religa uma sessão que já existiu neste PC
   if (!graphInfo.had_login) return;
@@ -370,8 +388,8 @@ document.addEventListener("visibilitychange", () => {
 // manda no acesso continua a ser a Microsoft, e a lista dela permite sempre
 // mudar. Vazio = a conta da última sessão.
 function renderGraphEmailState() {
-  $("graphEmailBox").classList.toggle("hidden", !graphInfo.configured);
-  if (!graphInfo.configured) return;
+  $("graphEmailBox").classList.toggle("hidden", !graphInfo.configured || !isLocalClient());
+  if (!graphInfo.configured || !isLocalClient()) return;
   $("graphEmailInput").placeholder = t("graph_email_ph");
   $("graphEmailSaveBtn").textContent = t("btn_save");
   if (document.activeElement !== $("graphEmailInput")) {
@@ -415,8 +433,8 @@ $("graphEmailSaveBtn").addEventListener("click", saveGraphEmail);
 // graph_config.json) — para quando o livro vive no OneDrive de outra pessoa.
 // Só aparece com a fonte web configurada, tal como o graphBox.
 function renderOnedriveRootState() {
-  $("onedriveRootBox").classList.toggle("hidden", !graphInfo.configured);
-  if (!graphInfo.configured) return;
+  $("onedriveRootBox").classList.toggle("hidden", !graphInfo.configured || !isLocalClient());
+  if (!graphInfo.configured || !isLocalClient()) return;
   $("onedriveRootUrl").placeholder = t("onedrive_root_ph");
   $("onedriveRootSaveBtn").textContent = t("btn_save");
   if (document.activeElement !== $("onedriveRootUrl")) {

@@ -194,6 +194,8 @@ const TR = {
   source_web: ["OneDrive (web)", "OneDrive (web)"],
   source_local: ["Ficheiro local", "Local file"],
   graph_off: ["OneDrive: pronto a ligar", "OneDrive: ready to connect"],
+  graph_remote_note: ["Estás a ver a app noutro aparelho: os livros do OneDrive abrem-se aqui na mesma, mas a ligação à conta faz-se no computador onde a app corre.",
+    "You're on another device: OneDrive workbooks still open here, but the account connection is made on the computer running the app."],
   graph_on: ["OneDrive: ligado", "OneDrive: connected"],
   graph_on_cli: ["OneDrive: ligado (sessão da Azure CLI)", "OneDrive: connected (Azure CLI session)"],
   graph_need_cli: ["Corre 'az login' neste PC ou define um client_id em graph_config.json.",
@@ -438,6 +440,8 @@ const TR = {
     "Check the extra OneDrive URL in Settings — it must be the site link (e.g. .../personal/name_domain_com), not a shortcut like \"/my\"."],
   pick_need_login: ["Liga-te ao OneDrive nas Definições para escolher um livro.",
     "Connect to OneDrive in Settings to choose a workbook."],
+  pick_need_login_pc: ["O OneDrive liga-se no computador onde a app está a correr — depois disso os livros abrem aqui também.",
+    "OneDrive is connected on the computer running the app — after that, workbooks open here too."],
   pick_done: ["Livro aberto: {0}", "Workbook opened: {0}"],
   // abrir livros: botão "+", janela de escolha, painel de boas-vindas
   wb_add_title: ["Abrir um livro de Excel", "Open an Excel workbook"],

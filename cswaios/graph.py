@@ -760,6 +760,18 @@ def graph_state():
     return state
 
 
+# quem a conta é só se diz a quem está ao pé da app: o servidor está exposto na
+# rede local (é assim que se abre a app no telemóvel) e a identidade da sessão
+# não tem nada que sair deste PC. O estado em si — ligado, livro escolhido — sai,
+# senão quem está no telemóvel não sabia sequer se havia OneDrive.
+GRAPH_PRIVATE_STATE = ("account_email", "account_name", "login_email", "session_email")
+
+
+def graph_state_public(state):
+    """O mesmo estado, sem a identidade da conta — para clientes da rede local."""
+    return {k: v for k, v in state.items() if k not in GRAPH_PRIVATE_STATE}
+
+
 def _graph_expire_access(cfg):
     """Força a renovação do access token na próxima chamada (resposta 401)."""
     with _graph_lock:
@@ -1116,8 +1128,13 @@ def graph_browse(drive_id="", item_id="", search=""):
             "recent": load_books()["recent"], "current": current_book()}
 
 
-def graph_pick(drive_id, item_id):
-    """Passa a usar o livro indicado. Devolve o livro escolhido."""
+def graph_pick(drive_id, item_id, remember=True):
+    """Passa a usar o livro indicado. Devolve o livro escolhido.
+
+    Com `remember=False` só se confirma que o item existe e é um .xlsx: o livro
+    não passa a ser o "atual" nem entra nos recentes. É o que serve a quem abre
+    a app pela rede local — o separador é dele, no browser dele, e não tem que
+    mudar o livro que está à frente de quem está ao pé do PC."""
     global _graph_item
     cfg = graph_config()
     if not drive_id or not item_id:
@@ -1131,6 +1148,8 @@ def graph_pick(drive_id, item_id):
     book = {"drive_id": parent.get("driveId", drive_id), "item_id": info.get("id", item_id),
             "name": name,
             "path": ((parent.get("path", "") or "").split("root:")[-1] + "/" + name).strip("/")}
+    if not remember:
+        return book
     books = load_books()
     recent = [b for b in books["recent"] if b.get("item_id") != book["item_id"]]
     books = {"current": book, "recent": ([book] + recent)[:12]}

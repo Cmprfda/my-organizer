@@ -379,6 +379,7 @@ body.topShrunk .ios-top #chatBtn svg {
 .setPage .setRow.hidden,
 .setPage .setNote.hidden,
 .setPage .graphAutoLbl.hidden,
+.setPage .graphRemoteNote.hidden,
 .setCard.hidden {
   display: none;
 }
@@ -398,9 +399,17 @@ body.topShrunk .ios-top #chatBtn svg {
 .setPage #onedriveRootBox #onedriveRootState,
 .setPage #graphEmailBox #graphEmailState,
 .setPage #announceEditBox #announceState,
-.setPage #graphBox #graphState {
+.setPage #graphBox #graphState,
+.setPage .graphRemoteNote {
   flex: 1 1 100%;
   min-width: 0;
+}
+
+/* quem abre a app noutro aparelho não tem botão de ligar: esta linha diz-lhe
+   porquê, em vez de deixar o cartão do OneDrive só com o estado */
+.setPage .graphRemoteNote {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 /* o aviso escreve-se numa caixa de texto de várias linhas (os outros campos

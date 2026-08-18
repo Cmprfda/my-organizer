@@ -24,8 +24,8 @@ from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, flush_pending,
                        report_bug, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_login_start,
-                    graph_logout, graph_pick, graph_state, save_login_email,
-                    save_onedrive_root)
+                    graph_logout, graph_pick, graph_state, graph_state_public,
+                    save_login_email, save_onedrive_root)
 from .history import recent_events, sheet_history
 from .jira import (fetch_issue, load_jira_config, log_work, save_jira_config,
                    search_issues)
@@ -100,6 +100,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def _graph_state_for(self, ip):
+        """Estado do OneDrive tal como este cliente o pode ver.
+
+        `local` diz à interface se vale a pena oferecer o que só funciona neste
+        PC (ligar/desligar a conta, escolher a conta, o diálogo de ficheiros do
+        Windows); de quem chega pela rede local esconde-se a identidade da
+        conta, tal como já acontece no /api/tasks."""
+        local = _is_local(ip)
+        state = graph_state()
+        return {**(state if local else graph_state_public(state)), "local": local}
 
     def send_static(self, rel_path):
         """Serve um ficheiro de `static/` (CSS/JS da interface)."""
@@ -285,22 +296,27 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"ok": True}), "application/json")
             return
         if path == "/api/graph":
-            # ligar/desligar a conta Microsoft (device code flow). Só a partir
-            # deste PC: quem está na LAN não mexe na sessão do dono da app.
-            if ip not in ("127.0.0.1", "::1", "localhost"):
-                log_event(f"{ip} tentou mexer na sessão do OneDrive - recusado")
-                self._send(403, json.dumps({"error": "só a partir deste computador"}),
-                           "application/json")
-                return
+            # O que MEXE na sessão ou na configuração continua a ser só deste PC:
+            # quem está na LAN não liga, não desliga nem escolhe a conta do dono
+            # da app. O que apenas LÊ (estado, navegar no OneDrive, abrir um
+            # livro) é para toda a gente — é assim que o telemóvel chega aos
+            # ficheiros de Excel, usando a sessão que este PC já tem aberta.
+            local = _is_local(ip)
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
                 action = payload.get("action", "state")
+                if not local and action in ("login", "logout", "set_login_email",
+                                            "set_onedrive_root"):
+                    log_event(f"{ip} tentou mexer na sessão do OneDrive - recusado")
+                    self._send(403, json.dumps({"error": "só a partir deste computador"}),
+                               "application/json")
+                    return
                 if action == "login":
-                    state = graph_login_start()
+                    state = {**graph_login_start(), "local": True}
                 elif action == "logout":
                     graph_logout()
-                    state = graph_state()
+                    state = self._graph_state_for(ip)
                 elif action == "browse":
                     # navegar nas pastas do OneDrive/SharePoint para escolher um livro
                     listing = graph_browse(str(payload.get("drive_id") or ""),
@@ -310,10 +326,12 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 elif action == "pick":
                     book = graph_pick(str(payload.get("drive_id") or ""),
-                                      str(payload.get("item_id") or ""))
-                    forget_web_cache()   # os dados em cache eram do livro anterior
+                                      str(payload.get("item_id") or ""), remember=local)
+                    if local:
+                        forget_web_cache()   # os dados em cache eram do livro anterior
                     self._send(200, json.dumps({"ok": True, "book": book,
-                                                **graph_state()}), "application/json")
+                                                **self._graph_state_for(ip)}),
+                               "application/json")
                     return
                 elif action == "set_login_email":
                     # conta Microsoft a pré-escolher no login, escrita à mão nas
@@ -321,22 +339,22 @@ class Handler(BaseHTTPRequestHandler):
                     # Microsoft aparecia sempre na errada)
                     save_login_email(str(payload.get("login_email") or ""))
                     log_event(f"{ip} definiu a conta do OneDrive")
-                    state = graph_state()
+                    state = self._graph_state_for(ip)
                 elif action == "set_onedrive_root":
                     # OneDrive/site extra a seguir na navegação, escolhido pelo
                     # utilizador nas Definições (ex.: o livro vive no OneDrive
                     # de um colega, não no do dono desta instalação)
                     save_onedrive_root(str(payload.get("onedrive_url") or ""))
                     log_event(f"{ip} configurou o OneDrive extra")
-                    state = graph_state()
+                    state = self._graph_state_for(ip)
                 else:
-                    state = graph_state()
+                    state = self._graph_state_for(ip)
                 self._send(200, json.dumps(state), "application/json")
             except ValueError as exc:
-                self._send(200, json.dumps({**graph_state(), "error": str(exc)}),
+                self._send(200, json.dumps({**self._graph_state_for(ip), "error": str(exc)}),
                            "application/json")
             except GraphError as exc:
-                self._send(200, json.dumps({**graph_state(), "error": str(exc)}),
+                self._send(200, json.dumps({**self._graph_state_for(ip), "error": str(exc)}),
                            "application/json")
             except Exception as exc:
                 log_event(f"{ip} /api/graph FALHOU: {exc!r}")

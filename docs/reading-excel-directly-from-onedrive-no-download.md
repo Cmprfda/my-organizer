@@ -37,7 +37,10 @@ How to enable it (one time, only on the PC where the app runs):
   browser.
 
 Credentials stay only on this PC (`graph_token.json`, never included in
-published releases or logs) and the connection can only be started from this
-computer — anyone accessing over the local network uses the already-
-connected session. Until you connect an account, the app still works fine
+published releases or logs) and the connection can only be *started* from this
+computer — anyone accessing over the local network uses the already-connected
+session. They can browse OneDrive and open workbooks with it (that is how the
+phone reaches Excel files, see `access-from-phone-other-devices.md`), but they
+cannot sign in, sign out or change the account, and the app never tells them
+which account it is. Until you connect an account, the app still works fine
 with the local file.

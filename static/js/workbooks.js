@@ -14,7 +14,10 @@ function setAddWorkbookOpen(open) {
   $("addWorkbookBtn").setAttribute("aria-expanded", open ? "true" : "false");
   if (!open) return;
   $("wbAddNote").classList.add("hidden");
-  $("wbAddLocal").classList.toggle("hidden", localBrowseUnavailable);
+  // no telemóvel (ou em qualquer aparelho da rede local) o diálogo de ficheiros
+  // não existe — abriria no PC, não aqui. Fica só o OneDrive, que é lido pelo
+  // servidor com a sessão já aberta e por isso funciona em qualquer aparelho
+  $("wbAddLocal").classList.toggle("hidden", localBrowseUnavailable || !isLocalClient());
 }
 
 function wbAddNote(msg) {
@@ -99,7 +102,12 @@ async function openWorkbookWindow(id) {
 // ---------- opção 1: livro no OneDrive/SharePoint ----------
 $("wbAddOneDrive").addEventListener("click", e => {
   e.stopPropagation();
-  if (!graphInfo.connected) { wbAddNote(t("pick_need_login")); return; }
+  // a sessão é a do PC onde a app corre: quem está noutro aparelho não a pode
+  // abrir daqui, tem de ser lá (ver /api/graph em cswaios/server.py)
+  if (!graphInfo.connected) {
+    wbAddNote(t(isLocalClient() ? "pick_need_login" : "pick_need_login_pc"));
+    return;
+  }
   setAddWorkbookOpen(false);
   setPickerOpen(true);   // o pick cria o separador (ver picker.js)
 });

@@ -20,7 +20,7 @@ from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbo
                     write_status_to_excel)
 from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_forget_item,
                     graph_ids_from_path, graph_load_rows, graph_modified, graph_path_for,
-                    graph_state, has_book, is_graph_path)
+                    graph_state, graph_state_public, has_book, is_graph_path)
 from .history import HISTORY_COLS, mark_app_write, record_read
 from .i18n import msg
 from .logs import log_event
@@ -919,12 +919,9 @@ def build_payload(query):
     } for p in files]
 
     graph = graph_state()
-    # /api/tasks não tem o filtro de "só a partir deste PC" do /api/graph (o
-    # servidor está exposto na LAN) — a conta ligada não sai daqui, só do
-    # /api/graph, que é localhost-only
-    graph_public = {k: v for k, v in graph.items()
-                    if k not in ("account_email", "account_name", "login_email",
-                                 "session_email")}
+    # o servidor está exposto na LAN: quem é a conta ligada nunca sai por aqui
+    # (o /api/graph só o diz a quem pede deste PC — ver graph_state_public)
+    graph_public = graph_state_public(graph)
     # "caminho" do livro na nuvem: o do próprio livro escolhido (identidade que
     # não se confunde com a de outro livro) ou, quando o livro só está indicado
     # na configuração, o caminho geral da fonte web
