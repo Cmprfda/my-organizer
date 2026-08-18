@@ -22,4 +22,9 @@ the issue API accepts no attachments. The reporter's IP is stripped from the
 body (the issue is public) and the images stay behind in
 `feedback_pending\<folder>`, listed in the body by name.
 
+Both channels are read when feedback is worked on, and each is closed in its own
+way: a folder moves to `feedback\Fixed\`, an issue gets a comment naming the
+version that fixed it and is then closed. They do not deduplicate against each
+other — `bug_reports.json` and `delivered_folder_exists()` only see the folders.
+
 ---
