@@ -43,8 +43,10 @@ let noteSideW = Math.min(NOTE_SIDE_MAX, Math.max(NOTE_SIDE_MIN,
   parseInt(localStorage.getItem("bsp-tracker-note-side-w"), 10) || 250));
 document.documentElement.style.setProperty("--notes-side-w", noteSideW + "px");
 
-// histórico por nota: pilha de instantâneos do quadro para o Ctrl+Z
+// histórico por nota: pilha de instantâneos do quadro para o Ctrl+Z, e a
+// pilha do caminho de volta (Ctrl+Shift+Z / Ctrl+Y) com o que foi revertido
 const noteUndo = new Map();
+const noteRedo = new Map();
 const NOTE_UNDO_MAX = 20;
 
 function notesVisible() {
@@ -1513,6 +1515,7 @@ async function deleteNoteById(note) {
   const out = await postNotepad({ action: "delete_note", id: note.id });
   if (!out) return;
   noteUndo.delete(note.id);   // a nota já não existe: histórico fora
+  noteRedo.delete(note.id);
   if (note.id === noteId) setCurrentNote((out.notepad.notes[0] || {}).id);
 }
 
@@ -1846,47 +1849,65 @@ function noteSelCount() {
   return noteSelBoxes.length + noteDrawSel.length;
 }
 
-// ---------- reverter (Ctrl+Z): histórico do quadro só nesta janela ----------
+// ---------- reverter / repetir (Ctrl+Z): histórico do quadro só nesta janela --
+// como está o quadro agora — o que se guarda antes de lhe mexer
+function noteSnapshot(note) {
+  return {
+    boxes: JSON.parse(JSON.stringify(note.boxes || [])),
+    strokes: JSON.parse(JSON.stringify(note.strokes || [])),
+    shapes: JSON.parse(JSON.stringify(note.shapes || [])),
+    connectors: JSON.parse(JSON.stringify(note.connectors || [])),
+    frames: JSON.parse(JSON.stringify(note.frames || [])),
+  };
+}
+
+function pushNoteHist(map, id, snap) {
+  const stack = map.get(id) || [];
+  stack.push(snap);
+  while (stack.length > NOTE_UNDO_MAX) stack.shift();
+  map.set(id, stack);
+}
+
 // guarda como está o quadro ANTES de o alterar; o botão ↺ volta a esse estado
 function pushNoteUndo(note) {
   const target = note || currentNote();
   if (!target) return;
-  const stack = noteUndo.get(target.id) || [];
-  stack.push({
-    boxes: JSON.parse(JSON.stringify(target.boxes || [])),
-    strokes: JSON.parse(JSON.stringify(target.strokes || [])),
-    shapes: JSON.parse(JSON.stringify(target.shapes || [])),
-    connectors: JSON.parse(JSON.stringify(target.connectors || [])),
-    frames: JSON.parse(JSON.stringify(target.frames || [])),
-  });
-  while (stack.length > NOTE_UNDO_MAX) stack.shift();
-  noteUndo.set(target.id, stack);
+  pushNoteHist(noteUndo, target.id, noteSnapshot(target));
+  noteRedo.delete(target.id);   // alteração nova: já não há caminho de volta
   renderNoteUndoBtn();
 }
 
-function noteUndoStack() {
+function noteHistStack(map) {
   const note = currentNote();
-  return note ? (noteUndo.get(note.id) || []) : [];
+  return note ? (map.get(note.id) || []) : [];
 }
 
 function renderNoteUndoBtn() {
-  const btn = $("noteUndoBtn");
-  if (btn) btn.disabled = !noteUndoStack().length;
+  const undoBtn = $("noteUndoBtn");
+  if (undoBtn) undoBtn.disabled = !noteHistStack(noteUndo).length;
+  const redoBtn = $("noteRedoBtn");
+  if (redoBtn) redoBtn.disabled = !noteHistStack(noteRedo).length;
 }
 
-async function revertNote() {
+// `back` (o normal): volta ao estado anterior e guarda o atual para o ↻;
+// senão repete o que o ↺ tinha revertido e devolve o passo ao ↺
+async function revertNote(back = true) {
   const note = currentNote();
   if (!note) return;
-  const stack = noteUndo.get(note.id) || [];
+  const stack = (back ? noteUndo : noteRedo).get(note.id) || [];
   const snap = stack[stack.length - 1];
-  if (!snap) { toast(t("note_undo_none")); return; }
+  if (!snap) { toast(t(back ? "note_undo_none" : "note_redo_none")); return; }
   flushNoteText();   // o texto pendente não pode gravar depois de reverter
   noteTyping = false;
   noteTextSnap = false;
   noteSelBoxes = [];
   noteDrawSel = [];
+  const current = noteSnapshot(note);   // o caminho de volta deste passo
   const out = await postNotepad({ action: "restore_note", id: note.id, ...snap });
-  if (out) stack.pop();   // só consome o passo de undo se a reposição foi bem sucedida
+  if (out) {
+    stack.pop();   // só consome o passo se a reposição foi bem sucedida
+    pushNoteHist(back ? noteRedo : noteUndo, note.id, current);
+  }
   renderNoteUndoBtn();
 }
 
@@ -2729,6 +2750,7 @@ $("noteToolbar").addEventListener("click", e => {
 });
 
 $("noteUndoBtn").addEventListener("click", () => revertNote());
+$("noteRedoBtn").addEventListener("click", () => revertNote(false));
 
 // limpar o quadro: pergunta primeiro e fica revertível com o ↺ / Ctrl+Z
 $("noteClearBtn").addEventListener("click", async () => {
@@ -2795,16 +2817,19 @@ document.addEventListener("keydown", e => {
   deleteNoteSel(note, [...noteSelBoxes], [...noteDrawSel]);
 });
 
-// Ctrl+Z reverte a última alteração do quadro (dentro de um texto o Ctrl+Z é
-// o do próprio campo, para não desfazer o que se está a escrever)
+// Ctrl+Z reverte a última alteração do quadro e Ctrl+Shift+Z (ou Ctrl+Y)
+// repete-a (dentro de um texto estas teclas são as do próprio campo, para não
+// desfazer o que se está a escrever)
 document.addEventListener("keydown", e => {
-  if (e.key !== "z" && e.key !== "Z") return;
   if (!e.ctrlKey && !e.metaKey) return;
-  if (e.shiftKey || e.altKey) return;
+  if (e.altKey) return;
+  const key = String(e.key || "").toLowerCase();
+  if (key !== "z" && key !== "y") return;
+  if (key === "y" && e.shiftKey) return;
   if (!notesVisible() || noteTextFocused() || !currentNote()) return;
-  if (noteImgOpen()) return;   // a ver uma imagem em grande: não reverter o quadro
+  if (noteImgOpen()) return;   // a ver uma imagem em grande: não mexer no quadro
   e.preventDefault();
-  revertNote();
+  revertNote(key === "z" && !e.shiftKey);
 });
 
 // ---------- texto das caixas ----------

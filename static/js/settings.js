@@ -109,6 +109,7 @@ function applyLang() {
   $("noteToolbar").querySelector('[data-tool="frame"]').title = t("t_tool_frame");
   $("noteToolColor").title = t("t_tool_color");
   $("noteUndoBtn").title = t("t_note_undo");
+  $("noteRedoBtn").title = t("t_note_redo");
   $("noteClearBtn").title = t("t_note_clear");
   $("noteEmpty").innerHTML = `<h2>${t("note_empty_t")}</h2><p>${t("note_empty_p")}</p>`;
   $("noteLinkTitle").textContent = t("note_link_title");
