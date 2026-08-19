@@ -445,13 +445,18 @@ function daysUntil(due) {
   return Math.round((alvo - hoje) / 86400000);
 }
 
-// estado da data para efeitos de cor: atrasada, hoje, a chegar (≤ 2 dias) ou nada
+// a partir de quantos dias uma data-limite deixa de ser "a chegar": uma só
+// conta, para a cor da data e a secção "A chegar" do painel Hoje
+// (todaySoonItems, static/js/today.js) dizerem o mesmo
+const TODO_SOON_DAYS = 2;
+
+// estado da data para efeitos de cor: atrasada, hoje, a chegar ou nada
 function dueState(due) {
   const dias = daysUntil(due);
   if (dias === null) return "";
   if (dias < 0) return "overdue";
   if (dias === 0) return "today";
-  return dias <= 2 ? "soon" : "";
+  return dias <= TODO_SOON_DAYS ? "soon" : "";
 }
 
 // dd/mm — com o ano à frente só quando não é o de hoje (senão é ruído)
@@ -1095,15 +1100,21 @@ function renderTodo() {
     const hide = cols.length > 1
       ? `<button type="button" class="todoColHide" data-tcolhide="${esc(col)}" title="${esc(t("todo_col_hide"))}">✕</button>`
       : "";
-    // o limite conta os cartões QUE SÃO desta coluna (todoColCount), não os
-    // que aqui são desenhados: os emprestados por uma coluna escondida contam
-    // para a coluna deles
+    // A conta da coluna é sempre a mesma: os cartões QUE SÃO desta coluna
+    // (todoColCount) — é essa que o limite compara e é essa que as métricas
+    // mostram. Antes, sem limite, contavam-se os cartões DESENHADOS aqui, e
+    // pôr um limite mudava o número sem nenhum cartão ter saído do sítio.
+    // Os emprestados por uma coluna escondida vão à parte, num "+N".
     const limite = todoColWip(col);
-    const proprios = limite ? todoColCount(col) : 0;
+    const proprios = todoColCount(col);
+    const emprestados = byCol[col].length - proprios;
     const cheia = limite && proprios > limite;
-    const contagem = limite
+    const contagem = (limite
       ? `<span class="todoColCount${cheia ? " over" : ""}" title="${esc(tf("todo_wip_tip", limite))}">${proprios}/${limite}</span>`
-      : `<span class="todoColCount">${byCol[col].length}</span>`;
+      : `<span class="todoColCount">${proprios}</span>`) +
+      (emprestados > 0
+        ? `<span class="todoColLent" title="${esc(tf("todo_col_lent", emprestados))}">+${emprestados}</span>`
+        : "");
     return `<section class="todoCol${cheia ? " wipOver" : ""}" data-todocol="${esc(col)}">
   <div class="todoColHead"><span class="todoColName">${esc(todoColLabel(col))}</span>${contagem}${hide}</div>
   <div class="todoColBody" data-todocol="${esc(col)}">${cards}</div>
@@ -1188,12 +1199,25 @@ async function addTodoWithFeedback(body) {
 // pôs (podia ser o Reviewer, por exemplo). Folha sem coluna "To Do": fica o
 // texto da 4.ª coluna, como antes, que é o melhor que há. A OBS nunca entra
 // aqui: aparece à parte e ao vivo (todoTaskInfoHtml), e copiá-la duplicava-a.
-function taskRowDetail(tr, meta) {
+// Colunas que valem por um "o que fazer" numa folha que não tem a coluna do
+// tracker (vista mapeada, aba genérica) — comparadas com norm(), sem acentos.
+const TODO_DETAIL_COL_RE = /^(to ?do|o que fazer|descricao|description)\b/;
+
+// O "o que fazer" da linha, para ficar como nota do item.
+//
+// Sai sempre dos dados da linha (meta), nunca do texto de uma célula do ecrã por
+// posição: a ordem das colunas é a que o utilizador arrastou e há colunas que os
+// filtros escondem, por isso "a 4.ª célula" pode ser qualquer coisa — houve
+// itens gravados com os revisores da linha como nota, colados sem separador.
+function taskRowDetail(meta) {
   const cur = (meta && meta.cur) || {};
   if (cur["To Do"] !== undefined) return String(cur["To Do"] || "").trim().slice(0, 300);
-  const cell = tr && tr.cells[3] ? tr.cells[3].cloneNode(true) : null;
-  if (cell) cell.querySelectorAll(".obs, .addnote").forEach(n => n.remove());
-  return (cell ? cell.innerText : "").trim().slice(0, 300);
+  // meta.orig traz TODAS as colunas reais da linha pelo nome: procura-se lá uma
+  // com este significado; não havendo nenhuma, o item fica só com o título (a
+  // caixa do cartão mostra a linha ao vivo de qualquer maneira)
+  const orig = (meta && meta.orig) || {};
+  const nome = Object.keys(orig).find(n => TODO_DETAIL_COL_RE.test(norm(n)));
+  return nome ? String(orig[nome] || "").trim().slice(0, 300) : "";
 }
 
 function addTodoFromTaskRow(btn) {
@@ -1201,14 +1225,12 @@ function addTodoFromTaskRow(btn) {
   const ri = +btn.dataset.todoadd;
   if (!tr || Number.isNaN(ri)) return;
   const meta = currentMeta[ri] || {};
-  // o título sai da 1.ª coluna da tabela, mas com a vista mapeada essa coluna
-  // pode ser outra qualquer (ou vir vazia): aí vale o Function/TC da linha,
-  // senão o botão não fazia nada. A mesma conta está no todoAddBtn (tasks.js),
-  // para o "+ TODO" desaparecer da linha que já tem item.
-  const fn = tr.cells[0] ? tr.cells[0].innerText.split("\n")[0].trim() : "";
-  const title = fn || String(meta.fn || "").trim();
+  // o título é o que o render() já calculou para esta linha (ver rowTitleFor,
+  // tasks.js): é a mesma conta que faz o "+ TODO" desaparecer da linha que já
+  // tem item, e não depende da ordem em que as colunas estão no ecrã
+  const title = currentRowTitles[ri] || String(meta.fn || "").trim();
   if (!title) return;
-  const detail = taskRowDetail(tr, meta);
+  const detail = taskRowDetail(meta);
   const ref = {
     workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
     fn: meta.fn || title, todo: meta.todo || "",
@@ -1630,13 +1652,13 @@ $("tbody").addEventListener("dragstart", e => {
   const tr = e.target.closest("tr");
   if (!tr || !tr.cells.length) return;
   // as chaves exatas da linha, para se poder voltar a ela mais tarde
-  const meta = currentMeta[[...$("tbody").rows].indexOf(tr)] || {};
-  // com a vista mapeada a 1.ª coluna pode não ser o Function/TC (ver
-  // addTodoFromTaskRow): sem texto nela, o título vem da própria linha
-  const fn = tr.cells[0].innerText.split("\n")[0].trim() || String(meta.fn || "").trim();
+  const ri = [...$("tbody").rows].indexOf(tr);
+  const meta = currentMeta[ri] || {};
+  // o mesmo título do "+ TODO" desta linha (ver rowTitleFor, tasks.js)
+  const fn = currentRowTitles[ri] || String(meta.fn || "").trim();
   if (!fn) return;
   // leva também o "O que fazer" como detalhe do item
-  const detail = taskRowDetail(tr, meta);
+  const detail = taskRowDetail(meta);
   const ref = {
     workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
     fn: meta.fn || fn, todo: meta.todo || "",

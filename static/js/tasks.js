@@ -674,6 +674,18 @@ function customFilterHiddenCols(data) {
   return out;
 }
 
+// Como se chama uma linha da tabela quando ela vai para o quadro do Por fazer:
+// a 1.ª coluna da VISTA (índice 0 em headers/r[], que é o nome do item) e, se
+// vier vazia — pode acontecer na vista mapeada —, o Function/TC da linha.
+//
+// Nunca o texto da 1.ª célula do ecrã: a ordem das colunas é a que o utilizador
+// arrastou (ver resolveColOrder), por isso essa célula pode ser o estado, o
+// autor ou qualquer outra coisa.
+function rowTitleFor(r, meta) {
+  return String(r[0] === undefined ? "" : r[0]).split("\n")[0].trim()
+    || String((meta || {}).fn || "").trim();
+}
+
 // hiddenCols: nomes a deixar de fora das células das categorias compostas (ver
 // customFilterHiddenCols) — as colunas em si (mapeadas à parte ou a própria
 // composta) saem depois, em render(), que trata as duas vistas do mesmo modo.
@@ -1019,11 +1031,14 @@ function renderVersionBadge(data) {
     `csw.ai.os ${esc(v)}`;
 }
 
-// lista legível das alterações locais (✎) por enviar, para o title do botão
-// "Enviar (N)" — o número por si só não diz o que vai mesmo ser enviado.
+// Lista legível das alterações locais (✎) por enviar, para o title do botão
+// "Enviar (N)" — o número por si só não diz o que vai mesmo ser enviado. Só o
+// que ESTE Push leva (ver pendingGoesHere): com as de outro livro, a dica
+// prometia escrever coisas que o botão não escreve.
 function pendingSummary(details) {
-  if (!details || !details.length) return "";
-  return details.map(d => `${d.sheet} · ${d.task} · ${d.field}: ${d.value}`).join("\n");
+  const list = (details || []).filter(pendingGoesHere);
+  if (!list.length) return "";
+  return list.map(d => `${d.sheet} · ${d.task} · ${d.field}: ${d.value}`).join("\n");
 }
 
 // ---------- painel das alterações locais, ao lado do botão Enviar ----------
@@ -1041,14 +1056,45 @@ function closePendingPop() {
   pendingPop = null;
 }
 
+// a barra das pastas do Windows, escrita assim para não haver dúvidas sobre
+// quantas barras invertidas ficam na fonte
+const SEP_PASTA = String.fromCharCode(92);
+
+// nome legível do livro de uma alteração local: o separador que está aberto com
+// esse livro (é a chave com que o servidor o identifica) ou, se já não estiver
+// aberto, o nome do ficheiro. Vazio nas chaves antigas, que não têm livro.
+function pendingBookLabel(book) {
+  if (!book) return "";
+  const tab = (workbookTabs || []).find(x => x.lastData && x.lastData.file === book);
+  if (tab && tab.name) return tab.name;
+  // "C:\pasta\A.xlsx" -> "A.xlsx"; "onedrive:<drive>:<item>" -> "<item>"
+  const semUnidade = String(book).split(":").pop();
+  return semUnidade.split(SEP_PASTA).pop().split("/").pop() || String(book);
+}
+
+// esta alteração vai no Push deste separador? (a mesma conta do servidor, ver
+// pending_for_book — as chaves antigas, sem livro, vão sempre)
+function pendingGoesHere(d) {
+  if (!d.book) return true;
+  const aqui = (lastData && lastData.file) || "";
+  return !!aqui && String(d.book).toLowerCase() === String(aqui).toLowerCase();
+}
+
 function pendingPopHtml(details) {
   const list = details || [];
-  // uma entrada por linha do Excel (aba + tarefa), com os campos alterados
-  // dessa linha lá dentro: o mesmo estado mudado em duas colunas lê-se junto
+  // uma entrada por linha do Excel (livro + aba + tarefa), com os campos
+  // alterados dessa linha lá dentro: o mesmo estado mudado em duas colunas
+  // lê-se junto. O livro entra na chave e no que se mostra: a lista é de todos
+  // os livros abertos, mas o Push só leva os deste separador.
   const grupos = new Map();
   list.forEach(d => {
-    const chave = `${d.sheet}||${d.task}`;
-    if (!grupos.has(chave)) grupos.set(chave, { sheet: d.sheet, task: d.task, campos: [] });
+    const chave = `${d.book || ""}||${d.sheet}||${d.task}`;
+    if (!grupos.has(chave)) {
+      grupos.set(chave, {
+        sheet: d.sheet, task: d.task, campos: [],
+        book: pendingBookLabel(d.book), aqui: pendingGoesHere(d),
+      });
+    }
     grupos.get(chave).campos.push(d);
   });
   const vazio = `<i class="pendingPopEmpty">${esc(t("pending_pop_empty"))}</i>`;
@@ -1057,10 +1103,15 @@ function pendingPopHtml(details) {
     `<span class="pendingPopNew">${d.value ? esc(d.value) : vazio}</span></li>`;
   return `<div class="todoColsPopHead">${esc(tf("pending_pop_title", list.length))}</div>` +
     `<ul class="pendingPopList">` +
-    [...grupos.values()].map(g => `<li class="pendingPopItem">` +
-      `<div class="pendingPopTask">${esc(g.task)}</div>` +
-      `<div class="pendingPopSheet">${esc(g.sheet)}</div>` +
-      `<ul class="pendingPopFields">${g.campos.map(campo).join("")}</ul></li>`).join("") +
+    [...grupos.values()]
+      // primeiro o que este Push leva; o resto fica marcado, no fim
+      .sort((a, b) => (a.aqui === b.aqui ? 0 : a.aqui ? -1 : 1))
+      .map(g => `<li class="pendingPopItem${g.aqui ? "" : " otherBook"}"` +
+        `${g.aqui ? "" : ` title="${esc(t("t_pending_other"))}"`}>` +
+        `<div class="pendingPopTask">${esc(g.task)}</div>` +
+        `<div class="pendingPopSheet">${esc([g.book, g.sheet].filter(Boolean).join(" · "))}` +
+        `${g.aqui ? "" : ` <span class="pendingPopElsewhere">${esc(t("pending_other"))}</span>`}</div>` +
+        `<ul class="pendingPopFields">${g.campos.map(campo).join("")}</ul></li>`).join("") +
     `</ul><p class="pendingPopFoot">${esc(t("pending_pop_hint"))}</p>`;
 }
 
@@ -1126,12 +1177,16 @@ function render() {
   const web = data.source === "onedrive";
   // fonte web: não há ficheiro local para descarregar nem Excel para fechar
   $("fetchBtn").classList.toggle("hidden", web);
+  // `pending` é o que ESTE Push vai levar (só as alterações deste livro, ver
+  // pending_for_book no servidor) e `pending_all` é tudo o que está por enviar
+  // em qualquer livro aberto: o botão prometia cinco e escrevia três.
   const pending = data.pending || 0;
+  const pendingAll = data.pending_all == null ? pending : data.pending_all;
   const pushLabel = pending ? `${t("btn_push")} (${pending})` : t("btn_refresh");
   const pushTitle = pending ? pendingSummary(data.pending_details) : "";
   $("refresh").textContent = pushLabel;
   $("refresh").title = pushTitle;
-  $("reloadOnly").classList.toggle("hidden", !pending);
+  $("reloadOnly").classList.toggle("hidden", !pendingAll);
   $("clearLocals").classList.toggle("hidden", !pending);
   // o mesmo botão na página Por fazer, para não ser preciso voltar às Tarefas
   // só para enviar (só aparece quando há mesmo algo por enviar)
@@ -1143,9 +1198,11 @@ function render() {
   [$("pendingBtn"), $("pendingBtnTodo")].forEach(b => {
     b.textContent = t("pending_btn");
     b.title = t("t_pending_btn");
-    b.classList.toggle("hidden", !pending);
+    // a lista mostra o que está por enviar em qualquer livro: aparece sempre
+    // que haja algo, mesmo que não seja deste separador
+    b.classList.toggle("hidden", !pendingAll);
   });
-  if (!pending) closePendingPop();
+  if (!pendingAll) closePendingPop();
   else if (pendingPop) pendingPop.el.innerHTML = pendingPopHtml(data.pending_details);
 
   // sem nenhum livro aberto o painel das tarefas não tem nada que mostrar
@@ -1232,16 +1289,34 @@ function render() {
 
   // resumo: contagens calculadas antes do filtro de estado, para os botões não desaparecerem
   // (na vista mapeada à medida não há coluna de estado fixa: nunca conta como tal)
-  const statusIdx = useCompact ? -1 : headers.findIndex(isStatusHeader);
+  // TODAS as colunas de estado da vista, não só a primeira: numa folha do
+  // tracker o Status TC e o Status TP são duas colunas (dois trabalhos na mesma
+  // linha, como no resto da app) e contar/filtrar só pela primeira deixava de
+  // fora tudo o que está preso do lado do TP — o botão dizia "Blocked: 3" com a
+  // tabela a mostrar sete linhas bloqueadas, e filtrar por ele escondia-as.
+  const statusIdxs = useCompact ? []
+    : headers.map((h, i) => (isStatusHeader(h) ? i : -1)).filter(i => i >= 0);
+  // os estados desta linha, de todas as colunas de estado, sem repetições: o
+  // número do botão é o de LINHAS que ele deixa à vista (é um filtro), por isso
+  // uma linha com o mesmo estado no TC e no TP conta uma vez só
+  const rowStatuses = r => {
+    const out = new Set();
+    statusIdxs.forEach(i => statusLines(r[i]).forEach(s => out.add(s)));
+    return out;
+  };
   let rows = searched;
-  if (statusFilters.size && statusIdx >= 0 && !useCompact) {
-    rows = rows.filter(r => statusLines(r[statusIdx]).some(s => statusFilters.has(s)));
+  if (statusFilters.size && statusIdxs.length && !useCompact) {
+    rows = rows.filter(r => [...rowStatuses(r)].some(s => statusFilters.has(s)));
     // um botão de estado ligado também torna a coluna de estado redundante (ver
     // customFilterHiddenCols). Junta-se aqui, e não lá, porque só agora se sabe
-    // qual é a coluna de estado desta vista — e isso não muda nada para as
+    // quais são as colunas de estado desta vista — e isso não muda nada para as
     // categorias compostas, que só existem na vista mapeada, onde não há
-    // botões de estado (statusIdx = -1).
-    if (loadCustomFilterHideCols(data)) hiddenCols.add(headers[statusIdx]);
+    // botões de estado (statusIdxs vazio).
+    // Só com UMA coluna de estado é que ela fica de facto redundante: com duas,
+    // o botão ligado diz que uma delas tem aquele estado, não qual — esconder as
+    // duas deixava a linha à vista sem se saber o que a prende.
+    if (statusIdxs.length === 1 && loadCustomFilterHideCols(data))
+      hiddenCols.add(headers[statusIdxs[0]]);
   }
 
   // filtros personalizados (ver customfilters.js): sempre pela coluna real da
@@ -1286,16 +1361,15 @@ function render() {
   const pillClasses = (extra, active, n) =>
     `pill${extra ? " " + extra : ""}${active ? " active" : ""}${!active && n === 0 ? " zero" : ""}`;
 
-  if (statusIdx >= 0 && searched.length) {
+  if (statusIdxs.length && searched.length) {
     const counts = {};
-    searched.forEach(r => {
-      // linhas sem estado não geram botão (não haveria nada para mostrar)
-      statusLines(r[statusIdx]).forEach(s => { counts[s] = (counts[s] || 0) + 1; });
-    });
+    // linhas sem estado nenhum não geram botão (não haveria nada para mostrar)
+    searched.forEach(r => rowStatuses(r).forEach(s => { counts[s] = (counts[s] || 0) + 1; }));
+    const dica = statusIdxs.length > 1 ? ` title="${esc(t("t_status_pill"))}"` : "";
     summaryHtml += Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .map(([s, n]) =>
-        `<span class="pill${statusFilters.has(s) ? " active" : ""}" data-status="${esc(s)}">${esc(s)}: ${n}</span>`
+        `<span class="pill${statusFilters.has(s) ? " active" : ""}" data-status="${esc(s)}"${dica}>${esc(s)}: ${n}</span>`
       ).join("");
   }
   if (allCustomFilters.length && searched.length) {
@@ -1317,7 +1391,7 @@ function render() {
   if (!rows.length) {
     tbl.classList.add("hidden");
     box.classList.remove("hidden");
-    box.innerHTML = (statusFilters.size || sideFilters.size || roleFilters.size || customFilterActive.size)
+    box.innerHTML = (statusFilters.size || customFilterActive.size || staleOnly || chaseOnly)
       ? `<h2>${t("none_filter")}.</h2><p>${t("none_hint")}</p>`
       : query.length
         ? `<h2>${t("none_search")} "${esc(searchLabel())}".</h2>`
@@ -1370,6 +1444,12 @@ function render() {
     `${esc(headers[i2])}<span class="colResizeHandle" data-resize="${esc(headers[i2])}" draggable="false"></span></th>`
   ).join("") + `<th class="todoActionCell">${esc(t("hdr_action"))}</th></tr>`;
   currentMeta = rows.map(metaFor);
+  // título de cada linha à vista, para o "+ Por fazer" e para o arrasto de uma
+  // linha para o quadro (ver todo.js): sai daqui, e não do texto da 1.ª célula
+  // do ECRÃ, porque arrastar um cabeçalho muda qual é essa célula — a linha
+  // passava a chamar-se pelo estado dela e o "+ Por fazer" nunca desaparecia da
+  // linha que já tinha item (todoAddBtn e addTodoFromTaskRow têm de dar o mesmo)
+  currentRowTitles = rows.map((r, ri) => rowTitleFor(r, currentMeta[ri]));
   currentObs = rows.map(() => "");
   currentStatuses = data.statuses || [];
   // "estado em massa" só faz sentido com linhas à vista e uma lista de estados
@@ -1386,12 +1466,10 @@ function render() {
   // o botão "+ TODO" só existe enquanto a linha não estiver na TODO list
   function todoAddBtn(r, ri) {
     const meta = currentMeta[ri] || {};
-    // na vista mapeada a 1.ª coluna é a que o utilizador lá pôs e pode vir
-    // vazia: o título do item cai então no Function/TC da linha (a mesma conta
-    // está em addTodoFromTaskRow, todo.js — as duas têm de dar o mesmo, senão
-    // o "+ TODO" não desaparecia da linha que já tem item)
-    const title = String(r[0] === undefined ? "" : r[0]).split("\n")[0].trim()
-      || String(meta.fn || "").trim();
+    // o mesmo título que o item vai levar (ver currentRowTitles/rowTitleFor):
+    // se as duas contas não derem o mesmo, o botão não desaparece da linha que
+    // já tem item e pode criar-se um segundo item para a mesma linha
+    const title = currentRowTitles[ri] || "";
     const ref = {
       workbook: activeBookName(), sheet: data.sheet || "",
       fn: meta.fn || title, todo: meta.todo || "",

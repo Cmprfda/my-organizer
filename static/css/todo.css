@@ -109,6 +109,20 @@ tr.todoRow.ccr-done.flagged td {
   font-weight: 600;
 }
 
+/* cartoes emprestados por uma coluna escondida e desenhados nesta: contam para
+   a coluna deles, por isso ficam fora da contagem, num "+N" mais discreto */
+.todoColLent {
+  margin-left: 3px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px dashed var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+}
+
 .todoColBody {
   /* ocupa toda a altura livre da coluna: largar em qualquer ponto da coluna
      (e não só por cima dos cartões) tem de contar como largar na coluna */

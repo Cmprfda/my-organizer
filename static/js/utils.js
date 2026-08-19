@@ -37,10 +37,22 @@ function boldTerms(text, terms) {
 
 function statusClass(text) {
   const t = norm(text);
-  if (/(conclu|done|closed|fechad|complet|finaliz|\bok\b)/.test(t)) return "done";
+  // "Reviewed" (revisto) é o FIM da revisão, não uma revisão a decorrer: tem de
+  // ser visto antes do ramo do "review", senão um TC já revisto ficava para
+  // sempre a contar como trabalho por fechar (paradas, carga por pessoa, ⏳)
+  if (/(conclu|done|closed|fechad|complet|finaliz|\breviewed\b|\brevisto\b|\bok\b)/.test(t)) return "done";
   if (/(progress|em curso|ongoing|doing|andamento|review|analise)/.test(t)) return "doing";
   if (/(bloq|blocked|impedid|on hold|hold|stuck)/.test(t)) return "blocked";
   return "other";
+}
+
+// Um estado que já não espera trabalho de ninguém. É o que se lê como feito,
+// mais o que foi RETIRADO da folha ("Removed"): não é um fim feliz, mas também
+// não é uma tarefa esquecida à espera de alguém — e é essa a pergunta que as
+// paradas (⏳), a carga por pessoa e o painel Hoje fazem. A cor mantém-se a
+// neutra: "Removed" não é um "Done" (ver statusClass).
+function statusIsFinal(text) {
+  return statusClass(text) === "done" || /(\bremoved\b|\bremovid)/.test(norm(text));
 }
 
 function statusBadges(text) {

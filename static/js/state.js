@@ -122,8 +122,6 @@ let compactView = true;            // vista resumida por omissão
 // disposição da vista de tarefas: "list" (tabela) ou "cards" (caixas)
 let taskLayout = localStorage.getItem("bsp-tracker-task-layout") === "cards" ? "cards" : "list";
 const statusFilters = new Set();   // estados selecionados (vista completa)
-const sideFilters = new Set();     // On my side / On the other side / Done (vista resumida)
-const roleFilters = new Set();     // papéis selecionados (Autor / Reviewer / Mencionado)
 const customFilterActive = new Set();  // ids dos filtros personalizados ligados (ver customfilters.js)
 // só as tarefas paradas (sem mexer há mais de N dias, ver history.js)
 let staleOnly = false;
@@ -190,6 +188,7 @@ function tagClass(tag) {
 }
 
 let currentMeta = [];      // metadados (chaves/originais) das linhas apresentadas
+let currentRowTitles = []; // nome de cada linha à vista para o Por fazer (ver rowTitleFor em tasks.js)
 let currentObs = [];       // OBS em vigor (com override local) de cada linha
 let currentStatuses = [];  // estados possíveis, para o editor
 let currentColOrderKind = "";   // vista à vista agora ("full"/"custom"), ver render()/resolveColOrder em tasks.js

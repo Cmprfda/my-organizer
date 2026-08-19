@@ -894,6 +894,30 @@ def push_overrides(target):
     return target, pushed, failed
 
 
+def discard_overrides(target):
+    """Descarta as alterações locais (✎) de UM livro e devolve quantas ficaram
+    (dos outros livros abertos).
+
+    O critério é o do push_overrides: as chaves deste livro e as antigas (sem
+    livro), que são as que um Push a este livro levaria.
+    """
+    overrides = load_overrides()
+    alvo = os.path.normcase(str(target))
+    ficam = {}
+    for key, entry in overrides.items():
+        wb_id, _, _, _ = _split_cellcat_key(key)
+        if wb_id is None:
+            wb_id, _, _, _ = _split_key(key)
+        if wb_id is None or os.path.normcase(str(wb_id)) == alvo:
+            continue
+        ficam[key] = entry
+    save_overrides(ficam)
+    forget_cache(target)
+    # conta-se o que FICOU, não se relê o ficheiro: é a mesma unidade do
+    # pending_all (uma entrada por campo, ver _summarize_overrides)
+    return len(_summarize_overrides(ficam))
+
+
 def pending_overrides_summary():
     """Lista legível de cada alteração local (✎) por enviar — uma entrada por
     campo, não por linha — para o cliente poder mostrar o que vai mesmo ser
@@ -902,9 +926,22 @@ def pending_overrides_summary():
     _cellcat_key/_wb_key): a de categoria livre (vista mapeada) guarda um único
     {value,base[,list]} por célula, já as colunas fixas do tracker guardam um
     dict por coluna alterada nessa linha — por isso não se pode confiar em
-    len(entry) sem saber qual é."""
+    len(entry) sem saber qual é.
+
+    Cada entrada leva o LIVRO a que pertence: a lista é de todos os livros, mas
+    um Push só escreve num (ver push_overrides), e sem o livro o painel dizia
+    "aba · tarefa · campo" de alterações que aquele Push não ia levar.
+    O livro é None nas chaves antigas (de quando só havia um livro): essas vão
+    para o livro que estiver a ser enviado, seja qual for.
+    """
+    return _summarize_overrides(load_overrides())
+
+
+def _summarize_overrides(overrides):
+    """O trabalho do pending_overrides_summary sobre um dicionário qualquer, para
+    o discard_overrides poder contar o que ficou sem reler o ficheiro."""
     out = []
-    for key, entry in load_overrides().items():
+    for key, entry in overrides.items():
         if not isinstance(entry, dict) or not entry:
             continue
         wb_id, sheet, xlrow, col0 = _split_cellcat_key(key)
@@ -912,28 +949,52 @@ def pending_overrides_summary():
             headers = known_headers(wb_id, sheet)
             col_i = int(col0)
             field = headers[col_i] if headers and 0 <= col_i < len(headers) else f"Coluna {col_i + 1}"
-            out.append({"sheet": sheet, "task": f"Linha {xlrow}", "field": field,
-                        "value": entry.get("value", ""), "base": entry.get("base", "")})
+            out.append({"book": wb_id, "sheet": sheet, "task": f"Linha {xlrow}",
+                        "field": field, "value": entry.get("value", ""),
+                        "base": entry.get("base", "")})
             continue
-        _, sheet, fn, todo = _split_key(key)
+        wb_id, sheet, fn, todo = _split_key(key)
         task = fn if not todo or todo == fn else f"{fn} — {todo}"
         for col, sub in entry.items():
             if isinstance(sub, dict):
-                out.append({"sheet": sheet, "task": task, "field": col,
-                            "value": sub.get("value", ""), "base": sub.get("base", "")})
+                out.append({"book": wb_id or "", "sheet": sheet, "task": task,
+                            "field": col, "value": sub.get("value", ""),
+                            "base": sub.get("base", "")})
     return out
 
 
-def _with_app_state(result):
+def pending_for_book(details, target):
+    """Quantas das alterações locais é que um Push a `target` vai mesmo levar.
+
+    A conta tem de ser a mesma que o push_overrides faz, senão o botão prometia
+    um número e escrevia outro: as chaves de outro livro ficam para trás e as
+    antigas (sem livro) vão sempre.
+    """
+    if not target:
+        return 0
+    alvo = os.path.normcase(target)
+    return sum(1 for d in details
+               if not d.get("book") or os.path.normcase(str(d["book"])) == alvo)
+
+
+def _with_app_state(result, target=None):
     """Junta a qualquer resposta o estado que não depende do Excel (CCRs, TODO,
     pendentes, versão da app) — para essas vistas funcionarem à mesma quando
-    não há nenhum ficheiro Excel disponível (ou a nuvem pede login)."""
+    não há nenhum ficheiro Excel disponível (ou a nuvem pede login).
+
+    `target` é o livro desta resposta (None quando não há nenhum): é o que
+    permite dizer quantas das alterações locais este Push vai mesmo levar."""
     result["ccrs"] = load_ccrs()
     # TODO é totalmente manual: colunas/estado só mudam por ação explícita
     # do utilizador (drag/drop, checkbox, botões de cronómetro).
     result["todo"] = load_todo()
-    result["pending_details"] = pending_overrides_summary()
-    result["pending"] = len(result["pending_details"])
+    # A lista é de TODOS os livros (o painel mostra-a toda, dizendo de que livro
+    # é cada alteração); o número do botão é só o que ESTE Push vai levar — ver
+    # pending_for_book e push_overrides.
+    detalhes = pending_overrides_summary()
+    result["pending_details"] = detalhes
+    result["pending_all"] = len(detalhes)
+    result["pending"] = pending_for_book(detalhes, target)
     ip = lan_ip()
     if ip:
         result["lan_url"] = f"http://{ip}:{config.SERVER_PORT}"
@@ -1125,7 +1186,7 @@ def build_payload(query):
     result["graph"] = graph_public
     result["source"] = "onedrive" if is_graph_path(path) else "local"
     result["synced_copy"] = bool(twin) and path == twin
-    result = _with_app_state(result)
+    result = _with_app_state(result, path)
     # impressão digital do conteúdo servido: se o Excel mudou e isto não muda,
     # o problema está na origem (livro por gravar), não na app
     result["digest"] = hashlib.md5(

@@ -37,11 +37,14 @@ function todayDueItems() {
     .sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0));
 }
 
-// itens por fazer com data-limite nos próximos dias (o que vem a caminho)
+// itens por fazer com data-limite nos próximos dias (o que vem a caminho). O
+// "próximos dias" é o mesmo que pinta a data de "a chegar" nos cartões
+// (TODO_SOON_DAYS/dueState, static/js/todo.js): duas contas diferentes punham
+// nesta lista itens que a data ao lado ainda não dava por próximos.
 function todaySoonItems() {
   const hoje = todayISO();
   return (todos || [])
-    .filter(it => it && !it.done && it.due && it.due > hoje && daysUntil(it.due) <= 3)
+    .filter(it => it && !it.done && it.due && it.due > hoje && daysUntil(it.due) <= TODO_SOON_DAYS)
     .sort((a, b) => (a.due < b.due ? -1 : 1));
 }
 
@@ -64,18 +67,21 @@ function todayMySideRows() {
   return out;
 }
 
-// linhas paradas (⏳) de todos os livros abertos, das mais paradas primeiro
+// linhas paradas (⏳) de todos os livros abertos, das mais paradas primeiro.
+// A regra é a MESMA do botão ⏳ da tabela e do cartão das métricas
+// (taskIsStaleInTab, static/js/history.js) — incluindo a espera marcada que
+// ainda está dentro do prazo, que não conta como parada em sítio nenhum.
 function todayStaleRows() {
-  const limite = staleDays();
   const out = [];
   (workbookTabs || []).forEach(tab => {
     const data = tab && tab.lastData;
     if (!data || data.error) return;
     (data.row_meta || []).forEach(meta => {
-      if (taskIsDone(meta)) return;
-      const age = taskAgeInTab(tab.id, meta);
-      if (!age || age.days < limite) return;
-      out.push({ tab, meta, age, book: tab.name || "", sheet: data.sheet || "" });
+      if (!taskIsStaleInTab(tab.id, meta)) return;
+      out.push({
+        tab, meta, age: taskAgeInTab(tab.id, meta),
+        book: tab.name || "", sheet: data.sheet || "",
+      });
     });
   });
   return out.sort((a, b) => b.age.days - a.age.days);

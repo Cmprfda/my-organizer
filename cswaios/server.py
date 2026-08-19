@@ -42,8 +42,9 @@ from .store import (load_announcement, load_ccrs, load_notes, load_overrides,
                     load_waiting, save_announcement, save_ccrs, save_notes,
                     save_overrides, save_waiting)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
-                    forget_web_cache, known_headers, pending_overrides_summary,
-                    push_overrides, queue_cellcat_override)
+                    discard_overrides, forget_web_cache, known_headers,
+                    pending_overrides_summary, push_overrides,
+                    queue_cellcat_override)
 from .todos import (DUE_RE, TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
                     TODO_REPEATS, archive_done_todo, load_todo, normalize_due,
                     normalize_ref, normalize_repeat, normalize_todo_item,
@@ -984,7 +985,8 @@ class Handler(BaseHTTPRequestHandler):
                                    since=str(payload.get("since") or ""),
                                    until=str(payload.get("until") or ""),
                                    days=int(payload.get("days") or 7),
-                                   lang=str(payload.get("lang") or "pt"))
+                                   lang=str(payload.get("lang") or "pt"),
+                                   books=payload.get("books"))
                 # abrir a pasta é uma comodidade de quem está ao computador;
                 # pela rede não faria nada de útil (abriria aqui, não lá)
                 if _is_local(ip) and payload.get("reveal"):
@@ -1157,9 +1159,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
         if path == "/api/overrides/clear":
+            # Com um livro no pedido descarta-se só o dele: o botão vive ao lado
+            # do Push de UM livro e o número que mostra é o desse livro (ver
+            # pending_for_book) — apagar em silêncio o que estava por enviar
+            # noutro separador era descartar trabalho que ninguém pediu.
+            # Sem livro (linha de comandos, testes) continua a apagar tudo.
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            except (TypeError, ValueError):
+                payload = {}
+            alvo = str((payload or {}).get("file") or "")
+            if alvo:
+                restantes = discard_overrides(alvo)
+                log_event(f"{ip} descartou as alterações locais de "
+                          f"{os.path.basename(alvo)} ({restantes} noutros livros)")
+                self._send(200, json.dumps({"ok": True, "pending_all": restantes}),
+                           "application/json")
+                return
             save_overrides({})
             log_event(f"{ip} descartou todas as alterações locais de estado")
-            self._send(200, json.dumps({"ok": True}), "application/json")
+            self._send(200, json.dumps({"ok": True, "pending_all": 0}), "application/json")
             return
         if path == "/api/push":
             try:

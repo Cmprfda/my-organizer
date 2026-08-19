@@ -608,6 +608,11 @@ def archive_done_todo(item):
                "title": str(item.get("title") or ""),
                "kind": str(item.get("kind") or "manual"),
                "elapsed_ms": _int_or_zero(item.get("elapsed_ms")),
+               # o registo diário do cronómetro vem com o item: sem ele a folha
+               # de horas perdia os dias em que este tempo foi contado e atirava
+               # o total inteiro para o "sem registo" (ver build_report) — apagar
+               # um item passava horas de um dia para "não se sabe quando"
+               "segments": [s for s in (item.get("segments") or []) if isinstance(s, dict)],
                "done_at": str(item.get("done_at") or ""),
                "done": True,
                "jiraLoggedSeconds": _int_or_zero(item.get("jiraLoggedSeconds")),

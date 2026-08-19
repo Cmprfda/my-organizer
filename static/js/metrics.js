@@ -86,6 +86,32 @@ let metricsPrevMode = "";
 // atividade de todos os livros (o /api/history é por aba; este é o total)
 let metricsActivity = null;      // { from, to, days, events } ou null enquanto não chega
 let metricsActivityAsked = "";
+// folha de horas do período, tal como o servidor a conta (ver build_report,
+// cswaios/report.py). Vem de lá em vez de ser somada aqui a partir dos `todos`
+// porque o relatório que se exporta desta mesma vista conta também os
+// concluídos já apagados do quadro (o arquivo, que o cliente não tem): as duas
+// contas ficavam a dizer números diferentes do mesmo período, lado a lado.
+let metricsTimesheet = null;     // { from, to, days, byDay, ms, untracked } ou null
+
+// Livros abertos agora, pela chave com que o histórico os identifica: o
+// histórico guarda tudo o que já viu (livros fechados, cópias de teste), e os
+// cartões desta vista falam dos livros abertos — ver metricsActivityItems.
+function metricsOpenBooks() {
+  const out = new Set();
+  (workbookTabs || []).forEach(tab => {
+    const f = tab && tab.lastData && tab.lastData.file;
+    if (f) out.add(f);
+  });
+  return out;
+}
+
+// os eventos do período que são dos livros abertos (é isso que os cartões dizem
+// mostrar). Sem nenhum livro aberto não há nada a mostrar.
+function metricsEvents() {
+  if (!metricsActivity) return [];
+  const abertos = metricsOpenBooks();
+  return metricsActivity.events.filter(e => abertos.has(e.book));
+}
 
 // as Métricas podem ser a página inicial (ver homeView em state.js): os dados
 // dos livros e o histórico chegam DEPOIS do primeiro desenho, por isso quem os
@@ -106,6 +132,21 @@ async function loadMetricsActivity(force = false) {
     metricsActivity = { ...periodo, events: out.events || [] };
   } catch (e) {
     metricsActivity = { ...periodo, events: [] };
+  }
+  // a folha de horas do MESMO período, contada pelo servidor (é a mesma que o
+  // relatório exportado leva, ver metricsTimesheet)
+  try {
+    const res = await fetch(`/api/report/week?since=${r.from}&until=${r.to}` +
+      `&days=${r.days}&lang=${LANG}`);
+    const out = await res.json();
+    metricsTimesheet = {
+      ...periodo,
+      byDay: Array.isArray(out.timesheet) ? out.timesheet : [],
+      ms: +out.timesheet_ms || 0,
+      untracked: +out.timesheet_untracked_ms || 0,
+    };
+  } catch (e) {
+    metricsTimesheet = null;
   }
   refreshMetricsIfOpen();
 }
@@ -223,7 +264,7 @@ function metricsPeopleItems() {
 function metricsActivityItems() {
   if (!metricsActivity) return [];
   const porDia = new Map();
-  metricsActivity.events.forEach(e => {
+  metricsEvents().forEach(e => {
     const chave = String(e.ts || "").slice(0, 10);
     if (chave) porDia.set(chave, (porDia.get(chave) || 0) + 1);
   });
@@ -251,7 +292,7 @@ function metricsDayHtml() {
     ? `<p class="metricDayBackWrap"><button type="button" class="metricDayBack">${esc(t("metric_day_back"))}</button></p>`
     : "";
   if (!metricsActivity) return voltar + metricEmpty(t("loading"));
-  const eventos = metricsActivity.events;
+  const eventos = metricsEvents();
   if (!eventos.length) return voltar + metricEmpty(t("metric_day_none"));
   const linhas = eventos.slice(0, METRICS_DAY_ROWS).map(e => {
     const tarefa = String(e.fn || "").trim() || String(e.todo || "").trim()
@@ -296,19 +337,22 @@ function metricsBackToPeriod() {
   metricsApplyRange();
 }
 
-// As tarefas paradas há mais tempo (as mais antigas primeiro)
+// As tarefas paradas há mais tempo (as mais antigas primeiro). Devolve a lista
+// TODA: quem desenha corta-a e diz quantas ficaram de fora.
 function metricsStaleRows() {
   const metas = ((lastData && lastData.row_meta) || []);
   return metas
     .filter(m => taskIsStale(m))
     .map(m => ({ meta: m, age: taskAge(m) }))
-    .sort((a, b) => (b.age ? b.age.days : 0) - (a.age ? a.age.days : 0))
-    .slice(0, 8);
+    .sort((a, b) => (b.age ? b.age.days : 0) - (a.age ? a.age.days : 0));
 }
+
+const METRICS_STALE_ROWS = 8;
 
 function metricsStaleHtml() {
   if (!activeHistory()) return metricEmpty(t("metric_no_history"));
-  const linhas = metricsStaleRows();
+  const todas = metricsStaleRows();
+  const linhas = todas.slice(0, METRICS_STALE_ROWS);
   if (!linhas.length) return metricEmpty(t("metric_no_stale"));
   return `<ul class="metricList">` + linhas.map(({ meta, age }) => {
     const titulo = String(meta.fn || "").trim() || tf("metric_row", meta.xlrow);
@@ -317,13 +361,18 @@ function metricsStaleHtml() {
     // "Done" ao lado de "19 dias parada" só confunde
     const aplicaveis = [((meta.cur || {})["Status TC"]), ((meta.cur || {})["Status TP"])]
       .map(s => String(s || "").trim()).filter(s => s && norm(s) !== "n/a");
-    const estado = aplicaveis.find(s => statusClass(s) !== "done") || aplicaveis[0] || "";
+    const estado = aplicaveis.find(s => !statusIsFinal(s)) || aplicaveis[0] || "";
     return `<li class="metricListRow">
       <span class="metricListName" title="${esc(titulo)}">${esc(titulo)}</span>
       ${estado ? `<span class="badge ${statusClass(estado)}">${esc(estado)}</span>` : ""}
       <span class="metricListAge">${esc(ageLabel(age))}</span>
     </li>`;
-  }).join("") + `</ul>`;
+  }).join("") + `</ul>` +
+    // uma lista cortada em silêncio lia-se como "são estas": as que ficaram de
+    // fora vão contadas, como no resto da app
+    (todas.length > linhas.length
+      ? `<p class="metricNote">${esc(tf("metric_stale_more", linhas.length, todas.length))}</p>`
+      : "");
 }
 
 // Tempo: o que os cronómetros contaram e o que já foi registado no Jira
@@ -345,12 +394,10 @@ function metricsTimeTiles() {
 function metricsTimesheetItems() {
   const r = metricsRange();
   const porDia = new Map();
-  todos.forEach(it => {
-    (Array.isArray(it.segments) ? it.segments : []).forEach(seg => {
-      const dia = String((seg && seg.d) || "");
-      if (!dia || dia < r.from || dia > r.to) return;
-      porDia.set(dia, (porDia.get(dia) || 0) + (+seg.ms || 0));
-    });
+  ((metricsTimesheet && metricsTimesheet.byDay) || []).forEach(seg => {
+    const dia = String((seg && seg.day) || "");
+    if (!dia || dia < r.from || dia > r.to) return;
+    porDia.set(dia, (porDia.get(dia) || 0) + (+seg.ms || 0));
   });
   // todos os dias do período, mesmo os de zero: um gráfico só com os dias em
   // que se contou tempo mentia sobre o ritmo da semana
@@ -372,15 +419,14 @@ function metricsTimesheetItems() {
 }
 
 // tempo do período que ficou por arrumar num dia: itens contados antes de esta
-// versão passar a guardar o registo diário
+// versão passar a guardar o registo diário (conta do servidor, a mesma do
+// relatório — ver metricsTimesheet)
 function metricsTimesheetUntracked() {
-  return todos.reduce((s, it) => {
-    const segs = Array.isArray(it.segments) ? it.segments : [];
-    return s + (segs.length ? 0 : todoLiveElapsed(it));
-  }, 0);
+  return (metricsTimesheet && metricsTimesheet.untracked) || 0;
 }
 
 function metricsTimesheetHtml() {
+  if (!metricsTimesheet) return metricEmpty(t("loading"));
   const itens = metricsTimesheetItems();
   const orfao = metricsTimesheetUntracked();
   const nota = orfao
@@ -427,7 +473,7 @@ function metricsSyncControls() {
 // título e nota do cartão da atividade, que dizem o período que está à vista
 function metricsActivityCard() {
   const r = metricsRange();
-  const n = metricsActivity ? metricsActivity.events.length : 0;
+  const n = metricsEvents().length;
   if (r.mode === "day") {
     // o dia à lupa leva linhas largas, por isso ocupa dois lugares do mosaico
     return metricCard(tf("metric_day_title", metricsDayLabel(r.from)),
@@ -449,16 +495,21 @@ function renderMetrics() {
   metricsSyncControls();
   const livro = activeBookName() || (lastData && lastData.sheet) || "";
   const semLivro = !((lastData && lastData.row_meta) || []).length;
+  // as linhas que a folha do separador ativo trouxe são as da pessoa ou as
+  // todas, conforme o "Ver tudo" da vista Tarefas: os cartões que as contam
+  // dizem-no, senão o número mudava com um botão que está noutra vista
+  const ambito = t(showAll ? "metric_scope_all" : "metric_scope_mine");
 
   box.innerHTML =
     metricsActivityCard() +
     metricCard(t("metric_stale"), metricsStaleHtml(),
       activeHistory() ? tf("t_stale", staleDays()) : "") +
     metricCard(t("metric_status") + (livro ? ` · ${livro}` : ""),
-      semLivro ? metricEmpty(t("metric_no_book")) : metricBars(metricsStatusItems())) +
+      semLivro ? metricEmpty(t("metric_no_book")) : metricBars(metricsStatusItems()),
+      semLivro ? "" : `${t("metric_status_note")} ${ambito}`) +
     metricCard(t("metric_people"),
       semLivro ? metricEmpty(t("metric_no_book")) : metricBars(metricsPeopleItems()),
-      semLivro ? "" : t("metric_people_note")) +
+      semLivro ? "" : `${t("metric_people_note")} ${ambito}`) +
     metricCard(t("metric_time"), metricsTimeTiles(), t("metric_time_note")) +
     metricCard(t("metric_hours"), metricsTimesheetHtml(), t("metric_hours_note"),
       metricsRange().days > 7 ? "metricCardWide" : "") +
@@ -507,7 +558,12 @@ async function exportMetrics(kind) {
     const res = await fetch("/api/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, since: r.from, until: r.to, days: r.days, lang: LANG, reveal: true }),
+      // os livros abertos vão com o pedido: o ficheiro das alterações fica com
+      // as mesmas linhas que o gráfico ao lado deste botão (ver activity_csv)
+      body: JSON.stringify({
+        kind, since: r.from, until: r.to, days: r.days, lang: LANG, reveal: true,
+        books: [...metricsOpenBooks()],
+      }),
     });
     const out = await res.json();
     if (!out.ok) { toast(out.error || t("err_server"), "bad"); return; }

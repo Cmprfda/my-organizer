@@ -2,8 +2,6 @@
 
 function clearFilters() {
   statusFilters.clear();
-  sideFilters.clear();
-  roleFilters.clear();
   customFilterActive.clear();
   staleOnly = false;
   chaseOnly = false;
@@ -83,7 +81,13 @@ $("reloadOnly").addEventListener("click", () => load(true, true));
 $("clearLocals").addEventListener("click", async () => {
   if (!confirm(t("cfm_locals"))) return;
   try {
-    await fetch("/api/overrides/clear", { method: "POST" });
+    // só as deste livro: o botão mostra-se ao lado do Enviar deste separador e
+    // o número que ele promete é o deste livro (ver discard_overrides)
+    await fetch("/api/overrides/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file: (lastData && lastData.file) || tabFile(activeTab()) }),
+    });
   } catch (err) {
     alert("Não foi possível descartar: " + err);
   }
@@ -140,7 +144,11 @@ $("personInput").addEventListener("change", () => {
   localStorage.setItem("bsp-tracker-person", PERSON);
   clearFilters();
   if (showAll) $("toggleAll").textContent = `${t("btn_only")} ${PERSON.split(" ")[0]}`;
-  load();
+  // TODOS os livros abertos, não só o que está à vista: o filtro da pessoa é
+  // feito pelo servidor em cada leitura, e as vistas que atravessam os livros
+  // (painel Hoje, pesquisa global, métricas) leem o que cada separador trouxe
+  // da última vez — com um só relido, ficavam a somar leituras de duas pessoas
+  loadAllTabs();
 });
 $("summary").addEventListener("click", e => {
   const pill = e.target.closest(".pill");
@@ -148,18 +156,6 @@ $("summary").addEventListener("click", e => {
   if (pill.dataset.status) {
     const s = pill.dataset.status;
     statusFilters.has(s) ? statusFilters.delete(s) : statusFilters.add(s);
-  } else if (pill.dataset.side) {
-    // exclusivo: só um lado ativo de cada vez
-    const s = pill.dataset.side;
-    const wasActive = sideFilters.has(s);
-    sideFilters.clear();
-    if (!wasActive) sideFilters.add(s);
-  } else if (pill.dataset.role) {
-    // exclusivo: só um papel ativo de cada vez
-    const r = pill.dataset.role;
-    const wasActive = roleFilters.has(r);
-    roleFilters.clear();
-    if (!wasActive) roleFilters.add(r);
   } else if (pill.dataset.stale) {
     // combina-se com tudo o resto (AND), como os filtros personalizados
     staleOnly = !staleOnly;
@@ -194,7 +190,9 @@ $("toggleAll").addEventListener("click", () => {
   showAll = !showAll;
   clearFilters();
   $("toggleAll").textContent = showAll ? `${t("btn_only")} ${PERSON.split(" ")[0]}` : t("btn_all");
-  load();
+  // como na troca de nome: relê os livros todos, senão as vistas que os
+  // atravessam misturavam um livro com "Ver tudo" e outro só com as minhas
+  loadAllTabs();
 });
 
 // separadores dos livros que ficaram abertos da última vez (a app não abre

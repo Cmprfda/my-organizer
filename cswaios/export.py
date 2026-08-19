@@ -72,12 +72,21 @@ def _hm(ms):
     return f"{h}h" if h else f"{m}m"
 
 
-def activity_csv(since="", until="", days=7):
-    """Todas as alterações do período: uma linha por alteração."""
+def activity_csv(since="", until="", days=7, books=None):
+    """As alterações do período: uma linha por alteração.
+
+    `books` (ids dos livros abertos, como o cliente os manda) limita o ficheiro
+    aos mesmos livros que o gráfico das Métricas mostra: o histórico guarda tudo
+    o que já viu, incluindo livros fechados e cópias de teste, e um CSV com mais
+    linhas do que o gráfico ao lado do botão não se explica a ninguém.
+    """
     if since and until:
         eventos = recent_events(limit=5000, since=since, until=until)
     else:
         eventos = recent_events(days=days, limit=5000)
+    abertos = {str(b) for b in (books or []) if b}
+    if abertos:
+        eventos = [e for e in eventos if str(e.get("book") or "") in abertos]
     header = ["Dia", "Hora", "Livro", "Aba", "Linha", "Tarefa", "O que fazer",
               "Coluna", "Antes", "Depois", "Origem"]
     nomes = _book_names()
@@ -127,14 +136,17 @@ def timesheet_csv(since="", until=""):
     return _csv_text(header, linhas), len(linhas)
 
 
-def write_export(kind, since="", until="", days=7, lang="pt"):
-    """Escreve o ficheiro e devolve {path, name, rows, kind}."""
+def write_export(kind, since="", until="", days=7, lang="pt", books=None):
+    """Escreve o ficheiro e devolve {path, name, rows, kind}.
+
+    `books` só interessa às alterações (ver activity_csv): a folha de horas e o
+    relatório saem da lista Por fazer, que não é de nenhum livro."""
     if kind not in EXPORT_KINDS:
         raise ValueError(f"exportação inválida: {kind}")
     os.makedirs(EXPORT_DIR, exist_ok=True)
     periodo = f"{_clean(since)}_{_clean(until)}" if since and until else f"{days}d"
     if kind == "activity":
-        texto, linhas = activity_csv(since, until, days)
+        texto, linhas = activity_csv(since, until, days, books)
         nome = f"alteracoes_{periodo}_{_stamp()}.csv"
     elif kind == "timesheet":
         texto, linhas = timesheet_csv(since, until)

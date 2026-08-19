@@ -40,11 +40,12 @@ function findSrcRow(src) {
   }
   const rows = [...$("tbody").rows];
   if ($("tablebox").classList.contains("hidden")) return null;  // tabela sem resultados
-  // chave exata (função + "o que fazer"), depois só a função, depois o texto da 1.ª célula
+  // chave exata (função + "o que fazer"), depois só a função, depois o nome com
+  // que a linha foi para o quadro (ver rowTitleFor, tasks.js — nunca o texto de
+  // uma célula por posição, que a ordem das colunas muda)
   let i = currentMeta.findIndex(m => m && m.fn === src.fn && m.todo === src.todo);
   if (i < 0) i = currentMeta.findIndex(m => m && m.fn === src.fn);
-  if (i < 0) i = rows.findIndex(tr =>
-    tr.cells[0] && tr.cells[0].innerText.split("\n")[0].trim() === src.fn);
+  if (i < 0) i = currentRowTitles.findIndex(x => x === src.fn);
   return i >= 0 ? rows[i] : null;
 }
 
@@ -71,7 +72,7 @@ function revealSource(src) {
 
   let tr = findSrcRow(src);
   if (!tr && isWorkbookView(src.view) &&
-    ($("search").value || searchTerms.length || roleFilters.size || sideFilters.size || statusFilters.size ||
+    ($("search").value || searchTerms.length || statusFilters.size ||
       customFilterActive.size)) {
     $("search").value = "";
     searchTerms = [];
@@ -244,12 +245,12 @@ function payloadFromTouchDragTarget(target) {
 
   const taskRow = target.closest("#tbody tr");
   if (taskRow && taskRow.cells && taskRow.cells.length) {
-    const meta = currentMeta[[...$("tbody").rows].indexOf(taskRow)] || {};
-    // com a vista mapeada a 1.ª coluna pode não ser o Function/TC (ver
-    // addTodoFromTaskRow, todo.js): sem texto nela, o título vem da linha
-    const fn = taskRow.cells[0].innerText.split("\n")[0].trim() || String(meta.fn || "").trim();
+    const ri = [...$("tbody").rows].indexOf(taskRow);
+    const meta = currentMeta[ri] || {};
+    // o mesmo título do "+ TODO" desta linha (ver rowTitleFor, tasks.js)
+    const fn = currentRowTitles[ri] || String(meta.fn || "").trim();
     if (!fn) return null;
-    const detail = taskRowDetail(taskRow, meta);
+    const detail = taskRowDetail(meta);
     const ref = {
       workbook: activeBookName(), sheet: (lastData && lastData.sheet) || "",
       fn: meta.fn || fn, todo: meta.todo || "",

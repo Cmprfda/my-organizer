@@ -42,6 +42,11 @@ const TR = {
   pending_pop_hint: ["Nada chega ao Excel até carregares em Enviar.",
     "Nothing reaches Excel until you press Push."],
   pending_pop_empty: ["Vazio", "(empty)"],
+  // uma alteração local de outro livro aberto: o Enviar deste separador não a
+  // leva (o número do botão também não a conta) — ver pending_for_book
+  pending_other: ["noutro livro", "another workbook"],
+  t_pending_other: ["Esta alteração é de outro livro: abre esse separador para a enviar.",
+    "This change belongs to another workbook: switch to that tab to push it."],
   fetching: ["A descarregar…", "Downloading…"],
   loading: ["A carregar…", "Loading…"],
   loading_cycle: ["A atualizar (pode fechar/reabrir o Excel)…", "Refreshing (may close/reopen Excel)…"],
@@ -268,6 +273,10 @@ const TR = {
   todo_wip_title: ["Limite de cartões nesta coluna (vazio = sem limite)",
     "Card limit for this column (empty = no limit)"],
   todo_wip_tip: ["Limite desta coluna: {0}", "Limit for this column: {0}"],
+  // cartões de uma coluna escondida que estão a ser desenhados nesta (ver
+  // todoVisibleColFor): a conta da coluna é só a dos cartões dela
+  todo_col_lent: ["+{0} de uma coluna escondida, desenhado(s) aqui",
+    "+{0} from a hidden column, drawn here"],
   todo_col_hide: ["Esconder esta coluna", "Hide this column"],
   todo_col_show: ["Mostrar esta coluna", "Show this column"],
   todo_col_hidden_here: ["Coluna escondida — o cartão aparece nesta", "Hidden column — the card shows up in this one"],
@@ -538,8 +547,10 @@ const TR = {
   rows_hint_1: ["A aba tem", "The sheet has"], rows_hint_2: ["linha(s). Usa \"Ver tudo\" para confirmar o conteúdo.", "row(s). Use \"Show all\" to check the contents."],
   cfm_notes: ["Apagar TODAS as notas de execução (etiquetas, checklists e textos)? Esta ação não pode ser anulada.",
     "Delete ALL execution notes (tags, checklists and text)? This cannot be undone."],
-  cfm_locals: ["Descartar TODAS as alterações de estado locais (✎)? Não serão enviadas para o Excel.",
-    "Discard ALL local status changes (✎)? They will not be written to Excel."],
+  // o botão vive ao lado do Enviar de UM livro e descarta só as desse livro: as
+  // de outro separador ficam onde estão (ver discard_overrides no servidor)
+  cfm_locals: ["Descartar as alterações de estado locais (✎) deste livro? Não serão enviadas para o Excel.",
+    "Discard this workbook's local status changes (✎)? They will not be written to Excel."],
   err_save: ["Não foi possível gravar:", "Could not save:"],
   err_server: ["Não foi possível contactar o servidor local. Ele ainda está a correr?",
     "Could not reach the local server. Is it still running?"],
@@ -718,6 +729,10 @@ const TR = {
   age_today: ["hoje", "today"],
   age_day: ["1 dia", "1 day"],
   age_days: ["{0} dias", "{0} days"],
+  // botão de um estado numa folha com mais do que uma coluna de estado (o
+  // Status TC e o Status TP do tracker): conta linhas, não colunas
+  t_status_pill: ["Linhas com este estado no Status TC ou no Status TP",
+    "Rows with this status in Status TC or Status TP"],
   pill_stale: ["Paradas", "Stale"],
   t_stale: ["Tarefas por fechar sem qualquer alteração na folha há {0} dias ou mais (contado pelo histórico da app)",
     "Unfinished tasks with no change on the sheet for {0} days or more (measured by the app's history)"],
@@ -783,7 +798,18 @@ const TR = {
     "Showing the {0} most recent of {1}."],
   metric_row: ["linha {0}", "row {0}"],
   metric_stale: ["Paradas há mais tempo", "Stale the longest"],
+  metric_stale_more: ["Mostradas as {0} mais paradas de {1}.",
+    "Showing the {0} most stale of {1}."],
   metric_status: ["Trabalho por estado", "Work by status"],
+  // as duas contas da folha do separador ativo contam as linhas que essa folha
+  // trouxe, e o "Ver tudo" (vista Tarefas) manda nisso: sem o dizer, o cartão
+  // com o nome do livro lia-se como sendo o livro todo
+  metric_scope_mine: ["Só as tuas linhas — liga o \"Ver tudo\" nas Tarefas para contar o livro inteiro.",
+    "Your rows only — turn \"Show all\" on in Tasks to count the whole workbook."],
+  metric_scope_all: ["Todas as linhas da folha (\"Ver tudo\" ligado).",
+    "Every row of the sheet (\"Show all\" is on)."],
+  metric_status_note: ["O Status TC e o Status TP contam à parte: são dois trabalhos na mesma linha.",
+    "Status TC and Status TP count separately: they are two jobs on the same row."],
   metric_people: ["Por pessoa (por fechar)", "Per person (unfinished)"],
   metric_people_note: ["Cada pessoa conta uma vez por linha onde é autora ou revisora.",
     "Each person counts once per row where they are author or reviewer."],

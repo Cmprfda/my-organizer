@@ -96,16 +96,25 @@ function taskIsDone(meta) {
     .filter(s => s && norm(s) !== "n/a");
   // sem nenhum estado aplicável não há trabalho à espera de ninguém
   if (!estados.length) return true;
-  return estados.every(s => statusClass(s) === "done");
+  return estados.every(s => statusIsFinal(s));
 }
 
-function taskIsStale(meta) {
+// A mesma pergunta numa aba concreta: o painel Hoje passa por TODOS os livros
+// abertos e a idade de uma linha sai do histórico do livro dela, não do que
+// está à vista. As duas contas têm de ser a mesma, senão a lista "Paradas" do
+// painel e o botão ⏳ da tabela diziam números diferentes da mesma coisa.
+function taskIsStaleInTab(tabId, meta) {
   if (!meta || taskIsDone(meta)) return false;
   // à espera de alguém e dentro do prazo: não está parada, está a decorrer
   // (ver waitingActive, static/js/waiting.js)
   if (typeof waitingActive === "function" && waitingActive(meta)) return false;
-  const age = taskAge(meta);
+  const age = taskAgeInTab(tabId, meta);
   return !!age && age.days >= staleDays();
+}
+
+// parada na aba que está à vista (o caso de sempre)
+function taskIsStale(meta) {
+  return taskIsStaleInTab(activeTabId, meta);
 }
 
 function ageLabel(age) {

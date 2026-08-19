@@ -252,7 +252,10 @@ function fillItemBox(el) {
 function taskRowKey(tr) {
   const ri = [...tr.parentNode.children].indexOf(tr);
   const m = currentMeta[ri];
-  return m ? `m:${m.fn}\u001F${m.todo}` : `t:${(tr.cells[0] || {}).innerText || ""}`;
+  // sem meta, o nome que o render() deu à linha (ver rowTitleFor, tasks.js): o
+  // texto da 1.ª célula não serve de chave — muda de coluna com o arrastar dos
+  // cabeçalhos, e a caixa deixava de reencontrar o item que tem aberto
+  return m ? `m:${m.fn}\u001F${m.todo}` : `t:${currentRowTitles[ri] || ""}`;
 }
 
 function itemBoxRefOf(el) {
