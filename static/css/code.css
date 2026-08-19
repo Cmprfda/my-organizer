@@ -113,10 +113,16 @@
     gap: 8px;
 }
 
+/* a faixa do nome nunca encolhe: o ficheiro ao lado tem centenas de linhas e,
+   com o flex-shrink que vem por omissão, o flexbox descontava a altura a mais
+   a esta faixa (que parava no min-height) em vez de a descontar ao corpo,
+   deixando o nome e os botões a escorrer por fora do cartão. O que rola é o
+   corpo, nunca a faixa. */
 .codeFileHead {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    flex: 0 0 auto;
     gap: 10px;
     min-height: 22px;
     background: var(--surface);
