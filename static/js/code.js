@@ -16,6 +16,19 @@ let codeRepos = [];
 let codeRepoId = localStorage.getItem("bsp-tracker-code-repo") || "";
 let codeSearchTimer = null;
 
+/* Largura da coluna da árvore, arrastável pela barra ao lado (ver
+   #codeSideResize, mais abaixo) e guardada neste browser — os caminhos de uma
+   pasta de trabalho a sério não cabem nos 280px de origem. Os limites são os
+   mesmos da coluna das notas: abaixo de 200px os nomes não se leem, acima de
+   metade da janela o ficheiro deixava de ter espaço. */
+const CODE_SIDE_MIN = 180, CODE_SIDE_MAX = 620;
+let codeSideW = Math.min(CODE_SIDE_MAX, Math.max(CODE_SIDE_MIN,
+  +localStorage.getItem("bsp-tracker-code-side-w") || 280));
+document.documentElement.style.setProperty("--code-side-w", codeSideW + "px");
+
+// ficheiro em ecrã inteiro (ver body.code-full no code.css)
+let codeFull = false;
+
 /* Estado de cada pasta aberta: a árvore por onde se andou, o ficheiro à frente
    e a procura são de cada separador (como o lastData de cada livro), por isso
    voltar a um separador devolve-o exatamente onde estava. */
@@ -224,6 +237,8 @@ function renderCodeFile() {
     `<span class="codeFileActions">` +
     `<button type="button" class="linkBtn" id="codeCopyBtn">${esc(t("code_copy"))}</button>` +
     `<button type="button" class="linkBtn" id="codeReloadBtn">${esc(t("code_reload"))}</button>` +
+    `<button type="button" class="linkBtn" id="codeFullBtn" title="${esc(t(codeFull ? "t_code_full_out" : "t_code_full"))}">` +
+    `${codeFull ? "⊟" : "⛶"} ${esc(t(codeFull ? "code_full_out" : "code_full"))}</button>` +
     `</span>`;
   if (!d) { body.innerHTML = `<div class="codeHint">${esc(t("loading"))}</div>`; return; }
   if (d.binary) { body.innerHTML = `<div class="codeHint">${esc(t("code_binary"))}</div>`; return; }
@@ -420,7 +435,9 @@ function codeHighlight(text, lang) {
 function fitCodeLayout() {
   const box = $("codeLayout");
   if (!box || box.classList.contains("hidden") || !box.offsetParent) return;
-  if (document.body.classList.contains("split")) { box.style.height = ""; return; }
+  // no ecrã inteiro (e no ecrã dividido) quem manda na altura é o CSS: aqui a
+  // conta daria a altura da janela INTEIRA a uma caixa que já começa a meio
+  if (codeFull || document.body.classList.contains("split")) { box.style.height = ""; return; }
   const wrap = box.closest(".wrap");
   const gap = (wrap && parseFloat(getComputedStyle(wrap).paddingBottom)) || 92;
   const top = box.getBoundingClientRect().top + window.scrollY;
@@ -617,9 +634,54 @@ if ($("codeView")) {
       if (st.data && !st.data.binary) copyToClipboard(st.data.text);
       return;
     }
-    if (e.target.closest("#codeReloadBtn") && st.file) openCodeFile(st.file);
+    if (e.target.closest("#codeReloadBtn") && st.file) { openCodeFile(st.file); return; }
+    if (e.target.closest("#codeFullBtn")) setCodeFull(!codeFull);
+  });
+
+  /* Barra entre a árvore e o ficheiro: arrastá-la muda --code-side-w. Igual à
+     da coluna das notas (ver noteSideResize em notes.js) — o ponteiro fica
+     capturado na barra, para o arrasto não se perder ao passar por cima do
+     texto do ficheiro. */
+  $("codeSideResize").addEventListener("pointerdown", e => {
+    e.preventDefault();
+    const handle = $("codeSideResize");
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add("dragging");
+    const rect = $("codeLayout").getBoundingClientRect();
+    // metade do painel é o teto real: num painel do ecrã dividido o máximo
+    // fixo deixava a árvore a comer o ficheiro todo
+    const max = Math.min(CODE_SIDE_MAX, Math.max(CODE_SIDE_MIN, rect.width - 240));
+    const move = ev => {
+      codeSideW = Math.min(max, Math.max(CODE_SIDE_MIN, ev.clientX - rect.left));
+      document.documentElement.style.setProperty("--code-side-w", codeSideW + "px");
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      handle.classList.remove("dragging");
+      localStorage.setItem("bsp-tracker-code-side-w", String(Math.round(codeSideW)));
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
   });
 }
+
+/* Ecrã inteiro: a vista do código passa a ocupar a janela toda (body.code-full
+   no code.css), com a árvore ao lado — é para ler um ficheiro comprido sem a
+   barra do topo e os separadores à volta. Sai-se pelo mesmo botão ou pelo Esc,
+   como no quadro das notas. */
+function setCodeFull(on) {
+  codeFull = !!on;
+  document.body.classList.toggle("code-full", codeFull);
+  renderCodeFile();   // o botão troca de nome e de símbolo
+  fitCodeLayout();
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && codeFull) setCodeFull(false);
+});
 
 // A árvore da raiz de cada pasta só se lê quando o separador dela abre pela
 // primeira vez (não vale a pena andar no disco de quem nunca cá vem).

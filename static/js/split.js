@@ -58,8 +58,11 @@ function flashRow(tr) {
 }
 
 // Salta para a linha de origem e destaca-a. Se estiver escondida por
-// pesquisa/filtros, limpa-os e tenta outra vez.
-function revealSource(src) {
+// pesquisa/filtros, limpa-os e tenta outra vez; e se estiver escondida pelo
+// "Só <nome>" — o caso de se ter mexido numa linha de que não se é autor nem
+// reviewer — liga o "Ver tudo" e tenta mais uma vez, porque essas linhas nem
+// sequer vêm do servidor (ver `all` no tabQuery, tasks.js).
+async function revealSource(src) {
   if (!src) return false;
   // a origem sabe de que livro veio: com vários abertos, salta-se primeiro
   // para o separador certo (senão procurava-se a linha no livro errado)
@@ -80,9 +83,18 @@ function revealSource(src) {
     render();
     tr = findSrcRow(src);
   }
+  // outra aba: a linha não está mesmo nesta tabela e trocar de aba é outra
+  // coisa — o aviso diz qual é, para se poder lá ir
+  const otherSheet = src.sheet && lastData && lastData.sheet && src.sheet !== lastData.sheet;
+  if (!tr && !otherSheet && isWorkbookView(src.view) && !showAll) {
+    await setShowAll(true);
+    tr = findSrcRow(src);
+    if (tr) toast(t("src_showed_all"), "ok");
+  }
   if (!tr) {
-    const otherSheet = src.sheet && lastData && lastData.sheet && src.sheet !== lastData.sheet;
-    toast(t("src_notfound") + (otherSheet ? ` (${src.sheet})` : ""), "err");
+    // o aviso antigo dizia sempre "pode estar noutra aba", mesmo quando a aba
+    // era a mesma e o que faltava era outra coisa — dizer só o que se sabe
+    toast(otherSheet ? tf("src_other_sheet", src.sheet) : t("src_notfound_here"), "err");
     return false;
   }
   flashRow(tr);

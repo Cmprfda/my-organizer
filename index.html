@@ -66,7 +66,11 @@
          layout.css). Arrastar para reordenar continua a funcionar, mas cada
          separador só se mexe DENTRO do seu grupo (ver applyStoredTabOrder). -->
     <nav class="tabs">
-      <button data-view="metrics" data-icon="&#8962;" id="homeTab" class="tabHome" draggable="true">Início</button>
+      <!-- o ícone do Início é o logótipo da app (o mesmo do separador do browser
+           e do atalho do Windows), não um desenho de casa: é daqui que se parte -->
+      <button data-view="metrics" data-icon="" id="homeTab" class="tabHome" draggable="true"><img
+          src="/static/img/app-icon.ico" alt="" width="17" height="17" class="tabHomeLogo"><span
+          id="homeTabName">Início</span></button>
       <span class="tabsSep" aria-hidden="true"></span>
       <div class="tabsScroll">
         <span class="tabsGroup" id="tabsDocs"></span>
@@ -263,74 +267,101 @@
                   title="Abrir esta nota noutra janela">↗</button>
                 <button type="button" class="ccr-x" id="noteDel" title="Apagar nota">✕</button>
               </div>
+              <!-- Barra de ferramentas em grupos com nome, como o friso do Paint: o
+                   que faz o mesmo trabalho anda junto e diz-se o que é. Cada grupo é
+                   uma coluna (fila de botões + legenda); quando a barra não cabe,
+                   quebra entre grupos em vez de deixar botões órfãos numa fila só
+                   deles. Nas caixas estreitas — ecrã inteiro, telemóvel e painel do
+                   ecrã dividido — as legendas saem e fica uma fila que rola. -->
               <div class="noteToolbar" id="noteToolbar">
-                <button type="button" class="noteToolBtn" id="noteBoxAddBtn"
-                  title="Nova caixa no meio do quadro">
-                  <span class="noteToolIcon">&#43;</span><span class="noteToolLabel">Caixa</span>
-                </button>
-                <span class="noteToolSep"></span>
-                <button type="button" class="noteToolBtn active" data-tool="select" title="Selecionar / mover">
-                  <span class="noteToolIcon">↖</span><span class="noteToolLabel">Selecionar</span>
-                </button>
-                <button type="button" class="noteToolBtn" data-tool="pen" title="Desenhar à mão">
-                  <span class="noteToolIcon">✏️</span><span class="noteToolLabel">Caneta</span>
-                </button>
-                <button type="button" class="noteToolBtn" data-tool="line" title="Linha">
-                  <span class="noteToolIcon">╱</span><span class="noteToolLabel">Linha</span>
-                </button>
-                <button type="button" class="noteToolBtn" data-tool="rect" title="Rectângulo">
-                  <span class="noteToolIcon">▭</span><span class="noteToolLabel">Retângulo</span>
-                </button>
-                <button type="button" class="noteToolBtn" data-tool="ellipse" title="Elipse">
-                  <span class="noteToolIcon">◯</span><span class="noteToolLabel">Elipse</span>
-                </button>
-                <button type="button" class="noteToolBtn" data-tool="eraser"
-                  title="Borracha (apaga traços, formas e ligações)">
-                  <span class="noteToolIcon">🧽</span><span class="noteToolLabel">Borracha</span>
-                </button>
-                <button type="button" class="noteToolBtn" data-tool="connector" title="Ligar caixas">
-                  <span class="noteToolIcon">⤳</span><span class="noteToolLabel">Ligar</span>
-                </button>
-                <button type="button" class="noteToolBtn" data-tool="frame" title="Criar grupo">
-                  <span class="noteToolIcon">▢</span><span class="noteToolLabel">Grupo</span>
-                </button>
-                <button type="button" class="noteToolBtn" id="noteTableBtn"
-                  title="Inserir tabela (na caixa onde estás a escrever, ou numa caixa nova)">
-                  <span class="noteToolIcon">▦</span><span class="noteToolLabel">Tabela</span>
-                </button>
-                <button type="button" class="noteToolBtn" id="noteCopyBtn"
-                  title="Copiar a nota (ou só as caixas selecionadas) para o Teams, o OneNote, o Paint…">
-                  <span class="noteToolIcon">⧉</span><span class="noteToolLabel">Copiar</span>
-                </button>
-                <button type="button" class="noteToolColor c-yellow" id="noteToolColor"
-                  title="Cor do traço (clica para escolher)"></button>
-                <span class="noteToolSep"></span>
-                <button type="button" class="noteToolBtn" id="noteUndoBtn" title="Reverter a última alteração (Ctrl+Z)"
-                  disabled>
-                  <span class="noteToolIcon">↺</span><span class="noteToolLabel">Reverter</span>
-                </button>
-                <button type="button" class="noteToolBtn" id="noteRedoBtn"
-                  title="Repetir a alteração revertida (Ctrl+Shift+Z)" disabled>
-                  <span class="noteToolIcon">↻</span><span class="noteToolLabel">Repetir</span>
-                </button>
-                <button type="button" class="noteToolBtn" id="noteClearBtn" title="Limpar o quadro">
-                  <span class="noteToolIcon">🗑</span><span class="noteToolLabel">Limpar</span>
-                </button>
-                <span class="noteToolSep"></span>
-                <button type="button" class="noteToolBtn" id="noteZoomOutBtn"
-                  title="Diminuir zoom (ou Ctrl+scroll no quadro)">
-                  <span class="noteToolIcon">−</span><span class="noteToolLabel">Zoom −</span>
-                </button>
-                <button type="button" class="noteZoomLabel" id="noteZoomLabel" title="Repor zoom (100%)">100%</button>
-                <button type="button" class="noteToolBtn" id="noteZoomInBtn"
-                  title="Aumentar zoom (ou Ctrl+scroll no quadro)">
-                  <span class="noteToolIcon">+</span><span class="noteToolLabel">Zoom +</span>
-                </button>
-                <span class="noteToolSep"></span>
-                <button type="button" class="noteToolBtn" id="noteFullscreenBtn"
-                  title="Ecrã inteiro">
-                  <span class="noteToolIcon">&#x26F6;</span><span class="noteToolLabel">Ecrã inteiro</span>
-                </button>
+                <div class="noteToolGroup">
+                  <div class="noteToolGroupRow">
+                    <button type="button" class="noteToolBtn" id="noteBoxAddBtn"
+                      title="Nova caixa no meio do quadro">
+                      <span class="noteToolIcon">&#43;</span><span class="noteToolLabel">Caixa</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" id="noteTableBtn"
+                      title="Inserir tabela (na caixa onde estás a escrever, ou numa caixa nova)">
+                      <span class="noteToolIcon">▦</span><span class="noteToolLabel">Tabela</span>
+                    </button>
+                  </div>
+                  <span class="noteToolGroupName" id="noteGrpInsert">Inserir</span>
+                </div>
+                <div class="noteToolGroup">
+                  <div class="noteToolGroupRow">
+                    <button type="button" class="noteToolBtn active" data-tool="select" title="Selecionar / mover">
+                      <span class="noteToolIcon">↖</span><span class="noteToolLabel">Selecionar</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" data-tool="pen" title="Desenhar à mão">
+                      <span class="noteToolIcon">✏️</span><span class="noteToolLabel">Caneta</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" data-tool="eraser"
+                      title="Borracha (apaga traços, formas e ligações)">
+                      <span class="noteToolIcon">🧽</span><span class="noteToolLabel">Borracha</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" data-tool="connector" title="Ligar caixas">
+                      <span class="noteToolIcon">⤳</span><span class="noteToolLabel">Ligar</span>
+                    </button>
+                    <button type="button" class="noteToolColor c-yellow" id="noteToolColor"
+                      title="Cor do traço (clica para escolher)"></button>
+                  </div>
+                  <span class="noteToolGroupName" id="noteGrpTools">Ferramentas</span>
+                </div>
+                <div class="noteToolGroup">
+                  <div class="noteToolGroupRow">
+                    <button type="button" class="noteToolBtn" data-tool="line" title="Linha">
+                      <span class="noteToolIcon">╱</span><span class="noteToolLabel">Linha</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" data-tool="rect" title="Rectângulo">
+                      <span class="noteToolIcon">▭</span><span class="noteToolLabel">Retângulo</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" data-tool="ellipse" title="Elipse">
+                      <span class="noteToolIcon">◯</span><span class="noteToolLabel">Elipse</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" data-tool="frame" title="Criar grupo">
+                      <span class="noteToolIcon">▢</span><span class="noteToolLabel">Grupo</span>
+                    </button>
+                  </div>
+                  <span class="noteToolGroupName" id="noteGrpShapes">Formas</span>
+                </div>
+                <div class="noteToolGroup">
+                  <div class="noteToolGroupRow">
+                    <button type="button" class="noteToolBtn" id="noteUndoBtn"
+                      title="Reverter a última alteração (Ctrl+Z)" disabled>
+                      <span class="noteToolIcon">↺</span><span class="noteToolLabel">Reverter</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" id="noteRedoBtn"
+                      title="Repetir a alteração revertida (Ctrl+Shift+Z)" disabled>
+                      <span class="noteToolIcon">↻</span><span class="noteToolLabel">Repetir</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" id="noteCopyBtn"
+                      title="Copiar a nota (ou só as caixas selecionadas) para o Teams, o OneNote, o Paint…">
+                      <span class="noteToolIcon">⧉</span><span class="noteToolLabel">Copiar</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" id="noteClearBtn" title="Limpar o quadro">
+                      <span class="noteToolIcon">🗑</span><span class="noteToolLabel">Limpar</span>
+                    </button>
+                  </div>
+                  <span class="noteToolGroupName" id="noteGrpEdit">Editar</span>
+                </div>
+                <div class="noteToolGroup">
+                  <div class="noteToolGroupRow">
+                    <button type="button" class="noteToolBtn" id="noteZoomOutBtn"
+                      title="Diminuir zoom (ou Ctrl+scroll no quadro)">
+                      <span class="noteToolIcon">−</span><span class="noteToolLabel">Zoom −</span>
+                    </button>
+                    <button type="button" class="noteZoomLabel" id="noteZoomLabel" title="Repor zoom (100%)">100%</button>
+                    <button type="button" class="noteToolBtn" id="noteZoomInBtn"
+                      title="Aumentar zoom (ou Ctrl+scroll no quadro)">
+                      <span class="noteToolIcon">+</span><span class="noteToolLabel">Zoom +</span>
+                    </button>
+                    <button type="button" class="noteToolBtn" id="noteFullscreenBtn"
+                      title="Ecrã inteiro">
+                      <span class="noteToolIcon">&#x26F6;</span><span class="noteToolLabel">Ecrã inteiro</span>
+                    </button>
+                  </div>
+                  <span class="noteToolGroupName" id="noteGrpView">Ver</span>
+                </div>
               </div>
               <div class="noteCanvas" id="noteCanvas">
                 <svg class="noteDrawLayer" id="noteDrawLayer" width="4000" height="4000"></svg>
@@ -350,6 +381,9 @@
               <input type="text" id="codeFilter" placeholder="Procurar ficheiro…">
               <div class="codeTree" id="codeTree"></div>
             </aside>
+            <!-- arrastar para dar mais ou menos espaço à árvore, como na coluna
+                 das notas (ver noteSideResize) -->
+            <div class="codeSideResize" id="codeSideResize" title="Arrasta para redimensionar"></div>
             <section class="codeMain">
               <div class="codeFileHead" id="codeFileHead"></div>
               <div class="codeFileBody" id="codeFileBody"></div>

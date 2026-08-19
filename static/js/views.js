@@ -115,6 +115,11 @@ function showView(name) {
   $("excelSub").classList.toggle("hidden", !wbOnScreen);
   const codeOnScreen = isCodeView(name) || isCodeView(sideView);
   $("codeView").classList.toggle("hidden", !codeOnScreen);
+  // o ecrã inteiro do código sobrepõe-se ao .hidden (ver body.code-full no
+  // code.css): sair da vista por outro caminho que não o botão — a pesquisa
+  // global, por exemplo — deixaria o ficheiro colado por cima de tudo
+  if (!codeOnScreen && typeof setCodeFull === "function" &&
+    document.body.classList.contains("code-full")) setCodeFull(false);
   $("settingsBtn").classList.toggle("active", name === "settings");
   if (name === "settings") $("settingsBtn").setAttribute("aria-current", "page");
   else $("settingsBtn").removeAttribute("aria-current");

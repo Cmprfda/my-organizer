@@ -186,14 +186,20 @@ function setTaskLayout(layout) {
 }
 $("taskModeList").addEventListener("click", () => setTaskLayout("list"));
 $("taskModeCards").addEventListener("click", () => setTaskLayout("cards"));
-$("toggleAll").addEventListener("click", () => {
-  showAll = !showAll;
+// Liga/desliga o "Ver tudo". As linhas dos outros nem sequer vêm do servidor
+// (ver `all` no tabQuery, tasks.js), por isso isto obriga a reler — e a reler
+// os livros TODOS, como na troca de nome: senão as vistas que os atravessam
+// misturavam um livro com "Ver tudo" e outro só com as minhas.
+// Também é por aqui que o salto para o item original destapa uma linha de
+// outra pessoa (ver revealSource em split.js), daí ser uma função à parte.
+async function setShowAll(on) {
+  if (showAll === !!on) return;
+  showAll = !!on;
   clearFilters();
   $("toggleAll").textContent = showAll ? `${t("btn_only")} ${PERSON.split(" ")[0]}` : t("btn_all");
-  // como na troca de nome: relê os livros todos, senão as vistas que os
-  // atravessam misturavam um livro com "Ver tudo" e outro só com as minhas
-  loadAllTabs();
-});
+  await loadAllTabs();
+}
+$("toggleAll").addEventListener("click", () => setShowAll(!showAll));
 
 // ---------- janelas dedicadas: os menus dentro ou fora ----------
 // Nestas janelas (?wb= / ?note= / ?code=, ver SOLO em state.js) a barra de

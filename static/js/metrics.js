@@ -764,7 +764,9 @@ async function copyWeekReport() {
 // Etiquetas destas peças novas, chamadas pelo applyLang (settings.js) — os
 // selects e as janelas ficam com o nome certo ao trocar de língua, como o resto.
 function applyInsightsLang() {
-  $("homeTab").textContent = t("tab_home");
+  // só o nome: o separador leva o logótipo da app à frente (ver index.html) e
+  // escrever no textContent do botão deitava-o fora
+  $("homeTabName").textContent = t("tab_home");
   document.querySelector('label[for="metricsDaysSel"]').textContent = t("lbl_period");
   $("metricsDaysSel").title = t("t_period");
   [...$("metricsDaysSel").options].forEach(o => {

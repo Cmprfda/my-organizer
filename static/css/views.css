@@ -326,14 +326,28 @@ body.split #paneSide:has(#notesView:not(.hidden)) .noteToolbar::-webkit-scrollba
 }
 
 body.split #paneMain:has(#notesView:not(.hidden)) .noteToolBtn,
-body.split #paneMain:has(#notesView:not(.hidden)) .noteToolSep,
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolGroup,
 body.split #paneMain:has(#notesView:not(.hidden)) .noteToolColor,
 body.split #paneMain:has(#notesView:not(.hidden)) .noteZoomLabel,
 body.split #paneSide:has(#notesView:not(.hidden)) .noteToolBtn,
-body.split #paneSide:has(#notesView:not(.hidden)) .noteToolSep,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolGroup,
 body.split #paneSide:has(#notesView:not(.hidden)) .noteToolColor,
 body.split #paneSide:has(#notesView:not(.hidden)) .noteZoomLabel {
   flex: 0 0 auto;
+}
+
+/* num painel estreito não há largura para as legendas dos grupos do friso
+   (ver .noteToolGroupName no notes.css): fica a fila dos botões, como já
+   acontece em ecrã inteiro e no telemóvel */
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolGroupName,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolGroupName {
+  display: none;
+}
+
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolGroup,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolGroup {
+  padding: 0 5px;
+  gap: 0;
 }
 
 /* Um painel do ecrã dividido é estreito sem a JANELA o ser, por isso as medidas

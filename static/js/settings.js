@@ -103,6 +103,11 @@ function applyLang() {
   $("noteSideMobile").title = t("t_note_side_drawer");
   $("noteSideMobile").setAttribute("aria-label", t("t_note_side_drawer"));
   $("noteBoxAddBtn").title = t("t_tool_box_add");
+  $("noteGrpInsert").textContent = t("note_grp_insert");
+  $("noteGrpTools").textContent = t("note_grp_tools");
+  $("noteGrpShapes").textContent = t("note_grp_shapes");
+  $("noteGrpEdit").textContent = t("note_grp_edit");
+  $("noteGrpView").textContent = t("note_grp_view");
   $("noteToolbar").querySelector('[data-tool="select"]').title = t("t_tool_select");
   $("noteToolbar").querySelector('[data-tool="pen"]').title = t("t_tool_pen");
   $("noteToolbar").querySelector('[data-tool="line"]').title = t("t_tool_line");
@@ -125,6 +130,7 @@ function applyLang() {
   document.querySelector('#dropZones [data-side="right"] span').innerHTML = t("drop_right");
   $("splitBar").title = t("t_resize");
   $("noteSideResize").title = t("t_resize");
+  $("codeSideResize").title = t("t_resize");
   $("sideSwap").title = t("t_swap");
   $("sideClose").title = t("t_closepane");
   if (sideView) $("sideTitle").textContent = tabLabel(sideView);

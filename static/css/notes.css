@@ -212,12 +212,45 @@
 }
 
 /* ---------- barra de ferramentas de desenho ---------- */
+/* Friso em grupos com nome (ver o noteToolbar no index.html): os itens da
+   barra são os grupos, não os botões — assim, quando não cabe tudo, a quebra
+   é entre grupos e nunca deixa um botão órfão numa fila só para ele. */
 .noteToolbar {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 2px;
     padding: 2px 2px 4px;
+}
+
+.noteToolGroup {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 0 8px;
+}
+
+/* traço fino entre grupos, no lugar dos separadores soltos que a barra tinha */
+.noteToolGroup+.noteToolGroup {
+    border-left: 1px solid var(--border);
+}
+
+.noteToolGroupRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.noteToolGroupName {
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
 }
 
 .noteToolBtn {
@@ -268,14 +301,6 @@
 
 .noteToolBtn:disabled:hover {
     background: transparent;
-}
-
-.noteToolSep {
-    flex: 0 0 auto;
-    width: 1px;
-    height: 18px;
-    margin: 0 4px;
-    background: var(--border);
 }
 
 .noteToolColor {
@@ -959,8 +984,15 @@ body.notes-full .noteToolBtn {
     padding: 4px 7px;
 }
 
-body.notes-full .noteToolSep {
-    margin: 0 2px;
+/* em ecrã inteiro a altura é toda do quadro: os grupos ficam uma fila só, sem
+   legenda, e o traço entre eles é o que continua a mostrar a arrumação */
+body.notes-full .noteToolGroupName {
+    display: none;
+}
+
+body.notes-full .noteToolGroup {
+    padding: 0 4px;
+    gap: 0;
 }
 
 /* botão «/» que prende a coluna aberta: só existe em ecrã inteiro */
@@ -1353,10 +1385,21 @@ body.notes-full .noteTree {
     }
 
     .noteToolBtn,
-    .noteToolSep,
+    .noteToolGroup,
     .noteToolColor,
     .noteZoomLabel {
         flex: 0 0 auto;
+    }
+
+    /* num ecrã estreito não há largura para as legendas dos grupos: fica a
+       fila dos botões, com o traço entre grupos a mostrar a arrumação */
+    .noteToolGroupName {
+        display: none;
+    }
+
+    .noteToolGroup {
+        padding: 0 5px;
+        gap: 0;
     }
 
     /* numa fila com scroll o ecrã inteiro ficava a dez ferramentas de distância
@@ -1377,10 +1420,6 @@ body.notes-full .noteTree {
     .noteToolColor {
         width: 26px;
         height: 26px;
-    }
-
-    .noteToolSep {
-        height: 24px;
     }
 
     /* os botões da caixa (B / S / ⧉ / cor / ✕) eram alvos de 12px */
