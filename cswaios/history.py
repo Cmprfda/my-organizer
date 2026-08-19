@@ -8,10 +8,14 @@ mesma comparação é feita do lado do servidor, para TODAS as linhas da folha (
 só as ligadas a quem está a ver) e é guardada: é daqui que saem as tarefas
 paradas (aging), o relatório da semana e a vista de métricas.
 
-O retrato é por número de linha da folha, como em notify.js. Inserir ou apagar
-uma linha empurra todas as outras e faria parecer que meio livro mudou de uma
-vez: quando a diferença é grande demais para ser trabalho de gente, o retrato é
-apenas semeado de novo, sem inventar história (ver _looks_like_row_shift).
+O retrato é por IDENTIDADE da linha (Function/TC + To Do, ver _ident) e não pelo
+número dela na folha. Enquanto foi pelo número, inserir ou apagar uma linha
+empurrava todas as de baixo, o retrato antigo passava a falar das linhas erradas
+e a única saída era semeá-lo de novo: as idades voltavam todas a "≥ N dias" e o
+botão Paradas ficava sem sentido durante dias. Pela identidade, a linha é
+reconhecida onde quer que esteja — e uma linha renomeada (a app escreve o
+Function/TC e o To Do) é reconhecida por estar na mesma posição, com o resto
+igual (ver _same_row_renamed).
 """
 
 import json
@@ -21,6 +25,7 @@ import time
 from datetime import datetime, timedelta
 
 from .config import HERE
+from .statefile import read_json, write_json
 from .text import normalize
 
 HISTORY_FILE = os.path.join(HERE, "history.json")
@@ -32,8 +37,7 @@ HISTORY_FILE = os.path.join(HERE, "history.json")
 HISTORY_COLS = ("Status TC", "Status TP", "OBS", "Function/TC", "To Do")
 
 MAX_EVENTS = 5000          # eventos guardados (os mais antigos saem primeiro)
-_SHIFT_MIN_ROWS = 8        # abaixo disto nunca se assume linha inserida/apagada
-_SHIFT_RATIO = 0.4         # ... acima desta fração das linhas da folha, assume-se
+_RENAME_MAX = 5            # linhas renomeadas que se aceitam numa leitura
 _APP_WRITE_TTL = 3600      # segundos que uma escrita da app fica reconhecível
 # limite superior "sem fim" para comparar com marcas ISO como texto: qualquer
 # data real começa por um dígito menor do que o 9 do ano 9999
@@ -85,6 +89,59 @@ def range_bounds(days=7, since="", until=""):
     return ((datetime.now() - timedelta(days=max(1, int(days)))).isoformat(), _SEM_FIM)
 
 
+def _ident(fn, todo, xlrow):
+    """A identidade de uma linha da folha: o que ela DIZ, não onde está.
+
+    O retrato era guardado por número de linha, e por isso uma linha inserida (ou
+    apagada) no meio da folha empurrava todas as de baixo: as datas herdadas
+    passavam a pertencer à linha errada e a única saída era semear tudo de novo —
+    as idades voltavam todas a "≥ N dias" e o botão Paradas ficava sem sentido
+    durante dias. Aqui a linha é reconhecida pelo Function/TC + To Do, que é como
+    as pessoas (e o resto da app: overrides, notas, "à espera de") já a
+    identificam. Uma linha sem nenhum dos dois cai no número, que é tudo o que
+    ela tem.
+    """
+    base = f"{normalize(fn)}||{normalize(todo)}"
+    return base if base.strip("|").strip() else f"#{xlrow}"
+
+
+def _snapshot_rows(book):
+    """As linhas do retrato por identidade, migrando o retrato antigo.
+
+    Os retratos gravados antes desta versão têm o número da linha como chave. As
+    entradas já guardam o `fn` e o `todo`, por isso a identidade tira-se delas
+    sem perder história — ninguém volta a "≥ N dias" por causa da atualização.
+    """
+    rows = book.get("rows") if isinstance(book.get("rows"), dict) else {}
+    if book.get("keyed") == "ident":
+        return {k: v for k, v in rows.items() if isinstance(v, dict)}
+    out = {}
+    for chave, entry in rows.items():
+        if not isinstance(entry, dict):
+            continue
+        xlrow = _int_or_zero(entry.get("xlrow")) or _int_or_zero(chave)
+        entry = dict(entry, xlrow=xlrow)
+        out[_ident(entry.get("fn"), entry.get("todo"), xlrow)] = entry
+    return out
+
+
+def _same_row_renamed(prev, cols):
+    """A linha é a mesma, com o nome mudado?
+
+    Só se pergunta isto ao que sobrou depois de emparelhar por identidade e na
+    MESMA linha da folha. Chega que uma das duas metades do nome se mantenha (é
+    o caso normal: muda o Function/TC ou muda o To Do), ou que todas as outras
+    colunas seguidas estejam iguais — aí o que mudou foi só o nome.
+    """
+    antes = prev.get("cols") if isinstance(prev.get("cols"), dict) else {}
+    if normalize(antes.get("Function/TC", "")) == normalize(cols.get("Function/TC", "")):
+        return True
+    if normalize(antes.get("To Do", "")) == normalize(cols.get("To Do", "")):
+        return True
+    outras = [c for c in HISTORY_COLS if c not in ("Function/TC", "To Do")]
+    return all(str(antes.get(c, "") or "") == str(cols.get(c, "") or "") for c in outras)
+
+
 def _key(workbook_id, sheet):
     """Identidade de uma folha no histórico: livro||aba, como nos overrides."""
     return f"{workbook_id}||{sheet}"
@@ -96,11 +153,7 @@ def _empty():
 
 def _load():
     """Chamar sempre com o _lock preso."""
-    try:
-        with open(HISTORY_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        return _empty()
+    data = read_json(HISTORY_FILE)
     if not isinstance(data, dict):
         return _empty()
     out = _empty()
@@ -113,8 +166,7 @@ def _load():
 
 def _save(data):
     """Chamar sempre com o _lock preso."""
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
+    write_json(HISTORY_FILE, data)
 
 
 def load_history():
@@ -122,24 +174,28 @@ def load_history():
         return _load()
 
 
-def mark_app_write(workbook_id, sheet, xlrow, col, value):
+def mark_app_write(workbook_id, sheet, xlrow, col, value, batch=""):
     """Assinala que foi esta app a escrever esta célula (chamado pelo Push, ver
     push_overrides em tasks.py). A leitura seguinte encontra a alteração na folha
     e, por causa desta marca, anota-a como feita aqui em vez de "alguém mexeu"."""
     agora = time.time()
-    for k, (_, ts) in list(_APP_WRITES.items()):
+    for k, (_, ts, _lote) in list(_APP_WRITES.items()):
         if agora - ts > _APP_WRITE_TTL:
             _APP_WRITES.pop(k, None)
     _APP_WRITES[(normalize(workbook_id), normalize(sheet), int(xlrow), col)] = \
-        (str(value or ""), agora)
+        (str(value or ""), agora, str(batch or ""))
 
 
-def _was_app_write(workbook_id, sheet, xlrow, col, value):
+def _app_write_batch(workbook_id, sheet, xlrow, col, value):
+    """O Push de que esta alteração veio: "" quando veio da app sem lote
+    conhecido, None quando não veio da app."""
     entry = _APP_WRITES.get((normalize(workbook_id), normalize(sheet), int(xlrow), col))
     if not entry:
-        return False
-    escrito, ts = entry
-    return escrito == str(value or "") and (time.time() - ts) <= _APP_WRITE_TTL
+        return None
+    escrito, ts, lote = entry
+    if escrito != str(value or "") or (time.time() - ts) > _APP_WRITE_TTL:
+        return None
+    return lote
 
 
 def _row_entry(row, cols, prev, now):
@@ -147,6 +203,9 @@ def _row_entry(row, cols, prev, now):
     return {
         "fn": str(row.get("fn") or "")[:200],
         "todo": str(row.get("todo") or "")[:200],
+        # onde a linha estava na última leitura: já não é a chave do retrato, mas
+        # continua a ser por aqui que a interface (e as notificações) a encontram
+        "xlrow": _int_or_zero(row.get("xlrow")),
         "cols": cols,
         # primeira vez que esta linha foi vista: é o melhor limite inferior para
         # a idade de uma linha que ainda nunca mudou desde que há histórico
@@ -168,14 +227,6 @@ def _int_or_zero(value):
         return 0
 
 
-def _looks_like_row_shift(changed_rows, total_rows):
-    """True quando a diferença é grande demais para ser trabalho de pessoas —
-    o sinal de uma linha inserida/apagada a empurrar o número de todas as
-    outras. Nesse caso o retrato é semeado de novo e não se anota nada."""
-    return (changed_rows >= _SHIFT_MIN_ROWS
-            and changed_rows >= _SHIFT_RATIO * max(1, total_rows))
-
-
 def record_read(workbook_id, sheet, rows):
     """Compara esta leitura da folha com o retrato anterior e anota o que mudou.
 
@@ -194,8 +245,9 @@ def record_read(workbook_id, sheet, rows):
         primeira = not isinstance(book, dict) or not isinstance(book.get("rows"), dict)
         if primeira:
             book = {"seeded": now, "rows": {}}
-        antes = book["rows"]
-        depois, mudancas = {}, []
+        antes = _snapshot_rows(book)
+        # o que esta leitura traz, pela identidade de cada linha
+        lidas = []
         for row in rows:
             try:
                 xlrow = int(row.get("xlrow"))
@@ -203,7 +255,37 @@ def record_read(workbook_id, sheet, rows):
                 continue
             crus = row.get("cols") if isinstance(row.get("cols"), dict) else {}
             cols = {c: str(crus.get(c, "") or "") for c in HISTORY_COLS}
-            prev = antes.get(str(xlrow))
+            lidas.append((_ident(row.get("fn"), row.get("todo"), xlrow), xlrow, row, cols))
+        # 1) emparelhar pela identidade: a linha é reconhecida onde quer que
+        #    esteja, e uma linha inserida acima deixa de mexer com as outras
+        sobra = dict(antes)
+        pares = {}
+        sem_par = []
+        for ident, xlrow, row, cols in lidas:
+            prev = sobra.pop(ident, None)
+            if isinstance(prev, dict):
+                pares[ident] = prev
+            else:
+                sem_par.append((ident, xlrow, cols))
+        # 2) o que sobrou de um lado e do outro, NA MESMA linha da folha: é uma
+        #    linha renomeada (a app escreve o Function/TC e o To Do). Só se
+        #    aceitam poucas de uma vez — muitas ao mesmo tempo já não se
+        #    distinguem de linhas novas, e adivinhar inventava história.
+        if sem_par and sobra and len(sem_par) <= _RENAME_MAX:
+            por_linha = {}
+            for ident_antigo, entry in sobra.items():
+                por_linha.setdefault(_int_or_zero(entry.get("xlrow")), []).append(ident_antigo)
+            for ident, xlrow, cols in sem_par:
+                candidatos = por_linha.get(xlrow) or []
+                for ident_antigo in list(candidatos):
+                    entry = sobra.get(ident_antigo)
+                    if isinstance(entry, dict) and _same_row_renamed(entry, cols):
+                        pares[ident] = sobra.pop(ident_antigo)
+                        candidatos.remove(ident_antigo)
+                        break
+        depois, mudancas = {}, []
+        for ident, xlrow, row, cols in lidas:
+            prev = pares.get(ident)
             entry = _row_entry(row, cols, prev if isinstance(prev, dict) else None, now)
             if isinstance(prev, dict) and not primeira:
                 prev_cols = prev.get("cols") if isinstance(prev.get("cols"), dict) else {}
@@ -212,29 +294,27 @@ def record_read(workbook_id, sheet, rows):
                     para = cols[col]
                     if de == para:
                         continue
-                    mudancas.append({
+                    lote = _app_write_batch(workbook_id, sheet, xlrow, col, para)
+                    evento = {
                         "ts": now, "book": workbook_id, "sheet": sheet, "xlrow": xlrow,
                         "fn": entry["fn"], "todo": entry["todo"], "col": col,
                         "from": de[:300], "to": para[:300],
-                        "via": "app" if _was_app_write(workbook_id, sheet, xlrow, col, para)
-                               else "sheet",
-                    })
-            depois[str(xlrow)] = entry
-        linhas_mudadas = len({m["xlrow"] for m in mudancas})
-        if _looks_like_row_shift(linhas_mudadas, len(rows)):
-            # linha inserida/apagada: o retrato antigo já não fala das mesmas
-            # linhas, por isso as datas herdadas pertencem à linha errada.
-            # Semeia-se tudo de novo (first = changed = agora, ou seja, idade
-            # "≥ isto") em vez de inventar história.
-            mudancas = []
-            depois = {k: dict(v, first=now, changed=now, changes=0)
-                      for k, v in depois.items()}
-            book["seeded"] = now
-        for m in mudancas:
-            entry = depois[str(m["xlrow"])]
-            entry["changed"] = now
-            entry["changes"] += 1
+                        "via": "sheet" if lote is None else "app",
+                        # a identidade acompanha o evento: o número da linha pode
+                        # já não ser este quando alguém for ver o histórico
+                        "ident": ident,
+                    }
+                    # o Push de que a alteração veio: é o que permite desfazer um
+                    # envio inteiro de uma vez, e não célula a célula
+                    # (ver batch_events e /api/history/undo)
+                    if lote:
+                        evento["batch"] = lote
+                    mudancas.append(evento)
+                    entry["changed"] = now
+                    entry["changes"] += 1
+            depois[ident] = entry
         book["rows"] = depois
+        book["keyed"] = "ident"
         data["snapshots"][key] = book
         if mudancas:
             data["events"] = (data["events"] + mudancas)[-MAX_EVENTS:]
@@ -250,15 +330,18 @@ def sheet_history(workbook_id, sheet, days=30, limit=400):
     with _lock:
         data = _load()
         book = data["snapshots"].get(key) or {}
-        rows = book.get("rows") if isinstance(book.get("rows"), dict) else {}
+        rows = _snapshot_rows(book) if isinstance(book.get("rows"), dict) else {}
         eventos = [e for e in data["events"]
                    if e.get("book") == workbook_id and e.get("sheet") == sheet]
     corte = (datetime.now() - timedelta(days=max(1, int(days)))).isoformat()
     eventos = [e for e in eventos if str(e.get("ts") or "") >= corte]
+    # a interface encontra as linhas pelo número que a folha tem AGORA: o
+    # retrato é guardado por identidade, e é aqui que se volta a essa chave
     linhas = {}
-    for xlrow, entry in rows.items():
+    for entry in rows.values():
         if not isinstance(entry, dict):
             continue
+        xlrow = str(_int_or_zero(entry.get("xlrow")))
         linhas[xlrow] = {
             "changed": entry.get("changed") or entry.get("first") or "",
             # a linha ainda nunca foi vista a mudar: a data acima é a de quando
@@ -266,10 +349,19 @@ def sheet_history(workbook_id, sheet, days=30, limit=400):
             # e não a verdadeira — a interface mostra-a com ≥
             "estimated": _int_or_zero(entry.get("changes")) == 0,
         }
+    # quantas alterações levou cada Push desta folha: a caixa de detalhe de uma
+    # tarefa só vê os eventos DELA, e é isto que lhe permite dizer "este envio
+    # mexeu em 7 células" e oferecer o desfazer do envio inteiro
+    lotes = {}
+    for e in eventos:
+        lote = str(e.get("batch") or "")
+        if lote:
+            lotes[lote] = lotes.get(lote, 0) + 1
     return {
         "seeded": book.get("seeded") or "",
         "rows": linhas,
         "events": eventos[-max(1, int(limit)):][::-1],   # mais recentes primeiro
+        "batches": lotes,
     }
 
 
@@ -283,6 +375,16 @@ def recent_events(days=7, limit=1000, since="", until=""):
         eventos = [e for e in _load()["events"]
                    if baixo <= str(e.get("ts") or "") < alto]
     return eventos[-max(1, int(limit)):][::-1]
+
+
+def batch_events(batch):
+    """As alterações de um Push (o `batch` dos eventos), das mais antigas para as
+    mais recentes. Vazio quando o lote já saiu da janela guardada."""
+    batch = str(batch or "").strip()
+    if not batch:
+        return []
+    with _lock:
+        return [dict(e) for e in _load()["events"] if str(e.get("batch") or "") == batch]
 
 
 def forget_history(workbook_id=None):

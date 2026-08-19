@@ -21,6 +21,8 @@ function applyLang() {
   applyTodayLang();
   applyChatLang();
   applyAnnounceLang();
+  applyBackupLang();
+  applyTeamLang();
   renderGraphState();
   $("themeSel").title = t("theme_title");
   $("themeSel").options[0].textContent = t("theme_auto");
@@ -330,6 +332,9 @@ function renderSettingsPage() {
   // o aviso pode ter sido escrito noutra janela desta app (ou à mão no
   // announcement.json): relê-se sempre que a página abre
   if (typeof loadAnnouncement === "function") loadAnnouncement(false);
+  // as cópias do estado mudam a cada dia de trabalho: a lista é lida ao entrar
+  if (typeof loadBackups === "function") loadBackups();
+  if (typeof loadTeamConfig === "function") loadTeamConfig();
   graphAction("state");
 }
 

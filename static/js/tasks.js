@@ -1660,6 +1660,9 @@ async function loadTab(tab, cycle = false, fresh = false) {
     saveWorkbookTabs();
   }
   if (tab.id === activeTabId) lastData = data;
+  // o painel "Hoje" abre antes dos livros e enche-se a cada um que chega (ou
+  // que falha): sem isto, so se atualizava quando TODOS acabassem
+  refreshTodayIfOpen();
   return data;
 }
 
@@ -2126,13 +2129,22 @@ function openFnEditor(span) {
 
 /* ---------- estado em massa ----------
    Uma ronda de rework mexe no mesmo estado de meia dúzia de linhas seguidas, e
-   uma a uma são meia dúzia de idas ao Excel. Aqui a SELEÇÃO é a vista: as
+   uma a uma são meia dúzia de idas ao Excel. O ponto de partida é a VISTA: as
    linhas que estão à frente dos olhos depois dos filtros (currentMeta) — nada
-   de caixas de marcar novas na tabela. Como qualquer alteração de estado, o
-   resultado fica local (✎) à espera do Push, por isso um clique a mais
-   desfaz-se com o "Descartar locais". */
+   de caixas de marcar novas na tabela, que teriam de ser desenhadas nas três
+   maneiras de mostrar tarefas (lista, caixas e vista completa).
+   A escolha linha a linha é aqui, na janela: cada linha tem a sua caixa, já
+   marcada, e desmarca-se o que não é para mexer. Assim uma vista mal filtrada
+   deixa de ser "tudo ou nada" — vê-se o nome e o estado atual de cada linha
+   antes de aplicar. Como qualquer alteração de estado, o resultado fica local
+   (✎) à espera do Push, por isso um clique a mais desfaz-se com o "Descartar
+   locais". */
 const BULK_COLS = ["Status TC", "Status TP"];
-const BULK_PREVIEW = 8;         // linhas mostradas na janela antes de aplicar
+const BULK_LIST_MAX = 200;      // linhas listadas na janela (= BULK_MAX do servidor)
+
+// linhas desmarcadas à mão nesta janela (por xlrow): tudo o que não está aqui
+// entra na alteração
+let bulkOff = new Set();
 
 // Linhas à vista em que esta coluna existe e quer dizer algo: "N/A" é "não se
 // aplica a esta linha" e escrever lá um estado seria inventar trabalho.
@@ -2147,22 +2159,44 @@ function bulkColsAvailable() {
   return BULK_COLS.filter(col => bulkRowsFor(col).length);
 }
 
+// as linhas que vão mesmo ser mexidas: as da vista menos as desmarcadas
+function bulkChosen(col) {
+  return bulkRowsFor(col).filter(meta => !bulkOff.has(String(meta.xlrow)));
+}
+
 function renderBulkStatus() {
   const col = $("bulkColSel").value;
   const alvo = bulkRowsFor(col);
-  $("bulkCount").textContent = tf("bulk_count", alvo.length, col);
-  $("bulkList").innerHTML = alvo.slice(0, BULK_PREVIEW).map(meta => {
+  const escolhidas = bulkChosen(col);
+  const listadas = alvo.slice(0, BULK_LIST_MAX);
+  $("bulkCount").textContent = escolhidas.length === alvo.length
+    ? tf("bulk_count", alvo.length, col)
+    : tf("bulk_count_some", escolhidas.length, alvo.length, col);
+  $("bulkList").innerHTML = listadas.map(meta => {
     const de = String(((meta.cur) || {})[col] || "").trim();
-    return `<li><span class="bulkName">${esc(meta.fn || `linha ${meta.xlrow}`)}</span>` +
+    const linha = String(meta.xlrow);
+    const on = !bulkOff.has(linha);
+    return `<li><label class="bulkPick">` +
+      `<input type="checkbox" data-bulkrow="${esc(linha)}"${on ? " checked" : ""}>` +
+      `<span class="bulkName">${esc(meta.fn || `linha ${meta.xlrow}`)}</span></label>` +
       `<span class="bulkFrom">${esc(de)}</span></li>`;
-  }).join("") + (alvo.length > BULK_PREVIEW
-    ? `<li class="bulkMore">${esc(tf("bulk_more", alvo.length - BULK_PREVIEW))}</li>` : "");
-  $("bulkApply").disabled = !alvo.length || !$("bulkStatusSel").value;
+  }).join("") + (alvo.length > listadas.length
+    ? `<li class="bulkMore">${esc(tf("bulk_more", alvo.length - listadas.length))}</li>` : "");
+  // uma vista com mais linhas do que o servidor aceita de uma vez: em vez de um
+  // erro depois de carregar em Aplicar, diz-se logo o que há a fazer (desmarcar
+  // ou filtrar melhor)
+  const demasiadas = escolhidas.length > BULK_LIST_MAX;
+  $("bulkTooMany").textContent = demasiadas ? tf("bulk_too_many", BULK_LIST_MAX) : "";
+  $("bulkTooMany").classList.toggle("hidden", !demasiadas);
+  $("bulkAll").textContent = t("bulk_all");
+  $("bulkNone").textContent = t("bulk_none_btn");
+  $("bulkApply").disabled = !escolhidas.length || demasiadas || !$("bulkStatusSel").value;
 }
 
 function openBulkStatus() {
   const cols = bulkColsAvailable();
   if (!cols.length) { toast(t("bulk_none"), ""); return; }
+  bulkOff = new Set();          // cada abertura começa com tudo marcado
   $("bulkColSel").innerHTML = cols.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   $("bulkStatusSel").innerHTML = (currentStatuses || [])
     .map(sv => `<option value="${esc(sv)}">${esc(sv)}</option>`).join("");
@@ -2178,7 +2212,7 @@ function closeBulkStatus() {
 async function applyBulkStatus() {
   const col = $("bulkColSel").value;
   const valor = $("bulkStatusSel").value;
-  const alvo = bulkRowsFor(col);
+  const alvo = bulkChosen(col);
   if (!alvo.length || !valor) return;
   $("bulkApply").disabled = true;
   try {
@@ -2213,7 +2247,24 @@ $("bulkStatusBtn").addEventListener("click", openBulkStatus);
 $("bulkClose").addEventListener("click", closeBulkStatus);
 $("bulkCancel").addEventListener("click", closeBulkStatus);
 $("bulkApply").addEventListener("click", applyBulkStatus);
-$("bulkColSel").addEventListener("change", renderBulkStatus);
+$("bulkColSel").addEventListener("change", () => {
+  // as colunas não têm as mesmas linhas aplicáveis: trocar de coluna recomeça a
+  // escolha em vez de arrastar caixas desmarcadas de uma lista para outra
+  bulkOff = new Set();
+  renderBulkStatus();
+});
+$("bulkList").addEventListener("change", e => {
+  const cx = e.target.closest("[data-bulkrow]");
+  if (!cx) return;
+  if (cx.checked) bulkOff.delete(cx.dataset.bulkrow);
+  else bulkOff.add(cx.dataset.bulkrow);
+  renderBulkStatus();
+});
+$("bulkAll").addEventListener("click", () => { bulkOff = new Set(); renderBulkStatus(); });
+$("bulkNone").addEventListener("click", () => {
+  bulkOff = new Set(bulkRowsFor($("bulkColSel").value).map(m => String(m.xlrow)));
+  renderBulkStatus();
+});
 $("bulkStatusSel").addEventListener("change", renderBulkStatus);
 $("bulkOverlay").addEventListener("click", e => {
   if (e.target === $("bulkOverlay")) closeBulkStatus();

@@ -13,6 +13,12 @@
 // Onde vive: `waiting.json` no servidor, com a mesma chave dos overrides e das
 // notas (livro||aba||função||to do), por isso a marca é a mesma em todos os
 // dispositivos — ver load_waiting em cswaios/store.py.
+//
+// Uma marca pode não ser minha: com a partilha ligada (Definições → Equipa),
+// cada instalação publica as suas esperas na pasta partilhada e todas leem as
+// das outras (ver cswaios/team.py). Nesse caso a marca traz o `by` — quem a
+// pôs — e o chip di-lo, para não parecer minha uma cobrança que é de um colega.
+// A minha marca ganha sempre à de outra pessoa na mesma linha.
 
 // a marca desta linha, ou null
 function waitingOf(meta) {
@@ -52,10 +58,12 @@ function waitingChipHtml(meta) {
     : dias === 1 ? t("age_day") : tf("age_days", dias);
   const cobrar = waitingOverdue(meta);
   const tip = [tf("waiting_tip", w.who), desde ? `${t("waiting_since")}: ${desde}` : "",
-    w.until ? `${t("waiting_until")}: ${fmtDueShort(w.until)}` : t("waiting_no_deadline")]
+    w.until ? `${t("waiting_until")}: ${fmtDueShort(w.until)}` : t("waiting_no_deadline"),
+    w.by ? tf("waiting_by", w.by) : ""]
     .filter(Boolean).join("\n");
-  return `<span class="waitChip${cobrar ? " chase" : ""}" title="${esc(tip)}">` +
-    `⏸ ${esc(w.who)}${desde ? ` · ${esc(desde)}` : ""}</span>`;
+  return `<span class="waitChip${cobrar ? " chase" : ""}${w.by ? " theirs" : ""}" title="${esc(tip)}">` +
+    `⏸ ${esc(w.who)}${desde ? ` · ${esc(desde)}` : ""}` +
+    `${w.by ? ` · ${esc(w.by.split(" ")[0])}` : ""}</span>`;
 }
 
 // ---------- editor (campo da caixa de detalhe) ----------
@@ -88,6 +96,9 @@ function waitingNode(meta) {
           file: lastData.file, sheet: lastData.sheet,
           fn: meta.fn, todo: meta.todo,
           who: quem, until: quem ? until : "",
+          // vai o meu nome porque a marca pode ser publicada para a equipa, e
+          // uma cobrança sem autor não serve de nada (ver team.py)
+          person: PERSON,
           // a data de início mantém-se enquanto a espera for a mesma pessoa:
           // trocar o prazo não recomeça a contagem de "há quanto tempo"
           since: (w && w.who === quem && w.since) || "",

@@ -11,7 +11,9 @@ cronómetro, senão apagar um item mudava horas de um dia para o "sem registo" d
 folha de horas.
 """
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -116,38 +118,20 @@ class TestArquivoGuardaOsDias(unittest.TestCase):
 
     def setUp(self):
         self._file = todos.DONE_ARCHIVE_FILE
-        self.escrito = None
+        self.tmp = tempfile.mkdtemp()
+        todos.DONE_ARCHIVE_FILE = os.path.join(self.tmp, "todo_done_archive.json")
 
     def tearDown(self):
         todos.DONE_ARCHIVE_FILE = self._file
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_o_arquivo_leva_os_segmentos(self):
         item = {"id": "t1", "title": "usrRoot", "done": True,
                 "done_at": "2026-08-17T14:03:54", "elapsed_ms": 3600000,
                 "segments": [{"d": "2026-08-16", "ms": 1200000},
                              {"d": "2026-08-17", "ms": 2400000}]}
-        guardados = []
-        original = todos.load_done_archive
-        try:
-            todos.load_done_archive = lambda: []
-            # o arquivo é escrito com json.dump: aqui só se quer ver a entrada
-            import json
-            real_open = open
-            def fake_open(path, *a, **k):
-                if path == todos.DONE_ARCHIVE_FILE and "w" in (a[0] if a else k.get("mode", "")):
-                    class Buf:
-                        def __enter__(self_inner): return self_inner
-                        def __exit__(self_inner, *e): return False
-                        def write(self_inner, txt): guardados.append(txt)
-                    return Buf()
-                return real_open(path, *a, **k)
-            todos.open = fake_open
-            todos.archive_done_todo(item)
-        finally:
-            todos.load_done_archive = original
-            if hasattr(todos, "open"):
-                del todos.open
-        entrada = json.loads("".join(guardados))[0]
+        todos.archive_done_todo(item)
+        entrada = todos.load_done_archive()[0]
         self.assertEqual(entrada["segments"],
                          [{"d": "2026-08-16", "ms": 1200000},
                           {"d": "2026-08-17", "ms": 2400000}])

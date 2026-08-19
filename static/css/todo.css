@@ -1324,6 +1324,18 @@ a.todoJiraKey:hover {
 
 .todoDueBtn:hover { filter: brightness(1.06); }
 
+/* repeticao com ocorrencias falhadas (o "3" a seguir ao circulo): o chip da
+   data ganha o contorno da cor de aviso, senao o numero passava despercebido
+   no meio da data (ver todoDueHtml) */
+.todoDueBtn.has-missed {
+  border-color: var(--status-blocked-fg);
+}
+
+.todoDueBtn.has-missed .todoRepGlyph {
+  color: var(--status-blocked-fg);
+  font-weight: 700;
+}
+
 /* editor no lugar do chip */
 .todoDueEdit {
   display: inline-flex;

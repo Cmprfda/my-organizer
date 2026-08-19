@@ -8,6 +8,7 @@ import time
 from datetime import date, datetime, timedelta
 
 from .config import HERE
+from .statefile import read_json, write_json
 from .text import normalize
 
 # TODO list pessoal (itens próprios + tarefas/CCRs arrastadas para lá)
@@ -245,6 +246,21 @@ def normalize_todo_item(item):
     out["repeat"] = normalize_repeat(out.get("repeat"))
     if not out["repeat"]:
         out.pop("repeat")
+    # ocorrências que passaram sem o item ser fechado (ver catch_up_repeats): é
+    # o que a interface mostra ao lado da data, para não parecer que a repetição
+    # está em dia quando não está
+    missed = _int_or_zero(out.get("missed"))
+    if missed > 0 and not out["done"]:
+        out["missed"] = missed
+    else:
+        out.pop("missed", None)
+    # quando o tempo contado deste item foi posto a zero: o registo diário
+    # anterior fica (é a folha de horas) e isto é o que explica a diferença
+    restarted = str(out.get("restarted_at") or "").strip()[:32]
+    if restarted:
+        out["restarted_at"] = restarted
+    else:
+        out.pop("restarted_at", None)
     # registo do cronómetro dia a dia: é o que permite dizer QUANDO o tempo foi
     # contado (o elapsed_ms sozinho é só um total que não sabe a que dia
     # pertence — ver o relatório e as Métricas)
@@ -346,6 +362,28 @@ def sync_todo_timer_with_column(item, old_col, new_col):
         item.pop("done_at", None)
 
 
+def _next_slot(day, repeat, anchor=0):
+    """A data agendada seguinte, logo depois de `day` (sem olhar a hoje)."""
+    if repeat == "monthly":
+        # o dia do mês é sempre o do original: sem isso um item do dia 31 ia
+        # escorregando (31 -> 28 -> 28 ...) a cada mês curto que passasse
+        return _add_month(day, anchor or day.day)
+    passo = {"daily": timedelta(days=1), "weekdays": timedelta(days=1),
+             "weekly": timedelta(days=7), "biweekly": timedelta(days=14)}[repeat]
+    nova = day + passo
+    while repeat == "weekdays" and nova.weekday() >= 5:
+        nova = nova + passo      # sábado/domingo não contam num item de dias úteis
+    return nova
+
+
+def _due_date(due, fallback):
+    """A data-limite como `date`, ou `fallback` quando não há (ou não presta)."""
+    try:
+        return date.fromisoformat(due) if normalize_due(due) else fallback
+    except ValueError:
+        return fallback
+
+
 def next_due(due, repeat, today=None):
     """A data-limite seguinte de um item que se repete.
 
@@ -355,25 +393,72 @@ def next_due(due, repeat, today=None):
     if not repeat:
         return ""
     today = today or date.today()
-    try:
-        base = date.fromisoformat(due) if normalize_due(due) else today
-    except ValueError:
-        base = today
-    passo = {"daily": timedelta(days=1), "weekdays": timedelta(days=1),
-             "weekly": timedelta(days=7), "biweekly": timedelta(days=14)}.get(repeat)
+    base = _due_date(due, today)
     nova = base
     for _ in range(400):          # trava de segurança: nunca é preciso mais
-        if repeat == "monthly":
-            # o dia do mês é sempre o do original: sem isso um item do dia 31
-            # ia escorregando (31 → 28 → 28 …) a cada mês curto que passasse
-            nova = _add_month(nova, base.day)
-        else:
-            nova = nova + passo
-            if repeat == "weekdays" and nova.weekday() >= 5:
-                continue          # sábado/domingo não contam num item de dias úteis
+        nova = _next_slot(nova, repeat, base.day)
         if nova > today:
             return nova.isoformat()
     return nova.isoformat()
+
+
+def catch_up_repeats(todos, today=None):
+    """Põe as datas dos itens que se repetem na ocorrência que calha agora.
+
+    A repetição andava ao ritmo de quem fechava o item e não ao do calendário:
+    um item diário deixado por fazer três dias ficava com a data de há três dias
+    e, ao ser fechado, dava UMA ocorrência seguinte em vez de reconhecer as três
+    que passaram. Aqui a data-limite anda para a frente até à última ocorrência
+    já vencida (a de hoje, quando calha hoje) e o que ficou pelo caminho fica
+    contado em `missed`, para a interface poder dizer que aquilo já devia ter
+    sido feito N vezes. Não nascem cópias: um item que se repete é UM trabalho
+    que volta, não uma pilha de trabalhos iguais em atraso.
+
+    Devolve o número de itens mexidos (o load_todo regrava quando é > 0).
+    """
+    today = today or date.today()
+    mexidos = 0
+    for item in todos:
+        if not isinstance(item, dict) or item.get("done"):
+            continue
+        repeat = normalize_repeat(item.get("repeat"))
+        due = normalize_due(item.get("due"))
+        if not repeat or not due:
+            continue
+        base = _due_date(due, today)
+        if base >= today:
+            continue
+        atual, saltadas = base, 0
+        for _ in range(400):
+            seguinte = _next_slot(atual, repeat, base.day)
+            if seguinte > today:
+                break
+            atual, saltadas = seguinte, saltadas + 1
+        if not saltadas:
+            continue
+        item["due"] = atual.isoformat()
+        item["missed"] = _int_or_zero(item.get("missed")) + saltadas
+        mexidos += 1
+    return mexidos
+
+
+def restart_todo_timer(item, now_ms=None):
+    """Põe o tempo contado deste item a zero, sem apagar a folha de horas.
+
+    O `elapsed_ms` é o total DESTE item e é isso que se recomeça. O registo
+    diário (`segments`) fica: aquelas horas foram contadas naqueles dias, e a
+    folha de horas (ver report.py) é sobre os dias e não sobre este item —
+    apagá-lo passava tempo já trabalhado para "não se sabe quando".
+    """
+    if not isinstance(item, dict):
+        return
+    item["elapsed_ms"] = 0
+    item["jiraLoggedFromTimerMs"] = 0
+    item["restarted_at"] = _now_iso()
+    if str(item.get("col") or "") == "inprogress":
+        item["timer_started"] = int(now_ms if now_ms is not None else time.time() * 1000)
+    else:
+        item["timer_started"] = None
 
 
 def _add_month(day, anchor=0):
@@ -408,6 +493,9 @@ def spawn_repeat(todos, item):
             "created": datetime.now().strftime("%d/%m %H:%M")}
     if nova_data:
         novo["due"] = nova_data
+    # as ocorrências que o anterior deixou passar são história dele: a nova
+    # nasce em dia (e o anterior, já fechado, deixa de as mostrar)
+    item.pop("missed", None)
     if isinstance(item.get("ref"), dict) and item.get("ref"):
         novo["ref"] = dict(item["ref"])
     subs = item.get("subtasks") if isinstance(item.get("subtasks"), list) else []
@@ -551,31 +639,30 @@ def todo_link_target(todos, kind, title):
 
 
 def load_todo():
-    try:
-        with open(TODO_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-            if not isinstance(data, list):
-                return []
-            out = []
-            changed = False
-            for raw in data:
-                normed = normalize_todo_item(raw)
-                if normed is None:
-                    changed = True
-                    continue
-                if normed != raw:
-                    changed = True
-                out.append(normed)
-            if changed:
-                save_todo(out)
-            return out
-    except (OSError, ValueError):
+    data = read_json(TODO_FILE, [])
+    if not isinstance(data, list):
         return []
+    out = []
+    changed = False
+    for raw in data:
+        normed = normalize_todo_item(raw)
+        if normed is None:
+            changed = True
+            continue
+        if normed != raw:
+            changed = True
+        out.append(normed)
+    # a repetição passa a andar com o calendário e não com quem fecha o item: a
+    # data-limite vencida sobe até à ocorrência de agora, aqui, ao ler
+    if catch_up_repeats(out):
+        changed = True
+    if changed:
+        save_todo(out)
+    return out
 
 
 def save_todo(data):
-    with open(TODO_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
+    write_json(TODO_FILE, data)
 
 
 # Itens concluídos que foram apagados do quadro. Apagar um item do quadro é
@@ -588,11 +675,7 @@ DONE_ARCHIVE_MAX = 500
 
 def load_done_archive():
     """Concluídos já apagados do quadro (lista; [] quando não há arquivo)."""
-    try:
-        with open(DONE_ARCHIVE_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        return []
+    data = read_json(DONE_ARCHIVE_FILE, [])
     return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
 
 
@@ -619,5 +702,4 @@ def archive_done_todo(item):
                "jiraIssues": [j for j in (item.get("jiraIssues") or []) if isinstance(j, dict)]}
     arquivo = [x for x in load_done_archive() if x.get("id") != entrada["id"]]
     arquivo.append(entrada)
-    with open(DONE_ARCHIVE_FILE, "w", encoding="utf-8") as f:
-        json.dump(arquivo[-DONE_ARCHIVE_MAX:], f, ensure_ascii=False, indent=1)
+    write_json(DONE_ARCHIVE_FILE, arquivo[-DONE_ARCHIVE_MAX:])

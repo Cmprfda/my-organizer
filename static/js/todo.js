@@ -484,17 +484,22 @@ function repeatLabel(rep) {
 
 // chip da data-limite: sem data é só um 📅 esbatido (clicar põe uma). O ↻ ao
 // lado aparece quando o item se repete — é a única pista de que fechá-lo vai
-// fazer nascer o seguinte.
+// fazer nascer o seguinte. O número a seguir ao ↻ são as ocorrências que
+// passaram sem o item ser fechado (o servidor conta-as em `missed`, ver
+// catch_up_repeats): a data já é a de agora, e isto é o que diz que a
+// repetição não está em dia.
 function todoDueHtml(it) {
   const due = String(it.due || "");
   const rep = String(it.repeat || "");
+  const falhadas = Number(it.missed) || 0;
   const estado = due ? dueState(due) : "";
   const tip = due
-    ? `${t("todo_due_click")}\n${fmtDueShort(due)}${rep ? ` · ${repeatLabel(rep)}` : ""}`
+    ? `${t("todo_due_click")}\n${fmtDueShort(due)}${rep ? ` · ${repeatLabel(rep)}` : ""}` +
+      (falhadas ? `\n${tf("todo_missed_tip", falhadas)}` : "")
     : t("todo_due_add");
-  return `<button type="button" class="todoDueBtn${estado ? ` due-${estado}` : ""}${due ? "" : " empty"}" data-tdue="${esc(it.id)}" title="${esc(tip)}">` +
+  return `<button type="button" class="todoDueBtn${estado ? ` due-${estado}` : ""}${due ? "" : " empty"}${falhadas ? " has-missed" : ""}" data-tdue="${esc(it.id)}" title="${esc(tip)}">` +
     `<span class="todoDueGlyph">📅</span>${due ? esc(todoDueLabel(it)) : ""}` +
-    `${rep ? '<span class="todoRepGlyph">↻</span>' : ""}</button>`;
+    `${rep ? `<span class="todoRepGlyph">↻${falhadas ? esc(String(falhadas)) : ""}</span>` : ""}</button>`;
 }
 
 // editor no lugar do chip: a data e a repetição, que é onde as duas coisas se

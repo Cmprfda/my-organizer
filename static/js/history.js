@@ -45,6 +45,10 @@ async function loadTaskHistory(tab) {
       seeded: out.seeded || "",
       rows: out.rows || {},
       events: out.events || [],
+      // quantas células levou cada Envio (batch -> nº): a caixa de uma tarefa só
+      // vê os eventos DELA e sem isto não saberia dizer que o envio mexeu em
+      // mais linhas (ver histBatchUndo)
+      batches: out.batches || {},
     });
     // o histórico chegou depois do desenho: o botão "Paradas" e as idades só
     // existem com ele, por isso desenha-se outra vez (nunca por cima de um
@@ -153,6 +157,38 @@ function histCanUndo(meta, e) {
   return atual !== String(e.from || "").trim();
 }
 
+// Desfazer o ENVIO inteiro de que esta alteração veio. O botão só aparece
+// quando o envio mexeu em mais do que uma célula — com uma só, o ↺ da linha já
+// faz o mesmo. Fica tudo local (✎) à espera do Push, como qualquer alteração.
+function histBatchSize(e) {
+  const h = activeHistory();
+  const lote = String((e && e.batch) || "");
+  return lote ? Number((h && h.batches && h.batches[lote]) || 0) : 0;
+}
+
+async function undoHistoryBatch(batch, quantas) {
+  const h = activeHistory();
+  // a contagem pode vir de fora (as Métricas mostram alterações de VÁRIOS
+  // livros, e o histórico em memória é só o do separador ativo)
+  const total = Number(quantas || ((h && h.batches) || {})[batch] || 0);
+  if (!confirm(tf("hist_undo_batch_confirm", total))) return;
+  try {
+    const res = await fetch("/api/history/undo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ batch }),
+    });
+    const out = await res.json();
+    if (!out.ok) { alert(`${t("err_save")} ` + (out.error || "?")); return; }
+    toast(tf("hist_undone_batch", out.queued), "ok");
+    if ((out.failed || []).length) clientLog(`desfazer envio: falhas ${out.failed.join(" | ")}`);
+  } catch (err) {
+    alert("Não foi possível contactar o servidor: " + err);
+    return;
+  }
+  load();
+}
+
 async function undoHistoryChange(meta, col, valor) {
   try {
     const cols = (lastData && lastData.xlcols) || {};
@@ -256,6 +292,12 @@ function taskHistoryNode(meta) {
       ? `<button type="button" class="histUndo" data-histundo="${i}"` +
         ` title="${esc(tf("t_hist_undo", histValue(e.from)))}">↺</button>`
       : "";
+    // o mesmo Push mexeu noutras linhas: desfazê-lo todo de uma vez
+    const nLote = histBatchSize(e);
+    const undoLote = nLote > 1
+      ? `<button type="button" class="histUndo histUndoBatch" data-histbatch="${esc(e.batch)}"` +
+        ` title="${esc(tf("t_hist_undo_batch", nLote))}">↺${nLote}</button>`
+      : "";
     return `<li class="histRow${e.via === "app" ? " histApp" : ""}">` +
       `<span class="histWhen">${esc(histWhen(e.ts))}</span>` +
       `<span class="histCol">${esc(e.col)}</span>` +
@@ -264,7 +306,7 @@ function taskHistoryNode(meta) {
       `<span class="histTo">${esc(histValue(e.to))}</span></span>` +
       `<span class="histVia" title="${esc(marca)}">${e.via === "app" ? "✎" : "☁"}` +
       (quem ? ` <span class="histWho">${esc(quem)}</span>` : "") + `</span>` +
-      undo +
+      undo + undoLote +
       `</li>`;
   }).join("");
   const resumo = age
@@ -281,6 +323,12 @@ function taskHistoryNode(meta) {
   // o índice no botão aponta para a lista MOSTRADA (a mesma fatia de 12), por
   // isso lê-se daqui e não de um novo taskEvents (que podia já ter mudado)
   wrap.addEventListener("click", ev => {
+    const lote = ev.target.closest("[data-histbatch]");
+    if (lote) {
+      ev.stopPropagation();
+      undoHistoryBatch(lote.dataset.histbatch);
+      return;
+    }
     const btn = ev.target.closest("[data-histundo]");
     if (!btn) return;
     ev.stopPropagation();

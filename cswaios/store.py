@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 
 from .config import HERE
+from .statefile import read_json, write_json
 
 # Alterações de estado feitas na app. Ficam num ficheiro local em vez de
 # reescrever o .xlsx (reescrevê-lo com openpyxl destruiria validações de
@@ -17,16 +18,12 @@ OVERRIDES_FILE = os.path.join(HERE, "status_overrides.json")
 
 
 def load_overrides():
-    try:
-        with open(OVERRIDES_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+    data = read_json(OVERRIDES_FILE, {})
+    return data if isinstance(data, dict) else {}
 
 
 def save_overrides(data):
-    with open(OVERRIDES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
+    write_json(OVERRIDES_FILE, data)
 
 
 # Notas de execução pessoais por tarefa (etiqueta + texto livre), partilhadas
@@ -35,16 +32,12 @@ NOTES_FILE = os.path.join(HERE, "notes.json")
 
 
 def load_notes():
-    try:
-        with open(NOTES_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+    data = read_json(NOTES_FILE, {})
+    return data if isinstance(data, dict) else {}
 
 
 def save_notes(data):
-    with open(NOTES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
+    write_json(NOTES_FILE, data)
 
 
 # "À espera de alguém" por tarefa: quem está a segurar a linha, desde quando e
@@ -57,17 +50,12 @@ WAITING_FILE = os.path.join(HERE, "waiting.json")
 
 
 def load_waiting():
-    try:
-        with open(WAITING_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        return {}
+    data = read_json(WAITING_FILE, {})
     return data if isinstance(data, dict) else {}
 
 
 def save_waiting(data):
-    with open(WAITING_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
+    write_json(WAITING_FILE, data)
 
 
 # CCRs acompanhadas na vista "CCRs": por ID, com os passos de fecho.
@@ -76,16 +64,12 @@ CCRS_FILE = os.path.join(HERE, "ccrs.json")
 
 
 def load_ccrs():
-    try:
-        with open(CCRS_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+    data = read_json(CCRS_FILE, {})
+    return data if isinstance(data, dict) else {}
 
 
 def save_ccrs(data):
-    with open(CCRS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
+    write_json(CCRS_FILE, data)
 
 
 # Aviso do dono da instalação: uma mensagem escrita nas Definições (só a partir

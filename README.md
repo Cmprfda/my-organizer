@@ -145,6 +145,44 @@ table.
 - **Shareable custom filters** — *Copy* puts the filter set on the clipboard
   (ready to paste into a chat) and *Paste* adds a colleague's filters to yours,
   bringing along any predefined lists they use. It never replaces your own.
+- **Copies of your work** (Settings) — your TODO list, notes, CCRs, board and
+  history live in files next to the app and nowhere else. The app keeps one copy
+  a day of each, you can save another one by hand, and any of them is restored
+  with one click (what was in place is saved first, so a restore can be undone).
+- **Repeats follow the calendar** — a daily item left undone for three days no
+  longer shows a three-day-old date, and closing it no longer produces a single
+  successor: the date moves up to today's occurrence and the 📅 chip says how
+  many went by. No backlog clones — a repeating item is one job that comes back.
+- **Restart a timer without losing the timesheet** — zeroing an item's counted
+  time is about that item's total; the days that time was counted on stay in the
+  timesheet.
+- **Bulk status, row by row** — the dialog still starts from what is in view, but
+  every row now has its own checkbox (with *Select all* / *Clear all*), showing
+  the name and current status. A badly filtered view is no longer all-or-nothing.
+- **Undo a whole push** (↺ with a number, in a task's history and in the day
+  view) — the push that touched seven cells is undone in one go. Everything stays
+  local (✎) until you Push, and a cell somebody else has since changed is left
+  alone.
+- **Ages and stale tasks stop restarting** — history now recognises each row by
+  what it says (Function/TC + To Do) instead of by its row number, so inserting
+  or deleting a row no longer looks like half the workbook changed.
+- **Today says where it stands** — instead of empty task sections while the
+  workbooks are still being read, the panel says it is reading (and how many are
+  in) or names the workbook it could not read.
+- **Waiting marks shared with the team** (Settings → *Team*) — with the switch on,
+  the rows where you are waiting on someone are published to the shared folder
+  and show up for whoever has the app, with the chip naming who marked it. Off by
+  default: only the waiting marks travel, never your TODO list or notes.
+- **Assistant with tools** — with the LLM engine on, questions are no longer
+  answered from the first rows of each list only: the assistant searches, pages
+  and counts everything the app has open (with the same numbers as Metrics). It
+  still never reads the sheet or OneDrive, and orders still go through Confirm.
+- **App on the phone** — "add to home screen" now gives an icon and a window
+  without the browser bar, instead of a shortcut to a page.
+- **Two people saving at once** — requests that touch the list, the notes, the
+  CCRs, the waiting marks or the local changes now wait for each other, and
+  writes are atomic: the item you just created on the phone no longer disappears
+  because the browser saved at the same moment.
 - **Assistant LLM engine** (optional) — with `chat_config.json` set to
   `{"engine": "llm", …}` and the `anthropic` package installed, free-form
   questions are answered by the model, always and only from what the app has

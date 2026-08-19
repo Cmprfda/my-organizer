@@ -377,6 +377,13 @@ function metricsDayRowsHtml() {
   if (!eventos.length) {
     return metricEmpty(t(metricsDaySearch.trim() ? "metric_day_nomatch" : "metric_day_none"));
   }
+  // células que cada Envio (Push) mexeu neste dia: é o que permite oferecer o
+  // "desfazer o envio" aqui, onde ele se vê como um grupo (ver undoHistoryBatch)
+  const lotes = {};
+  eventos.forEach(e => {
+    const lote = String(e.batch || "");
+    if (lote) lotes[lote] = (lotes[lote] || 0) + 1;
+  });
   const linhas = metricsDayShown.map((e, i) => {
     const tab = metricsEventTab(e);
     const tarefa = String(e.fn || "").trim() || String(e.todo || "").trim()
@@ -399,7 +406,11 @@ function metricsDayRowsHtml() {
         <span class="histArrow">→</span>
         <span class="histTo">${esc(histValue(e.to))}</span></span>
       <span class="histVia">${e.via === "app" ? "✎" : "☁"}${quem ? ` <span class="histWho">${esc(quem)}</span>` : ""}</span>
-    </button></li>`;
+    </button>${(lotes[String(e.batch || "")] || 0) > 1
+      ? `<button type="button" class="histUndo histUndoBatch" data-metricbatch="${esc(e.batch)}"
+          data-metricbatchn="${lotes[String(e.batch)]}"
+          title="${esc(tf("t_hist_undo_batch", lotes[String(e.batch)]))}">↺${lotes[String(e.batch)]}</button>`
+      : ""}</li>`;
   }).join("");
   const demais = eventos.length > METRICS_DAY_ROWS
     ? `<p class="metricNote">${esc(tf("metric_day_more", METRICS_DAY_ROWS, eventos.length))}</p>`
@@ -858,6 +869,11 @@ $("metricsBody").addEventListener("click", e => {
   const col = e.target.closest(".metricColBtn");
   if (col) { metricsShowDay(col.dataset.day); return; }
   if (e.target.closest(".metricDayBack")) { metricsBackToPeriod(); return; }
+  const lote = e.target.closest("[data-metricbatch]");
+  if (lote) {
+    undoHistoryBatch(lote.dataset.metricbatch, +lote.dataset.metricbatchn);
+    return;
+  }
   const ir = e.target.closest("[data-metricgo]");
   if (ir) metricsGoToEvent(ir.dataset.metricgo);
 });

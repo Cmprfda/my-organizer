@@ -6,6 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>My Organizer</title>
   <link rel="icon" href="/static/img/app-icon.ico" type="image/x-icon">
+  <!-- App no telemóvel: com o manifest e estas marcas, o "adicionar ao ecrã
+       principal" dá um ícone e uma janela sem a barra do browser, em vez de um
+       atalho para uma página. O iOS não lê o manifest para isto — lê as marcas
+       apple-* abaixo — por isso vão as duas coisas. -->
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#c00000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Organizer">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
   <script>
     // aplicado antes do primeiro paint para nao haver flash com o tema errado
     (function () {
@@ -638,6 +649,30 @@
               </div>
             </section>
 
+            <section class="setCard" id="setCardTeam">
+              <h2 class="setCardTitle" id="setSecTeam">Equipa</h2>
+              <div class="setNote">
+                <span class="setNoteLbl" id="teamShareLbl">Partilhar as esperas</span>
+                <label class="setCheck"><input type="checkbox" id="teamShareChk">
+                  <span id="teamShareHint"></span></label>
+                <span id="teamShareState"></span>
+              </div>
+            </section>
+
+            <section class="setCard" id="setCardBackup">
+              <h2 class="setCardTitle" id="setSecBackup">C&oacute;pias do teu trabalho</h2>
+              <div class="setNote">
+                <span class="setNoteLbl" id="backupLbl">Estado local</span>
+                <span id="backupHint" class="setHint"></span>
+                <div class="setRow setRowUpdate">
+                  <button type="button" class="mini" id="backupNowBtn">Guardar agora</button>
+                  <button type="button" class="mini" id="backupListBtn">Ver c&oacute;pias</button>
+                </div>
+                <div id="backupList" class="backupList hidden"></div>
+                <span id="backupState"></span>
+              </div>
+            </section>
+
             <section class="setCard">
               <h2 class="setCardTitle" id="setSecApp">Aplicação</h2>
               <div class="setRow setRowUpdate">
@@ -895,7 +930,12 @@
           </div>
         </div>
         <p class="bulkCount" id="bulkCount"></p>
+        <div class="bulkPicks">
+          <button type="button" class="mini" id="bulkAll">Marcar todas</button>
+          <button type="button" class="mini" id="bulkNone">Desmarcar todas</button>
+        </div>
         <ul class="bulkList" id="bulkList"></ul>
+        <p class="bulkTooMany hidden" id="bulkTooMany"></p>
         <div class="btns">
           <button type="button" class="secondary" id="bulkCancel">Cancelar</button>
           <button type="button" id="bulkApply">Aplicar</button>
@@ -1032,6 +1072,8 @@
   <script src="/static/js/chat.js"></script>
   <script src="/static/js/today.js"></script>
   <script src="/static/js/announce.js"></script>
+  <script src="/static/js/backup.js"></script>
+  <script src="/static/js/team.js"></script>
   <script src="/static/js/main.js"></script>
 </body>
 

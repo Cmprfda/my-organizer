@@ -387,6 +387,10 @@
 .metricDayItem {
   display: flex;
   min-width: 0;
+  /* na lista do dia o "desfazer o envio" fica FORA do botao da linha (um botao
+     dentro de outro nao e HTML valido): ficam os dois lado a lado */
+  align-items: center;
+  gap: 4px;
 }
 
 button.metricDayGo {
@@ -724,6 +728,13 @@ button.metricDayBack:hover {
 .histRow:hover .histUndo {
   opacity: 1;
   border-color: var(--border);
+}
+
+/* desfazer o envio inteiro: o mesmo botao do ↺ da linha, com o numero de
+   celulas que aquele Push mexeu (ver undoHistoryBatch, history.js) */
+.histUndoBatch {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
 .histUndo:hover {

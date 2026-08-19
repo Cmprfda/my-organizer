@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from datetime import datetime
 
@@ -21,6 +22,13 @@ from .text import cell_to_text, normalize
 # folha crua por (ficheiro, aba) — independente da pessoa/vista, para que
 # qualquer dispositivo seja servido a partir da última leitura do ficheiro
 _RAW_CACHE = {}
+
+# Uma escrita COM de cada vez. Há uma só instância do Excel na máquina e um só
+# livro aberto nela: dois PowerShell a mexer nele ao mesmo tempo (o Push do
+# browser e o do telemóvel, ou um Push a apanhar o "fechar o Excel") dão erro de
+# COM ocupado, ou pior, gravam um por cima do outro. Aqui as escritas ficam em
+# fila, que é o que o Excel consegue servir.
+_com_lock = threading.Lock()
 
 
 # lista oficial de estados, lida da coluna "Status" da aba Admin do próprio
@@ -139,7 +147,7 @@ def write_status_to_excel(path, sheet, xlrow, xlcol, fncol, fn, value):
     params = {"path": path, "basename": os.path.basename(path), "sheet": sheet,
               "xlrow": int(xlrow), "xlcol": int(xlcol), "fncol": int(fncol),
               "fn": fn, "value": value}
-    with tempfile.TemporaryDirectory() as td:
+    with _com_lock, tempfile.TemporaryDirectory() as td:
         params_path = os.path.join(td, "params.json")
         ps1_path = os.path.join(td, "write.ps1")
         with open(params_path, "w", encoding="utf-8") as f:
@@ -241,7 +249,7 @@ def _run_set_validation(path, target_sheet, target_cell, formula):
     set_data_validation_list e set_data_validation_fixed_list."""
     params = {"path": path, "basename": os.path.basename(path), "targetSheet": target_sheet,
               "targetCell": target_cell, "formula": formula}
-    with tempfile.TemporaryDirectory() as td:
+    with _com_lock, tempfile.TemporaryDirectory() as td:
         params_path = os.path.join(td, "params.json")
         ps1_path = os.path.join(td, "validation.ps1")
         with open(params_path, "w", encoding="utf-8") as f:
@@ -367,8 +375,9 @@ def close_excel_workbook(basename):
         "$wb | ForEach-Object { $_.Close($true) }; exit 0"
     )
     try:
-        rc = subprocess.run(["powershell", "-NoProfile", "-Command", script],
-                            capture_output=True, timeout=40).returncode
+        with _com_lock:
+            rc = subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                                capture_output=True, timeout=40).returncode
         return rc == 0
     except Exception:
         return False

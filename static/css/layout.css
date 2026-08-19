@@ -819,6 +819,42 @@ header .sub {
   color: var(--muted);
 }
 
+/* lista das copias do estado local (ver backup.js): uma linha por copia, com
+   o ficheiro a que pertence, quando foi guardada e o botao de repor */
+.setPage .backupList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.setPage .backupRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.setPage .backupWhat {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.setPage .backupWhen {
+  color: var(--muted);
+  margin-right: auto;
+}
+
 /* sem permissao para escrever (quem chega pela rede local) o campo fica
    apagado, como acontece nos outros cartoes */
 .setPage .setNote.readonly input {

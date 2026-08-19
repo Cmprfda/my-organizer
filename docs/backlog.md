@@ -1,5 +1,95 @@
 ## Backlog
 
+### [DONE] Cópias do estado, repetição pelo calendário, escolha linha a linha, desfazer um envio, histórico pela identidade da linha, esperas da equipa, assistente com ferramentas e app no telemóvel
+- **Source:** ronda de melhorias pedida pelo Carlos Andrade (2026-08-19), a partir das
+  próprias notas de "known limits" deste ficheiro.
+- **What landed:**
+  - `cswaios/statefile.py` (novo): gravação atómica (temporário + `os.replace`,
+    com paciência para a partilha do Windows), uma cópia por dia em `backups\`
+    ao lado de cada ficheiro, `list_backups`/`restore_backup`/`backup_now` e um
+    trinco por ficheiro. O `store.py`, o `todos.py`, o `notepad.py` e o
+    `history.py` passam todos por lá; `GET`/`POST /api/backups` (o POST só do
+    próprio PC) e o cartão *Cópias do teu trabalho* em `static/js/backup.js`.
+  - `Handler.STATE_POST_FILE` em `cswaios/server.py`: cada pedido que mexe num
+    ficheiro de estado corre com o trinco DESSE ficheiro preso — o ciclo
+    ler-mexer-gravar deixa de se cruzar. `_com_lock` em `cswaios/excel.py`: uma
+    escrita COM de cada vez.
+  - `catch_up_repeats()` e `restart_todo_timer()` em `cswaios/todos.py`: a
+    repetição anda com o calendário (com as ocorrências falhadas contadas em
+    `missed`, mostradas no chip 📅) e recomeçar o cronómetro já não apaga o
+    registo diário.
+  - `bulkOff`/`bulkChosen()` em `static/js/tasks.js`: caixas de marcar linha a
+    linha na janela do estado em massa, com *Marcar/Desmarcar todas* e o aviso
+    do teto antes de aplicar.
+  - `batch` nos eventos do histórico (`mark_app_write`, `push_overrides`),
+    `batch_events()`, `POST /api/history/undo` e o botão ↺N no histórico da
+    tarefa e nas alterações do dia: desfaz-se o Push inteiro.
+  - `_ident()`/`_snapshot_rows()`/`_same_row_renamed()` em `cswaios/history.py`:
+    o retrato passa a ser pela identidade da linha (Function/TC + To Do) e não
+    pelo número dela.
+  - `todayBooksState()`/`todayBooksNote()` em `static/js/today.js` + o
+    `refreshTodayIfOpen()` a cada livro lido.
+  - `cswaios/team.py` (novo) + `GET`/`POST /api/team/config` +
+    `static/js/team.js`: as esperas publicadas na pasta partilhada, um ficheiro
+    por pessoa, e lidas por todas as instalações.
+  - `LLM_TOOLS` e o ciclo de ferramentas em `cswaios/chat.py`: `search`,
+    `list_rows`, `list_items` e `counts` sobre o retrato que o cliente mandou.
+  - `static/manifest.webmanifest`, `static/js/sw.js` (servido em `/sw.js`),
+    ícones PNG e as marcas `apple-*` em `index.html`.
+  - `tests/__init__.py` + `tests/test_statefile.py`, `tests/test_repeat_timer.py`,
+    `tests/test_llm_tools.py`, `tests/test_team.py` e
+    `.github/workflows/tests.yml`: `python -m unittest discover -s tests -t .`
+    passa a correr a suite inteira (156 testes, offline) e o CI corre-a no
+    Windows.
+- **Design:**
+  - **A identidade da linha** é a mesma que o resto da app já usa (a chave dos
+    overrides, das notas e das esperas). Uma linha renomeada é reconhecida por
+    estar na mesma posição com o resto igual, e um retrato antigo (por número de
+    linha) é migrado na primeira leitura — ninguém volta a "≥ N dias" por ter
+    atualizado a app.
+  - **A repetição não cria cópias em atraso**: um item que se repete é UM
+    trabalho que volta. A data sobe até à ocorrência de agora e o que passou
+    fica contado, em vez de nascerem três itens iguais.
+  - **Recomeçar o cronómetro** é sobre o total DESTE item; a folha de horas é
+    sobre os dias, e aquelas horas foram trabalhadas.
+  - **A escolha linha a linha vive na janela** e não na tabela: as tarefas
+    mostram-se de três maneiras (lista, caixas, vista completa) e uma caixa de
+    marcar em cada uma seria a mesma coisa desenhada três vezes.
+  - **Desfazer um envio** não é um caminho novo até ao Excel: repõe o valor de
+    antes como alterações locais (✎), com a base a ser o que o Push deixou na
+    folha — se alguém mexeu na célula entretanto, o Push desiste dela.
+  - **Publicar as esperas é opt-in** e só as esperas: a lista Por fazer e as
+    notas nunca saem da máquina. Um ficheiro por pessoa (nunca um comum) e uma
+    chave sem o livro, porque o caminho do ficheiro é diferente em cada máquina.
+  - **O motor LLM continua a não escrever** e a não ler a folha: as ferramentas
+    leem o retrato que o cliente mandou, e as ordens continuam no motor local
+    com o Confirmar de sempre.
+- **Released in:** v153.
+- **Known limits (worth revisiting):**
+  - As cópias são uma por dia e por ficheiro (14 por ficheiro): duas coisas
+    apagadas no mesmo dia repõem-se ao mesmo ponto — o do princípio do dia.
+  - Repor é ficheiro a ficheiro e pede um F5: a app não recarrega sozinha o que
+    estava em memória noutras janelas.
+  - As ocorrências falhadas (`missed`) contam-se, mas não se sabe QUAIS foram —
+    não há registo por dia de um item que se repete.
+  - O desfazer de um envio precisa dos eventos desse Push no histórico: passados
+    os 5000 eventos guardados (ou reposto um `history.json` antigo), o lote
+    desaparece e volta a ser célula a célula.
+  - A identidade da linha é o Function/TC + To Do: duas linhas com os dois
+    campos exatamente iguais são a mesma linha para o histórico (era o que já
+    acontecia nos overrides e nas notas). E uma leitura em que MUITAS linhas
+    mudam de nome ao mesmo tempo não se distingue de linhas novas: semeia-se,
+    sem inventar história.
+  - As esperas da equipa chegam pela pasta partilhada, por isso são de quando
+    cada pessoa abriu a app pela última vez (e desaparecem depois de 21 dias sem
+    ela abrir). Quem tem a partilha só de leitura publica; ler funciona sempre.
+  - O service worker não se registra pelo endereço da rede local (http não é
+    contexto seguro): no telemóvel o que vale é o ícone e a janela sem barra,
+    não a app a abrir sem servidor.
+  - O trinco é por ficheiro e por PROCESSO: duas instâncias da app na mesma
+    pasta (DEV e estável) continuam a poder cruzar-se, agora sem partirem o
+    ficheiro (a gravação é atómica) mas podendo perder uma alteração.
+
 ### [DONE] Data-limite, repetição, folha de horas, "Hoje", estado em massa, desfazer, "à espera de", Jira a dois tempos, avisos fora da app, filtros partilháveis e motor LLM
 - **Source:** ronda de sugestões funcionais pedida pelo Carlos Andrade (2026-08-18).
 - **What landed:**

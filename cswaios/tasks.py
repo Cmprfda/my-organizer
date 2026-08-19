@@ -25,6 +25,7 @@ from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_fo
 from .history import HISTORY_COLS, mark_app_write, record_read
 from .i18n import msg
 from .logs import log_event
+from .team import load_team_waiting
 from .store import (load_ccrs, load_notes, load_overrides, load_waiting,
                     save_notes, save_overrides)
 from .text import cell_to_text, normalize
@@ -276,6 +277,11 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     overrides = load_overrides()
     notes = load_notes()
     waiting_all = load_waiting()
+    # esperas que os colegas publicaram na pasta partilhada (ver team.py): a
+    # minha marca manda sempre na linha; onde eu não tenho nenhuma, vale a de
+    # quem já está a cobrar aquilo — é o que evita duas pessoas a cobrar a mesma
+    # linha e a mesma pessoa
+    waiting_team = load_team_waiting(person)
 
     # folha sem as colunas do tracker (qualquer outro livro de Excel): mostra-se
     # tal como está, sem filtrar por pessoa nem sincronizar papéis
@@ -387,6 +393,10 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
             # linha para o cliente poder mostrar o chip e não a contar como
             # parada enquanto a espera for razoável
             _, waiting = _override_entry(waiting_all, path, real_sheet, fn_key, todo_key)
+            if not isinstance(waiting, dict):
+                # a chave partilhada não leva o livro: o caminho do ficheiro é
+                # diferente em cada máquina (ver _shared_key, team.py)
+                waiting = waiting_team.get(_legacy_key(real_sheet, fn_key, todo_key))
             data_rows.append(cells[:len(headers)])
             row_meta.append({"fn": fn_key, "todo": todo_key, "orig": orig, "over": over,
                              "cur": cur, "note": note, "xlrow": xlrow,
@@ -768,6 +778,10 @@ def push_overrides(target):
         raise ValueError("ficheiro desconhecido")
     overrides = load_overrides()
     pushed, failed = 0, []
+    # etiqueta deste Push: viaja com cada célula escrita e volta nos eventos do
+    # histórico, para o "desfazer" poder pegar no envio inteiro em vez de ir
+    # célula a célula (ver mark_app_write e /api/history/undo)
+    batch = f"p{int(time.time() * 1000)}"
     # chaves novas já usadas nesta chamada (linhas renomeadas): impede que duas
     # linhas diferentes, ambas renomeadas para a mesma identidade neste mesmo
     # Push, fundam por engano as suas colunas pendentes numa só
@@ -800,7 +814,7 @@ def push_overrides(target):
                 headers_now = known_headers(target, sheet)
                 mark_app_write(target, sheet, xlrow,
                                headers_now[col0] if headers_now and col0 < len(headers_now)
-                               else f"Coluna {xlcol}", valor)
+                               else f"Coluna {xlcol}", valor, batch)
                 list_cfg = entry.get("list")
                 if isinstance(list_cfg, dict) and list_cfg.get("fixed") and list_cfg.get("values"):
                     set_data_validation_fixed_list(
@@ -842,7 +856,7 @@ def push_overrides(target):
             if ok:
                 entry.pop(col_name)
                 pushed += 1
-                mark_app_write(target, sheet, xlrow, col_name, valor)
+                mark_app_write(target, sheet, xlrow, col_name, valor, batch)
                 if col_name == "Function/TC":
                     new_fn = guard_fn = str(valor)
                 elif col_name == "To Do":

@@ -260,6 +260,19 @@ if (typeof graphAction === "function") graphAction("state");
 // novo para este browser (ver announce.js)
 loadAnnouncement(true);
 
+// Casca guardada para a app abrir mesmo com o servidor em baixo (static/js/sw.js).
+// Só em contexto seguro: pelo endereço da rede local (http) o browser recusa
+// registar um service worker — lá o que vale é o "adicionar ao ecrã principal".
+// Nas janelas dedicadas (?wb=/?note=/?code=) não se registra nada: são janelas
+// da mesma app, e uma delas basta.
+if (!SOLO && window.isSecureContext && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* sem casca guardada a app funciona como sempre */
+    });
+  });
+}
+
 // barra do topo: encolhe (mais estreita e sem subtítulos) assim que se desce
 // zona morta entre os 32 e os 64px para não oscilar (encolhe/expande em
 // loop) quando o scroll pousa mesmo em cima do limiar

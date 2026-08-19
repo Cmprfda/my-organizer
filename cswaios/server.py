@@ -27,7 +27,7 @@ from .graph import (GraphError, ensure_graph_config, graph_browse, graph_ids_fro
                     graph_login_start, graph_logout, graph_pick, graph_state,
                     graph_state_public, graph_versions, is_graph_path,
                     save_login_email, save_onedrive_root)
-from .history import recent_events, sheet_history
+from .history import batch_events, recent_events, sheet_history
 from .jira import (create_issue, fetch_issue, issue_status, issue_transitions,
                    list_projects, load_jira_config, log_work, save_jira_config,
                    search_issues, transition_issue)
@@ -38,17 +38,22 @@ from .notepad import image_file, image_type, load_notepad
 from .repo import (add_repo, browse_local_folder, list_dir, load_repos,
                    read_text, remove_repo, rename_repo, search_files)
 from .report import build_report
-from .store import (load_announcement, load_ccrs, load_notes, load_overrides,
+from .statefile import (backup_now, list_backups, lock_for, restore_backup)
+from .team import (load_team_config, publish_waiting, save_team_config,
+                   team_dir, unpublish_waiting)
+from .store import (CCRS_FILE, NOTES_FILE, OVERRIDES_FILE, WAITING_FILE,
+                    load_announcement, load_ccrs, load_notes, load_overrides,
                     load_waiting, save_announcement, save_ccrs, save_notes,
                     save_overrides, save_waiting)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
                     discard_overrides, forget_web_cache, known_headers,
                     pending_overrides_summary, push_overrides,
                     queue_cellcat_override)
-from .todos import (DUE_RE, TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
+from .notepad import NOTEPAD_FILE
+from .todos import (DUE_RE, TODO_FILE, TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
                     TODO_REPEATS, archive_done_todo, load_todo, normalize_due,
                     normalize_ref, normalize_repeat, normalize_todo_item,
-                    save_todo, sort_todos_by_priority, spawn_repeat,
+                    restart_todo_timer, save_todo, sort_todos_by_priority, spawn_repeat,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
                     todo_link_target, todo_sources)
 from .export import EXPORT_DIR, write_export
@@ -68,6 +73,7 @@ STATIC_TYPES = {
     ".css": "text/css", ".js": "application/javascript", ".json": "application/json",
     ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
     ".woff2": "font/woff2", ".ttf": "font/ttf", ".map": "application/json",
+    ".webmanifest": "application/manifest+json",
 }
 
 
@@ -187,6 +193,11 @@ class Handler(BaseHTTPRequestHandler):
             log_event(f"{ip} abriu a página")
             with open(os.path.join(HERE, "index.html"), encoding="utf-8") as f:
                 self._send(200, f.read(), "text/html")
+        elif parsed.path == "/sw.js":
+            # o service worker tem de ser servido da RAIZ: o alcance dele é a
+            # pasta de onde vem, e em /static/js/ só valeria para os scripts
+            # (ver static/js/sw.js)
+            self.send_static("js/sw.js")
         elif parsed.path.startswith("/static/"):
             self.send_static(parsed.path[len("/static/"):])
         elif parsed.path == "/api/tasks":
@@ -255,6 +266,19 @@ class Handler(BaseHTTPRequestHandler):
             # app corre é que escreve o aviso).
             self._send(200, json.dumps({**load_announcement(),
                                         "canEdit": _is_local(ip)}), "application/json")
+        elif parsed.path == "/api/team/config":
+            # partilha das esperas com a equipa (ver team.py). `canEdit` porque
+            # quem liga a partilha é o dono desta instalação, como no aviso.
+            cfg = load_team_config()
+            self._send(200, json.dumps({**cfg, "canEdit": _is_local(ip),
+                                        "shareFound": team_dir() is not None}),
+                       "application/json")
+        elif parsed.path == "/api/backups":
+            # cópias do estado local (ver statefile.py). Só quem está neste PC é
+            # que pode repor uma, por isso a lista diz-lhe se pode.
+            self._send(200, json.dumps({"backups": list_backups(),
+                                        "canRestore": _is_local(ip)}),
+                       "application/json")
         elif parsed.path.startswith("/api/notepad/img/"):
             self.send_note_image(parsed.path[len("/api/notepad/img/"):])
         elif parsed.path == "/api/ping":
@@ -339,9 +363,37 @@ class Handler(BaseHTTPRequestHandler):
             log_event(f"{ip} pediu {parsed.path} - 404")
             self._send(404, "Not found", "text/plain")
 
+    # Ficheiro de estado que cada pedido mexe. Os handlers fazem
+    # `load_x()` -> mexem na estrutura -> `save_x()`, e sem trinco dois pedidos
+    # ao mesmo tempo (telemovel + browser + segunda janela, ou o /api/modified
+    # de 20 em 20 segundos a cair no meio) gravavam um por cima do outro e o
+    # item acabado de criar desaparecia. O trinco e POR FICHEIRO de proposito: o
+    # Push pode levar um minuto no Excel e nao ha razao para travar quem esta a
+    # escrever uma nota noutro dispositivo.
+    STATE_POST_FILE = {
+        "/api/todo": TODO_FILE,
+        "/api/jira/create": TODO_FILE,      # a issue nasce ligada a um item
+        "/api/notepad": NOTEPAD_FILE,
+        "/api/note": NOTES_FILE,
+        "/api/notes/clear": NOTES_FILE,
+        "/api/ccrs": CCRS_FILE,
+        "/api/waiting": WAITING_FILE,
+        "/api/history/undo": OVERRIDES_FILE,
+        "/api/update": OVERRIDES_FILE,
+        "/api/update/bulk": OVERRIDES_FILE,
+        "/api/cellcat/update": OVERRIDES_FILE,
+        "/api/overrides/clear": OVERRIDES_FILE,
+        "/api/push": OVERRIDES_FILE,
+    }
+
     def do_POST(self):
         try:
-            self.handle_post()
+            alvo = self.STATE_POST_FILE.get(urlparse(self.path).path)
+            if alvo:
+                with lock_for(alvo):
+                    self.handle_post()
+            else:
+                self.handle_post()
         except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
             pass  # cliente fechou a ligacao a meio da resposta - nao e um erro da app
         except Exception:
@@ -734,15 +786,7 @@ class Handler(BaseHTTPRequestHandler):
                     target = next((t for t in todos if t.get("id") == payload.get("id")), None)
                     if target is None:
                         raise ValueError("item TODO não encontrado")
-                    target["elapsed_ms"] = 0
-                    # o registo diário é a repartição deste total: pôr o total a
-                    # zero e deixar lá os dias antigos dava uma folha de horas
-                    # com tempo que o item já não diz ter
-                    target.pop("segments", None)
-                    if str(target.get("col") or "") == "inprogress":
-                        target["timer_started"] = int(time.time() * 1000)
-                    else:
-                        target["timer_started"] = None
+                    restart_todo_timer(target)
                 elif action == "set_detail":
                     # nota do item (os escritos à mão não têm origem no Excel/CCR
                     # onde a nota pudesse viver)
@@ -764,6 +808,9 @@ class Handler(BaseHTTPRequestHandler):
                         target["due"] = due
                     else:
                         target.pop("due", None)
+                    # a data escolhida à mão é a que passa a valer: as
+                    # ocorrências falhadas até aqui deixam de ser cobradas
+                    target.pop("missed", None)
                     log_event(f'{ip} TODO data-limite {due or "(sem)"}: '
                               f'{str(target.get("title", "?"))[:60]!r}')
                 elif action == "set_repeat":
@@ -779,6 +826,7 @@ class Handler(BaseHTTPRequestHandler):
                         target["repeat"] = repeat
                     else:
                         target.pop("repeat", None)
+                        target.pop("missed", None)   # sem repetição não há falhadas
                     log_event(f'{ip} TODO repetição {repeat or "(sem)"}: '
                               f'{str(target.get("title", "?"))[:60]!r}')
                 elif action == "add_subtask":
@@ -937,6 +985,9 @@ class Handler(BaseHTTPRequestHandler):
                     waiting.pop(key, None)
                     log_event(f"{ip} deixou de esperar em {fn[:60]!r}")
                 save_waiting(waiting)
+                # com a partilha ligada, a marca passa a valer para a equipa (só
+                # as esperas, nada mais — ver team.py)
+                publish_waiting(payload.get("person"), waiting)
                 self._send(200, json.dumps({"ok": True}), "application/json")
             except Exception as exc:
                 log_event(f"{ip} /api/waiting FALHOU: {exc}")
@@ -1027,6 +1078,66 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"ok": False,
                                             "error": "não consegui abrir outra janela"}),
                            "application/json")
+            return
+        if path == "/api/team/config":
+            # ligar/desligar a partilha das esperas: é escrita para fora desta
+            # máquina, por isso só a partir dela (como o webhook e o aviso)
+            if not _is_local(ip):
+                self._send(403, json.dumps({"error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                partilhar = bool(payload.get("share_waiting"))
+                cfg = save_team_config(partilhar)
+                pessoa = str(payload.get("person") or "")
+                if partilhar:
+                    escrito = publish_waiting(pessoa, load_waiting())
+                else:
+                    # desligar não deixa a última publicação lá para sempre
+                    unpublish_waiting(pessoa)
+                    escrito = None
+                log_event(f"{ip} partilha das esperas "
+                          f"{'ligada' if partilhar else 'desligada'}")
+                self._send(200, json.dumps({"ok": True, **cfg, "canEdit": True,
+                                            "shareFound": team_dir() is not None,
+                                            "published": bool(escrito)}),
+                           "application/json")
+            except Exception as exc:
+                log_event(f"{ip} partilha das esperas FALHOU: {exc!r}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/backups":
+            # guardar agora / repor uma cópia do estado local. Repor por cima do
+            # estado é uma coisa séria: só a partir deste PC, como o aviso e o
+            # Jira. O que estava em vigor fica também guardado, para um restauro
+            # pedido por engano se poder desfazer (ver statefile.restore_backup).
+            if not _is_local(ip):
+                log_event(f"{ip} tentou mexer nas cópias do estado - recusado")
+                self._send(403, json.dumps({"error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                action = str(payload.get("action") or "save")
+                if action == "restore":
+                    feito = restore_backup(payload.get("file"))
+                    log_event(f"{ip} repôs {feito['target']} da cópia {feito['file']}")
+                    self._send(200, json.dumps({"ok": True, "restored": feito,
+                                                "backups": list_backups(),
+                                                "canRestore": True}),
+                               "application/json")
+                    return
+                feitos = backup_now()
+                log_event(f"{ip} guardou cópia do estado ({len(feitos)} ficheiro(s))")
+                self._send(200, json.dumps({"ok": True, "saved": feitos,
+                                            "backups": list_backups(),
+                                            "canRestore": True}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} cópias do estado FALHOU: {exc!r}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
             return
         if path == "/api/announcement":
             # escrever/apagar o aviso mostrado a quem abre a app: só a partir
@@ -1377,6 +1488,48 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 log_event(f"{ip} alteração de categoria livre FALHOU: {exc}")
                 self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
+        if path == "/api/history/undo":
+            # desfazer um ENVIO inteiro: o histórico já sabe o antes e o depois
+            # de cada célula que aquele Push escreveu (o `batch` dos eventos), e
+            # aqui volta-se ao antes em todas de uma vez. Como qualquer
+            # alteração de estado, fica local (✎) à espera do Push seguinte —
+            # nada aqui escreve no Excel.
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                eventos = batch_events(payload.get("batch"))
+                if not eventos:
+                    raise ValueError("envio desconhecido (ou já fora do histórico)")
+                overrides = load_overrides()
+                feitos, falhas = 0, []
+                for e in eventos:
+                    pedido = {
+                        "file": e.get("book", ""), "sheet": e.get("sheet", ""),
+                        "fn": e.get("fn", ""), "todo": e.get("todo", ""),
+                        "column": e.get("col", ""),
+                        "value": str(e.get("from") or ""),
+                        # a base é o valor que o Push deixou na folha: se
+                        # entretanto alguém mexeu na célula, o Push desiste dela
+                        # em vez de calcar trabalho de outra pessoa
+                        "base": str(e.get("to") or ""),
+                    }
+                    try:
+                        queue_column_override(overrides, pedido)
+                        feitos += 1
+                    except Exception as exc:
+                        falhas.append(f'{e.get("fn", "?")} [{e.get("col", "?")}]: {exc}')
+                save_overrides(overrides)
+                lote = str(payload.get("batch") or "")
+                log_event(f"{ip} desfez o envio {lote} "
+                          f"({feitos} célula(s), à espera de Push)"
+                          + (f" | {len(falhas)} falharam" if falhas else ""))
+                self._send(200, json.dumps({"ok": True, "queued": feitos,
+                                            "failed": falhas[:10]}), "application/json")
+            except Exception as exc:
+                log_event(f"{ip} desfazer envio FALHOU: {exc}")
+                self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                           "application/json")
             return
         if path == "/api/update/bulk":
             # o mesmo estado em muitas linhas de uma vez (ver openBulkStatus,

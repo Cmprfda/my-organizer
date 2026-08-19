@@ -14,6 +14,7 @@ import time
 from datetime import datetime
 
 from .config import HERE
+from .statefile import read_json, write_json
 
 NOTEPAD_FILE = os.path.join(HERE, "notepad.json")
 IMAGES_DIR = os.path.join(HERE, "notepad_images")
@@ -289,17 +290,15 @@ def normalize_notepad(raw):
 
 def load_notepad():
     with _lock:
-        try:
-            with open(NOTEPAD_FILE, encoding="utf-8") as f:
-                return normalize_notepad(json.load(f))
-        except (OSError, ValueError):
+        data = read_json(NOTEPAD_FILE)
+        if data is None:
             return {"folders": [], "notes": []}
+        return normalize_notepad(data)
 
 
 def save_notepad(data):
     with _lock:
-        with open(NOTEPAD_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=1)
+        write_json(NOTEPAD_FILE, data)
 
 
 # ------------------------------------------------------------------ imagens

@@ -86,17 +86,56 @@ class TestHistorico(unittest.TestCase):
         history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In rework")])
         self.assertEqual(history.sheet_history(LIVRO, ABA)["events"][0]["via"], "sheet")
 
-    def test_linha_inserida_nao_inventa_historia(self):
-        """O retrato é por nº de linha: inserir uma linha empurra todas as outras
-        e faria parecer que meio livro mudou de uma vez. Semeia-se de novo."""
+    def test_linha_inserida_nao_mexe_com_as_outras(self):
+        """O retrato é pela identidade da linha: inserir uma linha empurra o
+        número de todas as de baixo sem lhes tocar na história."""
         base = [linha(i, f"FN_{i}") for i in range(2, 32)]
         history.record_read(LIVRO, ABA, base)
-        empurradas = [linha(i + 1, f"FN_{i}") for i in range(2, 32)]
+        # uma delas muda de estado, para deixar de ser uma idade estimada
+        mudada = [linha(i, f"FN_{i}", tc="Done" if i == 5 else "In progress")
+                  for i in range(2, 32)]
+        self.assertEqual(history.record_read(LIVRO, ABA, mudada), 1)
+        # linha nova no topo: todas as outras descem uma posição
+        empurradas = ([linha(2, "FN_NOVA")]
+                      + [linha(i + 1, f"FN_{i}", tc="Done" if i == 5 else "In progress")
+                         for i in range(2, 32)])
         self.assertEqual(history.record_read(LIVRO, ABA, empurradas), 0)
         h = history.sheet_history(LIVRO, ABA)
-        self.assertEqual(h["events"], [])
-        # depois de semear de novo, as idades voltam a ser estimativas
-        self.assertTrue(all(r["estimated"] for r in h["rows"].values()))
+        self.assertEqual(len(h["events"]), 1)      # só a alteração verdadeira
+        # a linha que já se viu mudar continua com a idade exata, na posição nova
+        self.assertFalse(h["rows"]["6"]["estimated"])
+        # a linha inserida é que é nova, e essa sim é uma estimativa
+        self.assertTrue(h["rows"]["2"]["estimated"])
+
+    def test_linha_renomeada_nao_perde_o_historico(self):
+        """A app escreve o Function/TC: a linha muda de nome mas é a mesma."""
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress")])
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="Done")])
+        n = history.record_read(LIVRO, ABA, [linha(2, "FN_A_v2", tc="Done")])
+        self.assertEqual(n, 1)                     # só a coluna Function/TC
+        h = history.sheet_history(LIVRO, ABA)
+        self.assertEqual(h["events"][0]["col"], "Function/TC")
+        self.assertEqual(len(h["rows"]), 1)        # não nasceu uma linha nova
+        self.assertFalse(h["rows"]["2"]["estimated"])
+
+    def test_retrato_antigo_por_numero_de_linha_e_migrado(self):
+        """Quem atualiza a app não volta a "≥ N dias": as entradas antigas já
+        guardavam o nome da linha, e é dele que sai a identidade."""
+        antigo = {"version": 1, "events": [], "snapshots": {f"{LIVRO}||{ABA}": {
+            "seeded": "2026-01-01T00:00:00",
+            "rows": {"2": {"fn": "FN_A", "todo": "rework", "changes": 3,
+                           "first": "2026-01-01T00:00:00",
+                           "changed": "2026-01-02T00:00:00",
+                           "cols": {"Status TC": "In progress", "Status TP": "",
+                                    "OBS": "", "Function/TC": "FN_A", "To Do": "rework"}}},
+        }}}
+        with open(history.HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(antigo, f)
+        # a mesma linha, agora mais abaixo na folha: continua a ser a mesma
+        self.assertEqual(history.record_read(LIVRO, ABA, [linha(7, "FN_A", tc="Done")]), 1)
+        h = history.sheet_history(LIVRO, ABA)
+        self.assertEqual(list(h["rows"]), ["7"])
+        self.assertFalse(h["rows"]["7"]["estimated"])
 
     def test_poucas_alteracoes_juntas_continuam_a_contar(self):
         """O corte do deslocamento não pode engolir trabalho real: três estados
@@ -107,10 +146,45 @@ class TestHistorico(unittest.TestCase):
                    for i in range(2, 32)]
         self.assertEqual(history.record_read(LIVRO, ABA, mudadas), 3)
 
+    def test_muitas_linhas_novas_de_uma_vez_nao_inventam_historia(self):
+        """Um nome trocado em muitas linhas ao mesmo tempo (uma coluna colada por
+        cima, por exemplo) não se distingue de linhas novas: não se adivinha."""
+        base = [linha(i, f"FN_{i}") for i in range(2, 32)]
+        history.record_read(LIVRO, ABA, base)
+        outras = [linha(i, f"XX_{i}") for i in range(2, 32)]
+        self.assertEqual(history.record_read(LIVRO, ABA, outras), 0)
+        h = history.sheet_history(LIVRO, ABA)
+        self.assertEqual(h["events"], [])
+        self.assertTrue(all(r["estimated"] for r in h["rows"].values()))
+
     def test_linha_apagada_sai_do_retrato(self):
         history.record_read(LIVRO, ABA, [linha(2, "FN_A"), linha(3, "FN_B")])
         history.record_read(LIVRO, ABA, [linha(2, "FN_A")])
         self.assertEqual(sorted(history.sheet_history(LIVRO, ABA)["rows"]), ["2"])
+
+    def test_o_envio_fica_identificado_nos_eventos(self):
+        """Cada Push leva uma etiqueta: é o que permite desfazer o envio inteiro
+        em vez de célula a célula (ver /api/history/undo)."""
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress"),
+                                         linha(3, "FN_B", tc="In progress")])
+        history.mark_app_write(LIVRO, ABA, 2, "Status TC", "Done", "p1")
+        history.mark_app_write(LIVRO, ABA, 3, "Status TC", "Done", "p1")
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="Done"),
+                                         linha(3, "FN_B", tc="Done")])
+        h = history.sheet_history(LIVRO, ABA)
+        self.assertEqual(h["batches"], {"p1": 2})
+        do_lote = history.batch_events("p1")
+        self.assertEqual(len(do_lote), 2)
+        # o antes e o depois de cada célula, que é o que o desfazer usa
+        self.assertEqual({(e["fn"], e["from"], e["to"]) for e in do_lote},
+                         {("FN_A", "In progress", "Done"), ("FN_B", "In progress", "Done")})
+
+    def test_alteracao_de_fora_nao_pertence_a_envio_nenhum(self):
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="In progress")])
+        history.record_read(LIVRO, ABA, [linha(2, "FN_A", tc="Done")])
+        self.assertEqual(history.sheet_history(LIVRO, ABA)["batches"], {})
+        self.assertEqual(history.batch_events(""), [])
+        self.assertEqual(history.batch_events("p_que_nao_existe"), [])
 
     def test_eventos_tem_teto(self):
         """O histórico não pode crescer para sempre dentro do ficheiro."""

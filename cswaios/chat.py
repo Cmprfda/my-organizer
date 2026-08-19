@@ -21,9 +21,11 @@ O "motor" é escolhido em `chat_config.json` (estado local, fora das releases):
     {"engine": "llm", "llm": {...}}         # ver _llm_reply
 
 O motor `local` é determinístico: reconhece um conjunto definido de perguntas e
-ordens (o intent `help` lista-as). O motor `llm` é o encaixe para mais tarde —
-está documentado e devolve um erro claro enquanto não estiver configurado, e
-nesse caso a resposta cai no motor local com um aviso.
+ordens (o intent `help` lista-as). O motor `llm` responde às perguntas escritas
+à maneira de cada um, com FERRAMENTAS sobre o mesmo retrato (procurar, listar
+linhas, listar itens, contas — ver LLM_TOOLS): assim uma folha grande é
+respondida por inteiro e não só pelas primeiras linhas. Sem SDK, sem chave ou
+sem rede, a resposta cai no motor local com um aviso.
 """
 
 import json
@@ -1364,20 +1366,27 @@ LLM_MODEL = "claude-opus-5"
 # modelos atuais) o raciocínio conta para este limite, e um limite curto corta a
 # resposta a meio. Isto é um teto, não um alvo — só se paga o que for gerado.
 LLM_MAX_TOKENS = 16000
-# Quantas linhas de cada lista vão no pedido. O contexto já chega cortado
-# (normalize_context), mas uma folha grande continua a dar centenas de linhas —
-# e o que interessa a uma pergunta são as primeiras.
+# Quantas linhas de cada lista vão no PRIMEIRO pedido. Isto é só o retrato de
+# entrada: o que o modelo não vê aqui vai buscar com as ferramentas (ver
+# LLM_TOOLS), em vez de a resposta ficar limitada às primeiras linhas.
 LLM_ROWS = 120
 LLM_ITEMS = 60
+# ferramentas: quanto cada chamada devolve e quantas idas e voltas se aceitam
+# antes de responder com o que houver (uma pergunta não pode ficar a rodar)
+LLM_TOOL_MAX = 40
+LLM_MAX_STEPS = 6
 
 LLM_SYSTEM = {
     "pt": (
         "És o assistente do My Organizer, uma app que um engenheiro de V&V usa "
         "para acompanhar as tarefas dele numa folha de Excel partilhada, uma "
         "lista Por fazer, CCRs e notas.\n"
-        "Respondes SÓ com o que vem no contexto desta mensagem: é o retrato do "
-        "que a app tem aberta neste momento. Nunca leste a folha nem o "
-        "OneDrive.\n"
+        "Respondes SÓ com o que a app tem aberto neste momento. A primeira "
+        "mensagem traz o princípio de cada lista; o resto vais buscar com as "
+        "ferramentas (procurar, listar linhas, listar itens, contas) — elas "
+        "leem o MESMO retrato que já está em memória, nunca a folha nem o "
+        "OneDrive. Se a pergunta for sobre linhas que não estão no princípio "
+        "da lista, usa as ferramentas em vez de responder pelo que viste.\n"
         "Se a resposta não estiver no contexto, di-lo com todas as letras e "
         "diz onde é que ela se poderia encontrar (que vista, que botão) — não "
         "inventes tarefas, estados, números nem nomes.\n"
@@ -1393,9 +1402,12 @@ LLM_SYSTEM = {
         "You are the My Organizer assistant, an app a V&V engineer uses to "
         "follow their own tasks on a shared Excel sheet, a TODO list, CCRs and "
         "notes.\n"
-        "Answer ONLY from the context in this message: it is a snapshot of what "
-        "the app has open right now. You have never read the sheet or "
-        "OneDrive.\n"
+        "Answer ONLY from what the app has open right now. The first message "
+        "carries the beginning of each list; get the rest with the tools "
+        "(search, list rows, list items, counts) — they read the SAME snapshot "
+        "already in memory, never the sheet or OneDrive. If the question is "
+        "about rows beyond the beginning of the list, use the tools instead of "
+        "answering from what you were shown.\n"
         "If the answer is not in the context, say so plainly and say where it "
         "could be found (which view, which button) — never invent tasks, "
         "statuses, numbers or names.\n"
@@ -1446,6 +1458,203 @@ def _llm_context_text(ctx, lang):
                           + (f" ({n['folder']})" if n.get("folder") else "")
                           + f" | {_short(n['text'], 120)}")
     return "\n".join(partes)
+
+
+# ---------------------------------------------------------------- ferramentas
+# O motor LLM levava no pedido as primeiras 120 linhas e 60 itens de cada lista:
+# numa folha grande respondia sobre essa fatia e não sabia que havia mais. As
+# ferramentas abaixo dão-lhe o resto SEM abrir nada — leem o mesmo `ctx` que o
+# cliente mandou, que é o retrato do que a app tem aberto. Continuam a não
+# escrever: as ordens são do motor local (ver LLM_LOCAL_FIRST).
+LLM_TOOLS = [
+    {
+        "name": "search",
+        "description": ("Search everything the app has open — sheet rows, TODO items, "
+                        "CCRs and notes — for a text. Use it whenever the question "
+                        "names a task, a function, a CCR or a person."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Words to look for."},
+                "limit": {"type": "integer",
+                          "description": f"How many hits to return (max {LLM_TOOL_MAX})."},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "list_rows",
+        "description": ("Page through the sheet rows the app has open. Use `offset` to "
+                        "walk past the rows you have already seen."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "book": {"type": "string",
+                         "description": "Workbook name (part of it is enough). Omit for all."},
+                "state": {"type": "string", "enum": ["any", "done", "doing", "blocked", "other"],
+                          "description": "Only rows whose status falls in this class."},
+                "mine": {"type": "boolean", "description": "Only rows that are mine."},
+                "stale": {"type": "boolean",
+                          "description": "Only unfinished rows with no change for stale_days."},
+                "offset": {"type": "integer", "description": "Rows to skip."},
+                "limit": {"type": "integer",
+                          "description": f"How many rows to return (max {LLM_TOOL_MAX})."},
+            },
+        },
+    },
+    {
+        "name": "list_items",
+        "description": "Page through the TODO list, the CCRs or the board notes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["todos", "ccrs", "notes"]},
+                "offset": {"type": "integer", "description": "Items to skip."},
+                "limit": {"type": "integer",
+                          "description": f"How many items to return (max {LLM_TOOL_MAX})."},
+            },
+            "required": ["kind"],
+        },
+    },
+    {
+        "name": "counts",
+        "description": ("Totals of everything open: rows per workbook and per status "
+                        "class, mine, unfinished, pending changes, TODO, CCRs and notes. "
+                        "Use this for \"how many\" instead of paging through the rows."),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+]
+
+
+def _llm_limit(args, default=10):
+    try:
+        n = int(args.get("limit") or default)
+    except (TypeError, ValueError):
+        n = default
+    return max(1, min(LLM_TOOL_MAX, n))
+
+
+def _llm_offset(args):
+    try:
+        return max(0, int(args.get("offset") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _llm_row_line(row):
+    """Uma linha da folha em texto, com o que serve para responder sobre ela."""
+    partes = [f"linha {row['xlrow']}", _row_label(row)]
+    estados = " · ".join(_row_states(row))
+    if estados:
+        partes.append(estados)
+    if row["people"]:
+        partes.append(row["people"])
+    if row["age_days"] is not None:
+        partes.append(("≥" if row["age_est"] else "") + f"{row['age_days']}d")
+    if row["obs"]:
+        partes.append(f"OBS: {_short(row['obs'], 90)}")
+    if row["over"]:
+        partes.append("por enviar: " + ", ".join(row["over"]))
+    return f"- [{row['book']['name']}] " + " | ".join(partes)
+
+
+def _llm_tool_search(ctx, args):
+    termos = _terms(str(args.get("query") or ""))
+    if not termos:
+        return "sem termos de procura"
+    limite = _llm_limit(args, 12)
+    linhas = []
+    for r in ctx["rows"]:
+        if _matches(f"{r['fn']} {r['todo']} {r['obs']} {r['text']}", termos):
+            linhas.append(_llm_row_line(r))
+    for t in ctx["todos"]:
+        if _matches(f"{t['title']} {t['detail']}", termos):
+            linhas.append(f"- [Por fazer] {t['title']} | {t['col_label'] or t['col']}"
+                          f" | {t['priority']}")
+    for c in ctx["ccrs"]:
+        if _matches(f"CCR {c['id']} {c['note']}", termos):
+            estado = "fechada" if c["closed"] else ("pronta a fechar" if c["ready"] else "aberta")
+            linhas.append(f"- [CCR] {c['id']} | {estado} | {_short(c['note'], 90)}")
+    for n in ctx["notes"]:
+        if _matches(f"{n['title']} {n['folder']} {n['text']}", termos):
+            linhas.append(f"- [Nota] {n['title'] or '(sem título)'} | {n['folder']}"
+                          f" | {_short(n['text'], 90)}")
+    if not linhas:
+        return "nada encontrado"
+    return (f"{len(linhas)} encontrado(s)"
+            + (f", os primeiros {limite}" if len(linhas) > limite else "") + ":\n"
+            + "\n".join(linhas[:limite]))
+
+
+def _llm_tool_rows(ctx, args):
+    livro = normalize(str(args.get("book") or ""))
+    estado = str(args.get("state") or "any").strip().lower()
+    rows = ctx["rows"]
+    if livro:
+        rows = [r for r in rows if livro in normalize(r["book"]["name"])]
+    if estado in _CLASSES:
+        rows = [r for r in rows if _row_class(r) == estado]
+    if args.get("mine"):
+        rows = [r for r in rows if r["mine"]]
+    if args.get("stale"):
+        # a mesma regra do intent "tarefas paradas" (_do_stale): por fechar e sem
+        # mexer há tantos dias como o que está escolhido nas Definições
+        rows = [r for r in rows
+                if r["age_days"] is not None and not _row_done(r)
+                and r["age_days"] >= ctx["stale_days"]]
+    inicio, limite = _llm_offset(args), _llm_limit(args)
+    fatia = rows[inicio:inicio + limite]
+    if not fatia:
+        return f"{len(rows)} linha(s) no total; nada a partir da posição {inicio}"
+    return (f"{len(rows)} linha(s) no total, da posição {inicio}:\n"
+            + "\n".join(_llm_row_line(r) for r in fatia))
+
+
+def _llm_tool_items(ctx, args):
+    kind = str(args.get("kind") or "todos").strip().lower()
+    inicio, limite = _llm_offset(args), _llm_limit(args)
+    if kind == "ccrs":
+        fonte = [f"- {c['id']} | "
+                 + ("fechada" if c["closed"] else ("pronta a fechar" if c["ready"] else "aberta"))
+                 + (f" | {_short(c['note'], 90)}" if c["note"] else "")
+                 for c in ctx["ccrs"]]
+    elif kind == "notes":
+        fonte = [f"- {n['title'] or '(sem título)'}"
+                 + (f" ({n['folder']})" if n["folder"] else "")
+                 + f" | {_short(n['text'], 120)}"
+                 for n in ctx["notes"]]
+    else:
+        fonte = [f"- {t['title']} | {t['col_label'] or t['col']} | {t['priority']}"
+                 + (" | feito" if t["done"] else "")
+                 + (f" | {_short(t['detail'], 90)}" if t["detail"] else "")
+                 for t in ctx["todos"]]
+    fatia = fonte[inicio:inicio + limite]
+    if not fatia:
+        return f"{len(fonte)} item(ns) no total; nada a partir da posição {inicio}"
+    return (f"{len(fonte)} item(ns) no total, da posição {inicio}:\n" + "\n".join(fatia))
+
+
+def _llm_tool_counts(ctx, lang):
+    # as contas são as MESMAS do motor local: uma resposta do modelo e o cartão
+    # das Métricas não podem dar números diferentes sobre a mesma folha
+    return _do_stats("", ctx, lang).get("reply") or "sem nada aberto"
+
+
+def _llm_run_tool(name, args, ctx, lang):
+    """Corre uma ferramenta e devolve o texto do tool_result."""
+    args = args if isinstance(args, dict) else {}
+    try:
+        if name == "search":
+            return _llm_tool_search(ctx, args)
+        if name == "list_rows":
+            return _llm_tool_rows(ctx, args)
+        if name == "list_items":
+            return _llm_tool_items(ctx, args)
+        if name == "counts":
+            return _llm_tool_counts(ctx, lang)
+    except Exception as exc:                        # uma ferramenta não parte a resposta
+        return f"a ferramenta falhou: {exc}"
+    return f"ferramenta desconhecida: {name}"
 
 
 def _llm_client(cfg_llm):
@@ -1502,17 +1711,41 @@ def _llm_reply(message, ctx, lang, cfg):
     modelo = str(cfg_llm.get("model") or LLM_MODEL).strip() or LLM_MODEL
     conteudo = (f"{_llm_context_text(ctx, lang)}\n\n"
                 f"## {'Pergunta' if lang == 'pt' else 'Question'}\n{message}")
-    try:
-        resposta = client.messages.create(
-            model=modelo,
-            max_tokens=LLM_MAX_TOKENS,
-            system=LLM_SYSTEM["en" if lang == "en" else "pt"],
-            messages=[{"role": "user", "content": conteudo}],
-        )
-    except Exception as exc:                       # rede, chave errada, 429…
-        raise ChatEngineError(f"pedido ao modelo: {exc}") from exc
-    if getattr(resposta, "stop_reason", "") == "refusal":
-        raise ChatEngineError("o modelo recusou responder")
+    mensagens = [{"role": "user", "content": conteudo}]
+    # Ciclo de ferramentas: o modelo pede o que lhe falta (procurar, listar,
+    # contar) e as ferramentas respondem a partir do mesmo retrato em memória.
+    # O teto de passos é uma questão de paciência de quem escreveu a pergunta:
+    # chegado lá, pede-se a resposta com o que houver.
+    resposta = None
+    for passo in range(LLM_MAX_STEPS):
+        try:
+            resposta = client.messages.create(
+                model=modelo,
+                max_tokens=LLM_MAX_TOKENS,
+                system=LLM_SYSTEM["en" if lang == "en" else "pt"],
+                thinking={"type": "adaptive"},
+                tools=LLM_TOOLS,
+                messages=mensagens,
+            )
+        except Exception as exc:                   # rede, chave errada, 429…
+            raise ChatEngineError(f"pedido ao modelo: {exc}") from exc
+        if getattr(resposta, "stop_reason", "") == "refusal":
+            raise ChatEngineError("o modelo recusou responder")
+        pedidos = [b for b in (resposta.content or [])
+                   if getattr(b, "type", "") == "tool_use"]
+        if not pedidos:
+            break
+        mensagens.append({"role": "assistant", "content": resposta.content})
+        # todos os resultados na MESMA mensagem, como a API pede
+        mensagens.append({"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": b.id,
+             "content": _llm_run_tool(b.name, b.input, ctx, lang)}
+            for b in pedidos]})
+        if passo == LLM_MAX_STEPS - 2:
+            mensagens.append({"role": "user", "content":
+                              "Responde agora, com o que já tens."
+                              if lang == "pt" else
+                              "Answer now, with what you already have."})
     partes = [b.text for b in (resposta.content or []) if getattr(b, "type", "") == "text"]
     reply = "\n".join(p for p in partes if p).strip()
     if not reply:

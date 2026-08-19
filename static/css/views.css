@@ -487,8 +487,42 @@ body.split #notesView {
   color: var(--muted);
 }
 
+/* escolha linha a linha dentro da janela: a caixa e o nome sao um alvo so, para
+   se poder clicar no nome (ver renderBulkStatus) */
+.bulkPick {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.bulkPick input {
+  flex: 0 0 auto;
+}
+
+.bulkPicks {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.bulkTooMany {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--status-blocked-fg);
+}
+
 .bulkBody .btns {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* espera marcada por um colega (chegou pela pasta partilhada, ver team.py): o
+   contorno tracejado diz que a cobranca nao e minha */
+.waitChip.theirs {
+  border-style: dashed;
 }

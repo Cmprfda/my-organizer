@@ -16,6 +16,10 @@ announcement.json
 feedback_pending/
 waiting.json
 exports/
+# copias do estado local (uma por dia, ver cswaios/statefile.py)
+backups/
+# temporarios da gravacao atomica (existem por milissegundos)
+*.tmp
 
 # Credentials / local Graph configuration (NEVER commit)
 graph_config.json
@@ -23,6 +27,7 @@ graph_token.json
 jira_config.json
 chat_config.json
 notify_config.json
+team_config.json
 
 # Workbooks (company data)
 *.xlsx

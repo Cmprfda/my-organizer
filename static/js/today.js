@@ -87,6 +87,40 @@ function todayStaleRows() {
   return out.sort((a, b) => b.age.days - a.age.days);
 }
 
+// Em que pé estão os livros abertos. O painel abre-se ANTES de as folhas serem
+// lidas (a leitura demora segundos) e enche-se à medida que elas chegam: sem
+// isto, as secções das tarefas apareciam vazias — e vazio, nesta app, quer dizer
+// "não há nada para ti", não "ainda não sei". Um livro que não se conseguiu ler
+// é o mesmo problema ao contrário: as tarefas dele ficavam de fora sem uma
+// palavra. Aqui distingue-se um caso do outro (ver todayBooksNote).
+function todayBooksState() {
+  const tabs = workbookTabs || [];
+  const lidos = tabs.filter(x => x && x.lastData && !x.lastData.error);
+  const falhados = tabs.filter(x => x && x.lastData && x.lastData.error);
+  return {
+    total: tabs.length,
+    ready: lidos.length,
+    loading: tabs.length - lidos.length - falhados.length,
+    failed: falhados.map(x => x.name || "?"),
+  };
+}
+
+// a linha que explica as secções das tarefas quando elas não podem estar certas
+function todayBooksNote() {
+  const st = todayBooksState();
+  const linhas = [];
+  if (st.loading > 0) {
+    linhas.push(st.total > st.loading
+      ? tf("today_books_loading_some", st.ready, st.total)
+      : t("today_books_loading"));
+  }
+  if (st.failed.length) linhas.push(tf("today_books_failed", st.failed.join(", ")));
+  if (!linhas.length) return "";
+  return `<section class="todaySection todayHint todayBooks">
+    ${linhas.map(l => `<p>${esc(l)}</p>`).join("")}
+  </section>`;
+}
+
 // tempo dos cronómetros que ainda não foi registado no Jira
 function todayUnlogged() {
   return (todos || []).reduce((s, it) => s + (todoCanLogTime(it) ? todoUnloggedMs(it) : 0), 0);
@@ -201,9 +235,14 @@ function renderToday() {
     </section>`);
   }
 
-  box.innerHTML = partes.length
-    ? partes.join("")
-    : `<p class="todayEmpty">${esc(t("today_empty"))}</p>`;
+  // o aviso dos livros vem em cima: é o que explica uma secção em falta
+  const aviso = todayBooksNote();
+  const st = todayBooksState();
+  box.innerHTML = partes.length || aviso
+    ? aviso + partes.join("")
+    // "nada para hoje" só se pode dizer quando já se sabe tudo: a ler ainda os
+    // livros, o que se sabe é que não se sabe
+    : `<p class="todayEmpty">${esc(st.loading > 0 ? t("loading") : t("today_empty"))}</p>`;
 }
 
 // ---------- abrir e fechar ----------

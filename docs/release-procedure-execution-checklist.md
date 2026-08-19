@@ -1,6 +1,9 @@
 ## 📦 Release Procedure (Execution Checklist)
 
 1. Validate code: `python -m py_compile app.py` and every file in `cswaios\`.
+1b. Run the suite: `python -m unittest discover -s tests -t .` (offline, ~1s; the
+   DEV-server test skips itself when no app is up — `BSP_TEST_API=1` makes it
+   mandatory). The same command runs on GitHub Actions (`.github/workflows/tests.yml`).
 2. Run `.\make-release.bat` (or `python make_release.py`).
 3. Choose version bump when prompted:
    - **Project convention (old way):** integer version `vN` only.

@@ -105,11 +105,11 @@
   vista vai para um ficheiro na pasta `exports` ao lado da app — as alterações e
   a folha de horas em CSV (separador `;` e BOM, para o Excel os abrir com as
   colunas já separadas), o relatório em `.md`.
-- **Estado em massa** (na barra das Tarefas): muda o mesmo estado em todas as
-  tarefas que estão à vista, com os filtros que tens ligados a servir de seleção.
-  A janela diz quantas são e mostra as primeiras antes de aplicar. Como qualquer
-  alteração de estado, fica local (✎) até ao Enviar — um clique a mais desfaz-se
-  com o *Descartar locais*.
+- **Estado em massa** (na barra das Tarefas): muda o mesmo estado em várias
+  tarefas de uma vez. Parte das que estão à vista, com os filtros que tens
+  ligados, e a janela lista-as com uma caixa de marcar cada (ver mais abaixo, em
+  *Estado em massa linha a linha*). Como qualquer alteração de estado, fica local
+  (✎) até ao Enviar — um clique a mais desfaz-se com o *Descartar locais*.
 - **Desfazer uma alteração** (↺ no histórico da tarefa): o histórico já guardava
   o antes e o depois de cada célula; agora volta-se ao valor de antes com um
   clique. Fica local (✎) como qualquer outra alteração. O botão só aparece nas
@@ -152,3 +152,51 @@
   &lt;item&gt; para alta*, *remove da lista: &lt;item&gt;* e *cria uma nota: &lt;título&gt;* —
   esta última também põe na nota uma **tabela** do que está aberto (*cria uma
   nota com as minhas tarefas paradas*, *com a lista por fazer*, *com as ccrs*).
+- **Cópias do teu trabalho** (Definições): a lista Por fazer, as notas, as CCRs,
+  o quadro e o histórico vivem em ficheiros ao lado da app e não existem em mais
+  nenhum sítio. A app guarda uma cópia por dia de cada um antes da primeira
+  gravação, dá para guardar outra à mão, e qualquer uma se repõe com um clique —
+  o que estava em vigor é guardado antes da troca, para o restauro se poder
+  desfazer.
+- **A repetição anda com o calendário**: um item diário deixado por fazer três
+  dias já não mostra a data de há três dias nem dá UMA ocorrência seguinte ao ser
+  fechado. A data sobe até à de hoje e o chip 📅 mostra quantas ocorrências
+  passaram sem ele ser fechado (o número ao lado do ↻). Não nascem cópias em
+  atraso: um item que se repete é um trabalho que volta.
+- **Recomeçar o cronómetro sem perder a folha de horas**: pôr o tempo de um item
+  a zero é sobre o total daquele item — os dias em que aquele tempo foi contado
+  ficam na folha de horas, que é sobre os dias e não sobre o item.
+- **Estado em massa linha a linha**: a janela continua a partir do que está à
+  vista, mas agora cada linha tem a sua caixa de marcar (com *Marcar todas* e
+  *Desmarcar todas*), com o nome e o estado atual à frente. Uma vista mal
+  filtrada deixa de ser "tudo ou nada", e a janela avisa antes de aplicar quando
+  são linhas demais.
+- **Desfazer um envio inteiro** (↺ com um número, no histórico da tarefa e nas
+  alterações do dia): o Push que mexeu em sete células desfaz-se de uma vez, em
+  vez de célula a célula. Fica tudo local (✎) até ao Enviar, como qualquer
+  alteração, e a linha em que alguém mexeu entretanto é deixada em paz.
+- **As idades e as paradas deixam de recomeçar**: o histórico passa a reconhecer
+  cada linha pelo que ela diz (Function/TC + To Do) e não pelo número que tem na
+  folha. Inserir ou apagar uma linha no meio da folha já não faz parecer que meio
+  livro mudou, e o histórico de uma linha renomeada pela app continua a ser o
+  dela.
+- **O "Hoje" diz em que pé está**: as secções das tarefas dependem dos livros,
+  que são lidos depois de o painel abrir. Em vez de aparecerem vazias — o que
+  quer dizer "não há nada para ti" —, o painel diz que está a ler (e quantos
+  livros já leu), ou nomeia o livro que não conseguiu ler.
+- **Esperas partilhadas com a equipa** (Definições → *Equipa*): com o
+  interruptor ligado, as linhas em que estás à espera de alguém são publicadas na
+  pasta partilhada e aparecem a quem tem a app — o chip diz quem marcou a espera,
+  para não se cobrar duas vezes a mesma coisa. Desligado por omissão: só as
+  esperas viajam, a tua lista Por fazer e as notas nunca saem da máquina.
+- **Assistente com ferramentas**: com o motor LLM ligado, as perguntas deixam de
+  ser respondidas só sobre as primeiras linhas de cada lista — o assistente
+  procura, percorre e conta tudo o que a app tem aberto naquele momento (e as
+  contas que dá são as mesmas das Métricas). Continua a nunca ler a folha nem o
+  OneDrive, e as ordens continuam a passar pelo Confirmar.
+- **App no telemóvel**: o "adicionar ao ecrã principal" passa a dar um ícone e
+  uma janela sem a barra do browser, em vez de um atalho para uma página.
+- **Duas pessoas a gravar ao mesmo tempo**: os pedidos que mexem na lista, nas
+  notas, nas CCRs, nas esperas ou nas alterações locais passam a esperar uns
+  pelos outros, e a gravação é atómica — o item acabado de criar no telemóvel já
+  não desaparece porque o browser gravou no mesmo instante.
