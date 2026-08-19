@@ -221,8 +221,10 @@ function renderCodeFile() {
   if (d) bits.push(codeSizeLabel(d.size));
   head.innerHTML = `<span class="codePath">${esc(codeFile)}</span>` +
     `<span class="codeMeta">${esc(bits.filter(Boolean).join(" · "))}</span>` +
+    `<span class="codeFileActions">` +
     `<button type="button" class="linkBtn" id="codeCopyBtn">${esc(t("code_copy"))}</button>` +
-    `<button type="button" class="linkBtn" id="codeReloadBtn">${esc(t("code_reload"))}</button>`;
+    `<button type="button" class="linkBtn" id="codeReloadBtn">${esc(t("code_reload"))}</button>` +
+    `</span>`;
   if (!d) { body.innerHTML = `<div class="codeHint">${esc(t("loading"))}</div>`; return; }
   if (d.binary) { body.innerHTML = `<div class="codeHint">${esc(t("code_binary"))}</div>`; return; }
   const lines = d.text.split("\n");

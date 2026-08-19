@@ -884,7 +884,7 @@ const TR = {
   code_pick_file: ["Escolhe um ficheiro na árvore para o ler.", "Pick a file in the tree to read it."],
   code_lines: ["linhas", "lines"],
   code_copy: ["Copiar", "Copy"],
-  code_reload: ["Reler", "Reload"],
+  code_reload: ["Atualizar", "Update"],
   code_binary: ["Ficheiro binário — não há texto para mostrar.", "Binary file — there is no text to show."],
   code_truncated: ["Ficheiro grande: mostra-se só o princípio.", "Large file: only the beginning is shown."],
   code_missing: ["A pasta já não está onde estava.", "The folder is no longer where it was."],

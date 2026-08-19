@@ -130,8 +130,11 @@
     display: none;
 }
 
+/* o nome e o que se diz dele (linhas, tamanho) andam juntos à esquerda; o
+   espaço que sobra vai todo para o meio, para as ações ficarem sozinhas
+   encostadas à direita e não se lerem como mais uma palavra da conta */
 .codePath {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -143,8 +146,16 @@
 
 .codeMeta {
     flex: 0 0 auto;
+    margin-right: auto;
     color: var(--muted);
     font-size: 11.5px;
+}
+
+.codeFileActions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
 }
 
 .codeFileBody {
