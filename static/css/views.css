@@ -246,44 +246,49 @@ body.dragging-src {
 
 /* Notas dentro do ecrã dividido: o quadro enche o painel disponível em vez
    de calcular a sua altura a partir do ecrã inteiro (vh), que ignorava o
-   espaço real que o painel tinha e cortava/ultrapassava o quadro */
-body.split #paneMain:has(.noteCanvas),
-body.split #paneSide:has(.noteCanvas) {
+   espaço real que o painel tinha e cortava/ultrapassava o quadro.
+   O `:not(.hidden)` do :has() é essencial: o #notesView está sempre no DOM,
+   por isso um `:has(.noteCanvas)` casava com o painel principal em qualquer
+   ecrã dividido e o `display: flex` daqui — mais específico que o
+   `.hidden { display: none }` — punha as notas por cima da vista que lá
+   estava (ver feedback do utilizador na v148). */
+body.split #paneMain:has(#notesView:not(.hidden)),
+body.split #paneSide:has(#notesView:not(.hidden)) {
   display: flex;
   flex-direction: column;
 }
 
-body.split:not(.split-vertical) #paneMain:has(.noteCanvas),
-body.split:not(.split-vertical) #paneSide:has(.noteCanvas) {
+body.split:not(.split-vertical) #paneMain:has(#notesView:not(.hidden)),
+body.split:not(.split-vertical) #paneSide:has(#notesView:not(.hidden)) {
   height: var(--pane-h);
 }
 
 /* o painel lateral embrulha a vista num #sideBody: sem o pôr também em coluna,
    a corrente de flex partia-se aí e o quadro voltava a medir-se pela tela de
    4000px (o painel ficava com milhares de pixéis de altura) */
-body.split #paneSide:has(.noteCanvas)>#sideBody {
+body.split #paneSide:has(#notesView:not(.hidden))>#sideBody {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-body.split #paneMain:has(.noteCanvas) #notesView,
-body.split #paneSide:has(.noteCanvas) #notesView {
+body.split #paneMain:has(#notesView:not(.hidden)) #notesView,
+body.split #paneSide:has(#notesView:not(.hidden)) #notesView {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-body.split #paneMain:has(.noteCanvas) .notesLayout,
-body.split #paneSide:has(.noteCanvas) .notesLayout {
+body.split #paneMain:has(#notesView:not(.hidden)) .notesLayout,
+body.split #paneSide:has(#notesView:not(.hidden)) .notesLayout {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-body.split #paneMain:has(.noteCanvas) .noteCanvas,
-body.split #paneSide:has(.noteCanvas) .noteCanvas {
+body.split #paneMain:has(#notesView:not(.hidden)) .noteCanvas,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteCanvas {
   height: auto;
   flex: 1 1 auto;
   min-height: 0;
@@ -294,15 +299,15 @@ body.split #paneSide:has(.noteCanvas) .noteCanvas {
    fila só com scroll, como o ecrã inteiro e o telemóvel já fazem (notes.css).
    O `flex: 0 0 auto` é para o outro lado: numa coluna apertada a barra chegava
    a ser esmagada a poucos pixéis, quando quem tem de ceder é o quadro. */
-body.split #paneMain:has(.noteCanvas) .notesHead,
-body.split #paneSide:has(.noteCanvas) .notesHead,
-body.split #paneMain:has(.noteCanvas) .noteToolbar,
-body.split #paneSide:has(.noteCanvas) .noteToolbar {
+body.split #paneMain:has(#notesView:not(.hidden)) .notesHead,
+body.split #paneSide:has(#notesView:not(.hidden)) .notesHead,
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolbar,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolbar {
   flex: 0 0 auto;
 }
 
-body.split #paneMain:has(.noteCanvas) .noteToolbar,
-body.split #paneSide:has(.noteCanvas) .noteToolbar {
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolbar,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolbar {
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
@@ -311,19 +316,19 @@ body.split #paneSide:has(.noteCanvas) .noteToolbar {
   padding-right: 26px;
 }
 
-body.split #paneMain:has(.noteCanvas) .noteToolbar::-webkit-scrollbar,
-body.split #paneSide:has(.noteCanvas) .noteToolbar::-webkit-scrollbar {
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolbar::-webkit-scrollbar,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolbar::-webkit-scrollbar {
   display: none;
 }
 
-body.split #paneMain:has(.noteCanvas) .noteToolBtn,
-body.split #paneMain:has(.noteCanvas) .noteToolSep,
-body.split #paneMain:has(.noteCanvas) .noteToolColor,
-body.split #paneMain:has(.noteCanvas) .noteZoomLabel,
-body.split #paneSide:has(.noteCanvas) .noteToolBtn,
-body.split #paneSide:has(.noteCanvas) .noteToolSep,
-body.split #paneSide:has(.noteCanvas) .noteToolColor,
-body.split #paneSide:has(.noteCanvas) .noteZoomLabel {
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolBtn,
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolSep,
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolColor,
+body.split #paneMain:has(#notesView:not(.hidden)) .noteZoomLabel,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolBtn,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolSep,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolColor,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteZoomLabel {
   flex: 0 0 auto;
 }
 
