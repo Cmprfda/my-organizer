@@ -28,6 +28,14 @@ const ACTIVE_WORKBOOK_KEY = "bsp-tracker-workbook-active";
    funciona; é só nesta janela, até ela fechar. */
 const SOLO_WB = new URLSearchParams(location.search).get("wb") || "";
 
+/* Janela dedicada a UMA nota: `?note=<id>`, aberta pelo ↗ da nota (ver
+   openNoteWindow em notes.js). A app é a mesma, mas só com aquela nota à
+   frente: a coluna das notas e o apagar ficam de fora (classe notes-solo), o
+   título da janela é o da nota e a escolha de nota não se grava — o
+   localStorage é o mesmo da janela principal e mudá-lo tirava-a de onde está,
+   exatamente como acontece com a lista de livros do SOLO_WB. */
+const SOLO_NOTE = new URLSearchParams(location.search).get("note") || "";
+
 // identidade estável: o mesmo livro dá sempre o mesmo id, entre arranques e
 // entre separadores (é o que permite não abrir o mesmo livro duas vezes)
 function workbookId(kind, key) {
@@ -164,7 +172,8 @@ function homeView() {
 // vista inicial: a página inicial escolhida; a do livro é o separador ativo (ou
 // o painel de boas-vindas, sem nenhum livro aberto)
 const bookStartView = () => activeTabId ? `wb:${activeTabId}` : "workbooks";
-let currentView = (SOLO_WB || homeView() === "workbook") ? bookStartView() : homeView();
+let currentView = SOLO_NOTE ? "notes"
+  : (SOLO_WB || homeView() === "workbook") ? bookStartView() : homeView();
 
 function tagClass(tag) {
   const t = norm(tag);

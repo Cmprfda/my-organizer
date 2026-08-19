@@ -29,6 +29,16 @@ function applyLang() {
   document.querySelector('.tabs button[data-view="todo"]').textContent = t("tab_todo");
   document.querySelector('.tabs button[data-view="notes"]').textContent = t("tab_notes");
   document.querySelector('.tabs button[data-view="feedback"]').textContent = t("tab_feedback");
+  document.querySelector('.tabs button[data-view="code"]').textContent = t("tab_code");
+  $("codeEmptyTitle").textContent = t("code_empty_t");
+  $("codeEmptyText").textContent = t("code_empty_p");
+  $("codeEmptyAdd").textContent = t("code_empty_add");
+  $("codeRemoteTitle").textContent = t("code_remote_t");
+  $("codeRemoteText").textContent = t("code_remote_p");
+  $("codeFilter").placeholder = t("ph_code_filter");
+  $("codeAddBtn").title = t("t_code_add");
+  $("codePathBtn").title = t("t_code_path");
+  $("codeCloseBtn").title = t("t_code_close");
   const sheetTxt = $("sheetName").textContent, personTxt = $("personName").textContent;
   $("excelSub").innerHTML = `${t("sub_sheet")} <strong id="sheetName">${esc(sheetTxt)}</strong> · ` +
     `${t("sub_tasks_of")} <strong id="personName">${esc(personTxt)}</strong>`;
@@ -97,6 +107,8 @@ function applyLang() {
   $("notePathInput").title = t("t_note_path");
   $("noteLinkBtn").textContent = t("note_link_btn");
   $("noteDel").title = t("t_note_del");
+  $("notePopBtn").title = t("t_note_window");
+  $("noteCopyBtn").title = t("t_note_copy");
   $("noteSideMobile").title = t("t_note_side_drawer");
   $("noteSideMobile").setAttribute("aria-label", t("t_note_side_drawer"));
   $("noteBoxAddBtn").title = t("t_tool_box_add");

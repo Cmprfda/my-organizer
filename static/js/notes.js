@@ -2,7 +2,7 @@
 // arrumadas em pastas e ligadas (se quiseres) a uma tarefa do Excel.
 
 let notepad = { folders: [], notes: [] };
-let noteId = localStorage.getItem("bsp-tracker-note") || "";
+let noteId = SOLO_NOTE || localStorage.getItem("bsp-tracker-note") || "";
 // pastas fechadas na coluna da esquerda (por omissão está tudo aberto)
 const noteShut = new Set((() => {
   try { return JSON.parse(localStorage.getItem("bsp-tracker-note-shut") || "[]"); }
@@ -64,7 +64,8 @@ function currentNote() {
 function setCurrentNote(id) {
   noteId = id || "";
   setNoteDrawer(false);   // escolheu a nota: a gaveta já não serve de nada
-  localStorage.setItem("bsp-tracker-note", noteId);
+  // numa janela dedicada a escolha não se grava (ver SOLO_NOTE em state.js)
+  if (!SOLO_NOTE) localStorage.setItem("bsp-tracker-note", noteId);
   noteSelBoxes = [];
   noteDrawSel = [];
   noteConnectFrom = null;
@@ -79,7 +80,9 @@ async function loadNotepad() {
   } catch (e) {
     return;   // sem servidor: o resto da app já avisa
   }
-  if (!noteById(noteId)) noteId = (notepad.notes[0] || {}).id || "";
+  // numa janela dedicada não se cai noutra nota: um id desconhecido (outro
+  // browser, outra instalação) deixa a janela no estado vazio
+  if (!noteById(noteId) && !SOLO_NOTE) noteId = (notepad.notes[0] || {}).id || "";
   renderNotes();
 }
 
@@ -129,6 +132,7 @@ function noteRowHtml(n, depth) {
       <span class="noteRowTitle">${esc(n.title)}</span>
       <span class="noteRowMeta">${esc(bits.join(" · "))}</span>
     </button>
+    <button type="button" class="noteMini" data-npop="${esc(n.id)}" title="${esc(t("t_note_window"))}">↗</button>
     <button type="button" class="noteMini" data-ndup="${esc(n.id)}" title="${esc(t("t_note_dup"))}">⧉</button>
     <button type="button" class="noteMini" data-ndel="${esc(n.id)}" title="${esc(t("t_note_del"))}">✕</button>
   </div>`;
@@ -502,14 +506,67 @@ function noteBoxText(note, boxId) {
   return model ? model.text || "" : "";
 }
 
-function copyNoteBox(note, boxId, btn) {
-  const plain = noteBoxPlainText(noteBoxText(note, boxId));
-  if (!plain) { toast(t("note_box_copy_empty")); return; }
+// O ⧉ de uma caixa põe na área de transferência os três formatos ao mesmo
+// tempo: texto simples (para tudo o que só lê texto), HTML com estilos (o
+// Teams, o OneNote e o Outlook ficam com o negrito, o riscado e a tabela
+// desenhada) e o PNG da caixa (o Paint só aceita imagem). Quem cola escolhe o
+// formato que sabe ler. Ver noteCopyRich em noteclip.js.
+async function copyNoteBox(note, boxId, btn) {
+  const text = noteBoxText(note, boxId);
+  const model = (note.boxes || []).find(b => b.id === boxId);
+  const plain = noteBoxPlainText(text);
+  if (!plain && !(model && model.image)) { toast(t("note_box_copy_empty")); return; }
   if (typeof copyToClipboard !== "function") { toast(t("copy_err"), "err"); return; }
-  // copyToClipboard (copymenu.js) já trata da falta de permissões (volta ao
-  // método antigo) e avisa com um toast em qualquer dos casos
-  copyToClipboard(plain);
+  if (typeof noteCopyRich !== "function") {
+    // copyToClipboard (copymenu.js) já trata da falta de permissões (volta ao
+    // método antigo) e avisa com um toast em qualquer dos casos
+    copyToClipboard(plain);
+    flashNoteCopied(btn);
+    return;
+  }
   flashNoteCopied(btn);
+  let png = null;
+  try {
+    png = model ? await noteBoxPng({ ...model, text }) : null;
+  } catch (err) {
+    png = null;   // sem imagem vai o resto: o texto e o HTML valem por si
+  }
+  await noteCopyRich(plain, noteMarksToHtml(text), png);
+}
+
+// ---------- copiar a nota inteira ----------
+// As caixas pela ordem de leitura do quadro: de cima para baixo, e as que
+// estão à mesma altura da esquerda para a direita. Caixas em linhas diferentes
+// só contam como "a mesma altura" se estiverem a menos de meia caixa de
+// distância (senão duas colunas desalinhadas leriam-se em ziguezague).
+function noteBoxesInOrder(note, ids) {
+  const list = (note.boxes || []).filter(b => !ids || !ids.length || ids.includes(b.id));
+  return list.slice().sort((a, b) => (Math.abs(a.y - b.y) > 40 ? a.y - b.y : a.x - b.x));
+}
+
+// Copia a nota (ou só as caixas selecionadas) nos três formatos, como o ⧉ de
+// uma caixa: texto, HTML com estilos e o PNG do quadro — com os traços, as
+// formas, as ligações e os grupos, que só na imagem é que se veem.
+async function copyNoteAll(btn) {
+  const note = currentNote();
+  if (!note) return;
+  const ids = noteSelBoxes.slice();
+  const boxes = noteBoxesInOrder(note, ids).map(b => ({ ...b, text: noteBoxText(note, b.id) }));
+  if (!boxes.length) { toast(t("note_copy_empty")); return; }
+  const plain = boxes.map(b => noteBoxPlainText(b.text)).filter(Boolean).join("\n\n");
+  if (typeof noteCopyRich !== "function") {
+    if (typeof copyToClipboard === "function") copyToClipboard(plain);
+    return;
+  }
+  flashNoteCopied(btn);
+  const html = boxes.map(b => `<div style="margin:0 0 10px">${noteMarksToHtml(b.text)}</div>`).join("");
+  let png = null;
+  try {
+    png = await noteBoardPng(note, ids);
+  } catch (err) {
+    png = null;   // sem imagem vai o resto
+  }
+  await noteCopyRich(plain, html, png);
 }
 
 // ---------- a vista é onde se escreve ----------
@@ -1332,6 +1389,7 @@ function renderNoteLink(note) {
 function renderNotes(focusBoxId) {
   renderNoteTree();
   renderNoteBoard(focusBoxId);
+  applyNoteSolo();   // numa janela dedicada: o nome da nota no título
 }
 
 // ids de todas as subpastas (direta ou indiretamente) dentro de `id`
@@ -1396,6 +1454,11 @@ $("noteTree").addEventListener("click", async e => {
     const name = prompt(t("note_ask_folder"), folder.name);
     if (name === null || !name.trim()) return;
     await postNotepad({ action: "rename_folder", id: folder.id, name: name.trim() });
+    return;
+  }
+  const npop = e.target.closest("[data-npop]");
+  if (npop) {
+    openNoteWindow(npop.dataset.npop);
     return;
   }
   const ndup = e.target.closest("[data-ndup]");
@@ -1678,6 +1741,30 @@ function toggleNoteFullscreen() {
 }
 $("noteFullscreenBtn").addEventListener("click", toggleNoteFullscreen);
 
+// ---------- uma nota na sua própria janela ----------
+// O ↗ abre a app noutra janela já naquela nota (`?note=<id>`, ver SOLO_NOTE em
+// state.js). É a app inteira — com o quadro, as ferramentas e a gravação de
+// sempre — mas sem a coluna das notas e sem o ✕ de apagar: aquela janela é
+// daquela nota. Serve para ter duas notas à frente ao mesmo tempo, ou uma nota
+// de lado enquanto se trabalha noutro ecrã.
+function openNoteWindow(id) {
+  const note = noteById(id);
+  if (!note) return;
+  openAppWindow(`/?note=${encodeURIComponent(id)}`, `myorg_note_${id}`);
+}
+
+// numa janela dedicada: sem coluna, sem apagar, e o nome da nota no título da
+// janela (é o que a distingue na barra de tarefas do Windows)
+function applyNoteSolo() {
+  if (!SOLO_NOTE) return;
+  document.body.classList.add("notes-solo");
+  const note = currentNote();
+  // a instância de desenvolvimento marca-se no título (ver renderVersionBadge
+  // em tasks.js): aqui mantém-se essa marca, com o nome da nota atrás
+  const dev = document.body.classList.contains("devmode") ? "DEV — " : "";
+  document.title = `${dev}${note ? note.title : "My Organizer"}`;
+}
+
 // ---------- coluna das notas como gaveta (ecrã estreito) ----------
 // no telemóvel a coluna empilhada por cima do quadro comia metade do ecrã: aqui
 // fica fora do fluxo e abre-se pelo botão "☰" do cabeçalho
@@ -1720,6 +1807,8 @@ function addNoteBoxHere() {
 }
 
 $("noteBoxAddBtn").addEventListener("click", addNoteBoxHere);
+
+$("notePopBtn").addEventListener("click", () => openNoteWindow(noteId));
 
 $("noteSideToggle").addEventListener("click", () => setNoteRail(!noteRail));
 applyNoteRail();
@@ -2733,13 +2822,17 @@ function setNoteTool(tool) {
 // o botão da tabela escreve dentro da caixa que está a ser escrita: não lhe
 // pode tirar o foco (o mesmo que se faz com o B / S da caixa)
 $("noteToolbar").addEventListener("mousedown", e => {
-  if (e.target.closest("#noteTableBtn")) e.preventDefault();
+  // o Copiar lê o texto da caixa que está a ser escrita: tirar-lhe o foco
+  // levava o cursor daquela caixa sem necessidade nenhuma
+  if (e.target.closest("#noteTableBtn, #noteCopyBtn")) e.preventDefault();
 });
 
 $("noteToolbar").addEventListener("click", e => {
   const toolBtn = e.target.closest("[data-tool]");
   if (toolBtn) { setNoteTool(toolBtn.dataset.tool); return; }
   if (e.target.closest("#noteTableBtn")) { insertNoteTable(); return; }
+  const copyBtn = e.target.closest("#noteCopyBtn");
+  if (copyBtn) { copyNoteAll(copyBtn); return; }
   if (e.target.closest("#noteToolColor")) {
     // a cor do traço é só do lado do browser: não há nada para gravar
     openNoteColorPop($("noteToolColor"), noteStrokeColor, next => {
@@ -3339,14 +3432,22 @@ $("noteCanvas").addEventListener("compositionend", e => {
   noteViewEdited(pair.view);
 });
 
-// colar dentro de uma caixa: só o texto (o HTML da origem não tem nada que
-// fazer na vista — o que vale é o texto com marcadores)
+// colar dentro de uma caixa: o que entra é sempre texto com marcadores, nunca
+// HTML — a vista é feita a partir do texto, não o contrário. Quando a origem
+// manda HTML (OneNote, Word, Teams, uma página) traduz-se primeiro: o negrito
+// passa a **, o riscado a ~~, as tabelas a "| a | b |" e as listas à convenção
+// de árvore desta app (ver noteHtmlToMarks em noteclip.js).
 $("noteCanvas").addEventListener("paste", e => {
   const pair = noteEditPair(e.target);
   if (!pair || !e.clipboardData) return;
-  const text = e.clipboardData.getData("text/plain");
+  const html = e.clipboardData.getData("text/html");
+  const plain = e.clipboardData.getData("text/plain");
+  const text = (html && typeof noteHtmlToMarks === "function" ? noteHtmlToMarks(html) : "") || plain;
   if (!text) return;
   e.preventDefault();
+  // consumido aqui: o tratador do documento não pode ainda fazer uma caixa de
+  // imagem com o printscreen que a mesma cópia possa trazer ao lado do HTML
+  e.stopPropagation();
   const area = pair.area, at = area.selectionStart + text.length;
   replaceNoteRange(area, area.selectionStart, area.selectionEnd, text, at, at);
 });

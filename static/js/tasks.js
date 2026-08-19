@@ -1112,10 +1112,12 @@ function render() {
   // instância de desenvolvimento: marcar bem, para não se confundir com a estável
   if (data.mode === "dev" && !document.body.classList.contains("devmode")) {
     document.body.classList.add("devmode");
-    // numa janela dedicada a um livro o nome dele fica no título (ver SOLO_WB
-    // em state.js): é o que distingue as janelas na barra de tarefas
-    document.title = SOLO_WB && activeTab()
-      ? `DEV — ${activeTab().name}` : "DEV — My Organizer";
+    // numa janela dedicada a um livro (SOLO_WB) ou a uma nota (SOLO_NOTE) o
+    // nome fica no título: é o que distingue as janelas na barra de tarefas
+    const dono = SOLO_WB && activeTab() ? activeTab().name
+      : SOLO_NOTE && typeof noteById === "function" && noteById(SOLO_NOTE)
+        ? noteById(SOLO_NOTE).title : "";
+    document.title = dono ? `DEV — ${dono}` : "DEV — My Organizer";
     document.querySelector("header h1").textContent = "My Organizer (DEV)";
   }
 

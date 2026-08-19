@@ -35,6 +35,8 @@ from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
 from .notify import load_notify_config, save_notify_config, send_webhook
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
+from .repo import (add_repo, browse_local_folder, list_dir, load_repos,
+                   read_text, remove_repo, rename_repo, search_files)
 from .report import build_report
 from .store import (load_announcement, load_ccrs, load_notes, load_overrides,
                     load_waiting, save_announcement, save_ccrs, save_notes,
@@ -229,6 +231,16 @@ class Handler(BaseHTTPRequestHandler):
                 since=desde, until=ate)), "application/json")
         elif parsed.path == "/api/notepad":
             self._send(200, json.dumps(load_notepad()), "application/json")
+        elif parsed.path == "/api/repos":
+            # pastas de código abertas na vista "Código" (ver cswaios/repo.py).
+            # Ler ficheiros do disco é só a partir deste PC — quem chega pela
+            # rede local recebe a lista vazia e a vista fica a dizer porquê.
+            if not _is_local(ip):
+                self._send(200, json.dumps({"repos": [], "local": False}),
+                           "application/json")
+                return
+            self._send(200, json.dumps({"repos": load_repos(), "local": True}),
+                       "application/json")
         elif parsed.path == "/api/changelog":
             # novidades por versão para a janela "Novidades" — só quando o
             # utilizador a abre, por isso sem registo no log
@@ -437,6 +449,80 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"path": escolhido,
                                         "name": os.path.basename(escolhido)}),
                        "application/json")
+            return
+        if path == "/api/repo":
+            # vista "Código": abrir/fechar uma pasta, ver a árvore e ler um
+            # ficheiro. SÓ LEITURA — nada aqui escreve no disco do utilizador,
+            # a não ser a lista das pastas escolhidas (repos.json).
+            # Só a partir deste PC: são ficheiros locais, não têm que passar
+            # pela rede local (o mesmo critério do /api/workbook/browse_local).
+            if not _is_local(ip):
+                log_event(f"{ip} tentou ler ficheiros locais - recusado")
+                self._send(403, json.dumps({"ok": False,
+                                            "error": "só a partir deste computador"}),
+                           "application/json")
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                action = str(payload.get("action") or "")
+                rid = str(payload.get("id") or "")
+                if action == "browse":
+                    escolhida = browse_local_folder()
+                    if escolhida == "unavailable":
+                        # sem janela nativa não há diálogo: o cliente pergunta
+                        # o caminho à mão (não é um erro, é outro caminho)
+                        self._send(200, json.dumps({"ok": True, "unavailable": True}),
+                                   "application/json")
+                        return
+                    if not escolhida:
+                        self._send(200, json.dumps({"ok": True, "cancelled": True}),
+                                   "application/json")
+                        return
+                    repos, novo = add_repo(escolhida)
+                    log_event(f"{ip} abriu a pasta de código {escolhida}")
+                    self._send(200, json.dumps({"ok": True, "repos": repos, "id": novo}),
+                               "application/json")
+                    return
+                if action == "add":
+                    repos, novo = add_repo(payload.get("path"))
+                    log_event(f"{ip} abriu a pasta de código {payload.get('path')}")
+                    self._send(200, json.dumps({"ok": True, "repos": repos, "id": novo}),
+                               "application/json")
+                    return
+                if action == "remove":
+                    self._send(200, json.dumps({"ok": True, "repos": remove_repo(rid)}),
+                               "application/json")
+                    return
+                if action == "rename":
+                    self._send(200, json.dumps(
+                        {"ok": True, "repos": rename_repo(rid, payload.get("name"))}),
+                        "application/json")
+                    return
+                if action == "list":
+                    self._send(200, json.dumps({"ok": True,
+                                                **list_dir(rid, payload.get("path"))}),
+                               "application/json")
+                    return
+                if action == "read":
+                    self._send(200, json.dumps({"ok": True,
+                                                **read_text(rid, payload.get("path"))}),
+                               "application/json")
+                    return
+                if action == "search":
+                    self._send(200, json.dumps({"ok": True,
+                                                **search_files(rid, payload.get("query"))}),
+                               "application/json")
+                    return
+                self._send(400, json.dumps({"ok": False, "error": "ação desconhecida"}),
+                           "application/json")
+            except ValueError as exc:
+                self._send(200, json.dumps({"ok": False, "error": str(exc)}),
+                           "application/json")
+            except Exception as exc:
+                log_event(f"{ip} /api/repo FALHOU: {exc!r}")
+                self._send(500, json.dumps({"ok": False, "error": "erro interno"}),
+                           "application/json")
             return
         if path == "/api/bug":
             # erro apanhado no browser: reportar automaticamente

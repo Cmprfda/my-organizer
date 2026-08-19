@@ -1512,3 +1512,16 @@ body.notes-full .noteTree {
         height: auto;
     }
 }
+
+/* ---------- janela dedicada a uma nota (?note=<id>) ---------- */
+/* A coluna das notas, o apagar e o ↗ não têm lugar aqui: esta janela é de uma
+   nota só (ver SOLO_NOTE em state.js). O quadro fica com a janela inteira. */
+body.notes-solo .notesSide,
+body.notes-solo .noteSideResize,
+body.notes-solo .noteSideBack,
+body.notes-solo .noteSideToggle,
+body.notes-solo .noteSideMobile,
+body.notes-solo #notePopBtn,
+body.notes-solo #noteDel {
+    display: none;
+}

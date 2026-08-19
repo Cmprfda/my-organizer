@@ -27,6 +27,7 @@
   <link rel="stylesheet" href="/static/css/views.css">
   <link rel="stylesheet" href="/static/css/help.css">
   <link rel="stylesheet" href="/static/css/notes.css">
+  <link rel="stylesheet" href="/static/css/code.css">
   <link rel="stylesheet" href="/static/css/picker.css">
   <link rel="stylesheet" href="/static/css/notify.css">
   <link rel="stylesheet" href="/static/css/copymenu.css">
@@ -63,6 +64,7 @@
       <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
       <button data-view="notes" data-icon="&#9998;" draggable="true">Notas</button>
       <button data-view="metrics" data-icon="&#128200;" draggable="true">Métricas</button>
+      <button data-view="code" data-icon="&#9000;" draggable="true">Código</button>
       <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
       <button data-view="jira" data-icon="" draggable="true" class="hidden"><img src="/static/img/jira.svg" alt="" width="17" height="17" style="flex-shrink:0">Jira</button>
       <button id="addWorkbookBtn" type="button" class="addWbBtn" title="Abrir um livro de Excel"
@@ -244,6 +246,8 @@
                 </div>
                 <span class="noteLinkChips" id="noteLinkChips"></span>
                 <button type="button" class="linkBtn" id="noteLinkBtn">Ligar a uma tarefa</button>
+                <button type="button" class="ccr-x" id="notePopBtn"
+                  title="Abrir esta nota noutra janela">↗</button>
                 <button type="button" class="ccr-x" id="noteDel" title="Apagar nota">✕</button>
               </div>
               <div class="noteToolbar" id="noteToolbar">
@@ -280,6 +284,10 @@
                 <button type="button" class="noteToolBtn" id="noteTableBtn"
                   title="Inserir tabela (na caixa onde estás a escrever, ou numa caixa nova)">
                   <span class="noteToolIcon">▦</span><span class="noteToolLabel">Tabela</span>
+                </button>
+                <button type="button" class="noteToolBtn" id="noteCopyBtn"
+                  title="Copiar a nota (ou só as caixas selecionadas) para o Teams, o OneNote, o Paint…">
+                  <span class="noteToolIcon">⧉</span><span class="noteToolLabel">Copiar</span>
                 </button>
                 <button type="button" class="noteToolColor c-yellow" id="noteToolColor"
                   title="Cor do traço (clica para escolher)"></button>
@@ -319,6 +327,34 @@
                 <h2>Sem notas.</h2>
                 <p>Cria a primeira com o botão + Nota.</p>
               </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="codeView" class="hidden">
+          <div class="state hidden" id="codeRemote">
+            <h2 id="codeRemoteTitle">Só no computador onde a app corre.</h2>
+            <p id="codeRemoteText">Os ficheiros estão nesse PC — pela rede local esta página não os lê.</p>
+          </div>
+          <div class="state hidden" id="codeEmpty">
+            <h2 id="codeEmptyTitle">Nenhuma pasta aberta.</h2>
+            <p id="codeEmptyText">Abre a pasta dos teus scripts (ou um repositório) para a leres aqui. A app só lê: nada é gravado por cima dos teus ficheiros.</p>
+            <button type="button" id="codeEmptyAdd" class="wbEmptyAdd">&#43; Abrir pasta</button>
+          </div>
+          <div class="codeLayout hidden" id="codeLayout">
+            <aside class="codeSide">
+              <div class="codeSideBar">
+                <select id="codeRepoSel" title="Pasta aberta"></select>
+                <button type="button" id="codeAddBtn" title="Abrir outra pasta">&#43;</button>
+                <button type="button" id="codePathBtn" class="secondary" title="Abrir uma pasta escrevendo o caminho">&#9998;</button>
+                <button type="button" id="codeCloseBtn" class="secondary" title="Fechar esta pasta (não apaga nada)">&#10005;</button>
+              </div>
+              <input type="text" id="codeFilter" placeholder="Procurar ficheiro…">
+              <div class="codeTree" id="codeTree"></div>
+            </aside>
+            <section class="codeMain">
+              <div class="codeFileHead" id="codeFileHead"></div>
+              <div class="codeFileBody" id="codeFileBody"></div>
             </section>
           </div>
         </div>
@@ -913,6 +949,8 @@
   <script src="/static/js/itembox.js"></script>
   <script src="/static/js/split.js"></script>
   <script src="/static/js/notes.js"></script>
+  <script src="/static/js/noteclip.js"></script>
+  <script src="/static/js/code.js"></script>
   <script src="/static/js/feedback.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/viewmap.js"></script>

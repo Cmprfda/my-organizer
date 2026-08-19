@@ -137,6 +137,21 @@ const HELP = [
         ],
     },
     {
+        title: ["Código", "Code"],
+        items: [
+            ["O separador <strong>Código</strong> abre uma pasta do teu computador — os teus scripts, um repositório — e mostra-a aqui: a <strong>árvore</strong> à esquerda, o <strong>ficheiro</strong> à direita, com números de linha e as cores da linguagem. A app <strong>só lê</strong>: não grava nada por cima dos teus ficheiros nem cria nada dentro da pasta.",
+                "The <strong>Code</strong> tab opens a folder from your computer — your scripts, a repository — and shows it here: the <strong>tree</strong> on the left, the <strong>file</strong> on the right, with line numbers and the language's colours. The app <strong>only reads</strong>: it never writes over your files nor creates anything inside the folder."],
+            ["<strong>+</strong> abre a janela do Windows para escolher a pasta (numa aba do browser, onde não há diálogo, pede o caminho escrito); o <strong>✎</strong> pede sempre o caminho. Podes ter várias pastas abertas e trocar entre elas na lista. O <strong>✕</strong> fecha a pasta na app — não apaga nada no disco.",
+                "<strong>+</strong> opens the Windows dialog to pick the folder (in a browser tab, where there is no dialog, it asks for the path); <strong>✎</strong> always asks for the path. You can keep several folders open and switch between them in the dropdown. <strong>✕</strong> closes the folder in the app — it deletes nothing from disk."],
+            ["A caixa <strong>Procurar ficheiro…</strong> percorre a pasta toda pelo nome (a partir de duas letras) e mostra os caminhos onde ele aparece — mais rápido do que abrir ramo a ramo. Pastas como <code>.git</code>, <code>node_modules</code> ou <code>__pycache__</code> ficam à vista mas não se abrem nem entram na procura.",
+                "The <strong>Find a file…</strong> box walks the whole folder by name (from two letters up) and lists the paths where it shows up — faster than opening branch by branch. Folders like <code>.git</code>, <code>node_modules</code> or <code>__pycache__</code> stay visible but do not open and are left out of the search."],
+            ["<strong>Copiar</strong> leva o ficheiro inteiro para a área de transferência e <strong>Reler</strong> vai buscá-lo outra vez ao disco (útil depois de o editares no teu editor). Um ficheiro binário diz que é binário em vez de mostrar lixo, e um ficheiro muito grande abre-se só até ao princípio, com aviso.",
+                "<strong>Copy</strong> takes the whole file to the clipboard and <strong>Reload</strong> fetches it from disk again (handy after editing it in your own editor). A binary file says it is binary instead of showing garbage, and a very large file opens only up to a point, with a warning."],
+            ["Os ficheiros estão no computador onde a app corre: <strong>pela rede local esta página não os lê</strong> (quem abre a app pelo telemóvel ou por outro PC vê-a a dizê-lo). É a mesma regra do diálogo para escolher um livro de Excel local.",
+                "The files live on the computer running the app: <strong>over the local network this page does not read them</strong> (whoever opens the app from a phone or another PC sees it say so). It is the same rule as the dialog for picking a local Excel workbook."],
+        ],
+    },
+    {
         title: ["Métricas e relatório", "Metrics and report"],
         items: [
             ["O separador <strong>Métricas</strong> junta num ecrã só as contas que já vinham dos dados: <strong>alterações por dia</strong> na folha (de todos os livros abertos), as tarefas <strong>paradas há mais tempo</strong>, o <strong>trabalho por estado</strong> do livro à vista, a <strong>carga por pessoa</strong> (só tarefas por fechar), o <strong>tempo</strong> contado pelos cronómetros e o que já foi para o Jira, e a lista <strong>Por fazer por coluna</strong>. O <strong>Período</strong> (7, 14 ou 30 dias) manda no gráfico dos dias e no relatório.",

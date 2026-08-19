@@ -1,0 +1,260 @@
+/* My Organizer — vista "Código": árvore da pasta à esquerda, ficheiro à direita.
+   As cores saem todas das variáveis do tema (ver theme.css): a página segue o
+   claro/escuro como o resto da app, sem paleta própria. */
+
+.codeLayout {
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
+    /* a altura vem do fitCodeLayout (code.js): a árvore e o ficheiro rolam
+       dentro do seu painel, como o quadro das notas */
+    min-height: 320px;
+}
+
+.codeLayout.hidden {
+    display: none;
+}
+
+/* ---------- coluna da esquerda: pasta e árvore ---------- */
+.codeSide {
+    flex: 0 0 var(--code-side-w, 280px);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-card);
+    box-shadow: var(--ios-shadow);
+    padding: 10px;
+}
+
+.codeSideBar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.codeSideBar select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.codeSideBar button {
+    flex: 0 0 auto;
+    padding: 5px 9px;
+}
+
+.codeTree {
+    flex: 1 1 auto;
+    min-height: 240px;
+    overflow: auto;
+    font-size: 12.5px;
+}
+
+.codeTreeEmpty {
+    padding: 10px 6px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.codeRow {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 3px 6px;
+    border-radius: var(--ios-radius-btn);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.codeRow:hover {
+    background: var(--accent-soft);
+}
+
+.codeRow.active {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 600;
+}
+
+/* .git, node_modules e companhia: à vista, mas não se abrem */
+.codeRow.skip {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.codeCaret {
+    flex: 0 0 12px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.codeName {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.codeDirRow .codeName {
+    font-weight: 600;
+}
+
+.codeSize,
+.codeHitDir {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+}
+
+/* o caminho de um resultado da procura corta-se pelo princípio (o fim é que
+   diz onde o ficheiro está); o tamanho não, senão "6 kB" lia-se "kB 6" */
+.codeHitDir {
+    direction: rtl;
+}
+
+/* ---------- o ficheiro ---------- */
+.codeMain {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.codeFileHead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: 22px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-card);
+    box-shadow: var(--ios-shadow);
+    padding: 8px 12px;
+}
+
+.codeFileHead:empty {
+    display: none;
+}
+
+.codePath {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.codeMeta {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 11.5px;
+}
+
+.codeFileBody {
+    flex: 1 1 auto;
+    min-height: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-card);
+    box-shadow: var(--ios-shadow);
+    overflow: auto;
+}
+
+.codeHint,
+.codeWarn {
+    padding: 14px 16px;
+    color: var(--muted);
+    font-size: 12.5px;
+}
+
+.codeWarn {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    padding: 6px 16px;
+}
+
+/* o número da linha e o texto num só bloco: rolam juntos e alinham por terem
+   a mesma altura de linha */
+.codeFile {
+    display: flex;
+    align-items: flex-start;
+    min-width: min-content;
+}
+
+.codeGutter,
+.codeText {
+    margin: 0;
+    padding: 12px 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    tab-size: 4;
+}
+
+.codeGutter {
+    position: sticky;
+    left: 0;
+    flex: 0 0 auto;
+    padding-left: 12px;
+    padding-right: 12px;
+    text-align: right;
+    color: var(--muted);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    user-select: none;
+}
+
+.codeText {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-left: 14px;
+    padding-right: 14px;
+    white-space: pre;
+}
+
+/* ---------- cores do código ---------- */
+.codeText .cm { color: var(--muted); font-style: italic; }
+.codeText .st { color: var(--code-str, #0a7d55); }
+.codeText .kw { color: var(--code-kw, #9333ea); font-weight: 600; }
+.codeText .nu { color: var(--code-num, #b45309); }
+.codeText .fn { color: var(--code-fn, #1d4ed8); }
+.codeText .tg { color: var(--code-kw, #9333ea); }
+.codeText .at { color: var(--code-fn, #1d4ed8); }
+
+/* o tema escuro é por atributo, nunca por prefers-color-scheme: é o JS que
+   resolve o "auto" no arranque (ver theme.css) */
+html[data-theme="dark"] {
+    --code-str: #7ee2b8;
+    --code-kw: #c9a2ff;
+    --code-num: #f0b866;
+    --code-fn: #86b7ff;
+}
+
+/* ---------- ecrã estreito ---------- */
+@media (max-width: 900px) {
+    .codeLayout {
+        flex-direction: column;
+    }
+
+    .codeSide {
+        flex: 0 0 auto;
+    }
+
+    .codeTree {
+        min-height: 160px;
+        max-height: 260px;
+    }
+}

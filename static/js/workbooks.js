@@ -67,17 +67,15 @@ function openWorkbookTab(spec) {
    manda o endereço para o browser do sistema, que não é o que se pede ao ⧉.
    Quem está na app quer outra janela da app, por isso pede-se ao servidor
    (/api/window), como já acontece com o login da Microsoft. */
-async function openWorkbookWindow(id) {
-  const tab = tabById(id);
-  if (!tab) return;
-  const caminho = `/?wb=${encodeURIComponent(id)}`;
+// Abre outra janela da app num endereço desta app. `name` é o nome da janela:
+// repetir o pedido com o mesmo nome traz à frente a que já está aberta em vez
+// de abrir outra igual. Usado pelo ⧉ dos livros e pelo ↗ das notas.
+async function openAppWindow(caminho, name) {
   let janela = null;
   // window.pywebview só existe dentro da janela nativa da app
   if (!window.pywebview) {
     try {
-      // nome próprio por livro: carregar duas vezes no ⧉ traz à frente a janela
-      // que já está aberta em vez de abrir outra igual
-      janela = window.open(caminho, `myorg_wb_${id}`, "width=1280,height=860");
+      janela = window.open(caminho, name, "width=1280,height=860");
     } catch (err) {
       janela = null;
     }
@@ -97,6 +95,12 @@ async function openWorkbookWindow(id) {
   } catch (err) {
     toast(t("wb_window_failed"), "err");
   }
+}
+
+function openWorkbookWindow(id) {
+  const tab = tabById(id);
+  if (!tab) return;
+  return openAppWindow(`/?wb=${encodeURIComponent(id)}`, `myorg_wb_${id}`);
 }
 
 // ---------- opção 1: livro no OneDrive/SharePoint ----------

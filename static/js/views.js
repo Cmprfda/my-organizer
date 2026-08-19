@@ -4,7 +4,8 @@
 // aberto — não tem separador próprio, é o que se mostra no lugar deles.
 const VIEWS = {
   workbooks: "wbEmptyView", ccrs: "ccrView", todo: "todoView",
-  notes: "notesView", metrics: "metricsView", feedback: "fbView", jira: "jiraView",
+  notes: "notesView", code: "codeView", metrics: "metricsView",
+  feedback: "fbView", jira: "jiraView",
   // as definições são uma página como as outras; o separador delas é a roda
   // dentada (#settingsBtn), que não tem data-view e por isso não se arrasta
   // nem se abre ao lado no ecrã dividido
@@ -97,6 +98,9 @@ function showView(name) {
   if (name === "todo" || sideView === "todo") renderTodo();
   if (name === "notes" || sideView === "notes") renderNotes();
   if (name === "jira" || sideView === "jira") renderJiraPage();
+  // a pasta de código só se lê quando a vista abre (não se anda no disco de
+  // quem nunca cá vem) — ver renderCodePage em code.js
+  if (name === "code" || sideView === "code") renderCodePage();
   if (name === "metrics" || sideView === "metrics") {
     // a atividade de todos os livros só se vai buscar quando esta vista abre
     // (não vale a pena pedi-la a quem nunca cá vem)

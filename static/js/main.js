@@ -208,6 +208,12 @@ if (SOLO_WB && activeTab()) {
   document.title = `${activeTab().name} — My Organizer`;
   toast(t("wb_window_solo"), "ok");
 }
+// janela dedicada a uma nota (?note=): o título é o da nota (posto outra vez
+// pelo applyNoteSolo, quando as notas chegarem do servidor)
+if (SOLO_NOTE) {
+  applyNoteSolo();
+  toast(t("note_window_solo"), "ok");
+}
 // o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
 // (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
 // o painel "Hoje" abre logo (uma vez por dia): as secções que dependem dos
