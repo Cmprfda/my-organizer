@@ -29,6 +29,15 @@
     padding: 10px;
 }
 
+/* A caixa da procura acompanha a largura da coluna. Sem isto ficava com os
+   220px fixos do input global (ver forms.css) e saía pela borda do painel
+   assim que a coluna se arrastasse para estreita (--code-side-w desce até
+   180px) — o mesmo width:100% que a procura das notas usa (#noteFilter). */
+#codeFilter {
+    width: 100%;
+    min-width: 0;
+}
+
 .codeTree {
     flex: 1 1 auto;
     min-height: 240px;

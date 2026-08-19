@@ -58,16 +58,9 @@
     color: var(--muted);
   }
 
-  /* num telefone nem o Início leva nome: com ele, os separadores dos livros
-     ficavam sem espaço na pílula */
-  .tabs button.tabHome,
-  .tabs button.tabHome:hover,
-  .tabs button.tabHome.active,
-  .tabs button.tabHome.side {
-    font-size: 0;
-    gap: 0;
-    padding: 9px 13px;
-  }
+  /* o Início não precisa de regra própria: tem data-view (metrics), por isso as
+     regras de cima já lhe tiram o nome — num telefone os nomes não aparecem a
+     nenhum separador */
 
   /* sem palavras, a vista ativa precisa de cor para se distinguir */
   .tabs button[data-view].active,

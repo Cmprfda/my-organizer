@@ -331,16 +331,10 @@ body.topShrunk .ios-top #chatBtn svg {
   border-radius: 4px;
 }
 
-/* o Início é o ponto de partida da app: está sempre no mesmo lugar e diz o nome
-   sem ser preciso passar o rato por cima */
-.tabs button.tabHome,
-.tabs button.tabHome:hover,
-.tabs button.tabHome.active,
-.tabs button.tabHome.side {
-  font-size: 13px;
-  gap: 7px;
-  padding: 9px 14px;
-}
+/* O Início é um separador como os outros: mostra só o logótipo e o nome abre ao
+   passar o rato ou quando a vista está aberta (ver .tabs button[data-view]
+   acima — o homeTab também tem data-view). O que continua a ser só dele é o
+   lugar: está sempre encostado à esquerda. */
 
 .tabs #settingsBtn {
   margin-left: auto;

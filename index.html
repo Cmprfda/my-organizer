@@ -269,12 +269,21 @@
               </div>
               <!-- Barra de ferramentas em grupos com nome, como o friso do Paint: o
                    que faz o mesmo trabalho anda junto e diz-se o que é. Cada grupo é
-                   uma coluna (fila de botões + legenda); quando a barra não cabe,
-                   quebra entre grupos em vez de deixar botões órfãos numa fila só
-                   deles. Nas caixas estreitas — ecrã inteiro, telemóvel e painel do
-                   ecrã dividido — as legendas saem e fica uma fila que rola. -->
+                   agora um MENU: o nome do grupo é o botão que o abre e os botões
+                   ficam num painel por baixo (ver openNoteToolMenu, notes.js). A
+                   barra fica com cinco nomes e cabe em qualquer caixa — ecrã
+                   inteiro, telemóvel ou painel do ecrã dividido — em vez de uma
+                   fila de vinte botões que rolava.
+                   Os botões continuam TODOS dentro do #noteToolbar: os tratadores
+                   da barra são delegados (um só listener no #noteToolbar), por isso
+                   tirá-los daqui para fora era o que os desligava. -->
               <div class="noteToolbar" id="noteToolbar">
                 <div class="noteToolGroup">
+                  <button type="button" class="noteToolGroupBtn" aria-haspopup="true"
+                    aria-expanded="false">
+                    <span class="noteToolGroupName" id="noteGrpInsert">Inserir</span><span
+                      class="noteToolGroupCaret" aria-hidden="true">&#9662;</span>
+                  </button>
                   <div class="noteToolGroupRow">
                     <button type="button" class="noteToolBtn" id="noteBoxAddBtn"
                       title="Nova caixa no meio do quadro">
@@ -285,9 +294,13 @@
                       <span class="noteToolIcon">▦</span><span class="noteToolLabel">Tabela</span>
                     </button>
                   </div>
-                  <span class="noteToolGroupName" id="noteGrpInsert">Inserir</span>
                 </div>
                 <div class="noteToolGroup">
+                  <button type="button" class="noteToolGroupBtn" aria-haspopup="true"
+                    aria-expanded="false">
+                    <span class="noteToolGroupName" id="noteGrpTools">Ferramentas</span><span class="noteToolGroupTool" aria-hidden="true"></span><span
+                      class="noteToolGroupCaret" aria-hidden="true">&#9662;</span>
+                  </button>
                   <div class="noteToolGroupRow">
                     <button type="button" class="noteToolBtn active" data-tool="select" title="Selecionar / mover">
                       <span class="noteToolIcon">↖</span><span class="noteToolLabel">Selecionar</span>
@@ -305,9 +318,13 @@
                     <button type="button" class="noteToolColor c-yellow" id="noteToolColor"
                       title="Cor do traço (clica para escolher)"></button>
                   </div>
-                  <span class="noteToolGroupName" id="noteGrpTools">Ferramentas</span>
                 </div>
                 <div class="noteToolGroup">
+                  <button type="button" class="noteToolGroupBtn" aria-haspopup="true"
+                    aria-expanded="false">
+                    <span class="noteToolGroupName" id="noteGrpShapes">Formas</span><span class="noteToolGroupTool" aria-hidden="true"></span><span
+                      class="noteToolGroupCaret" aria-hidden="true">&#9662;</span>
+                  </button>
                   <div class="noteToolGroupRow">
                     <button type="button" class="noteToolBtn" data-tool="line" title="Linha">
                       <span class="noteToolIcon">╱</span><span class="noteToolLabel">Linha</span>
@@ -322,9 +339,13 @@
                       <span class="noteToolIcon">▢</span><span class="noteToolLabel">Grupo</span>
                     </button>
                   </div>
-                  <span class="noteToolGroupName" id="noteGrpShapes">Formas</span>
                 </div>
                 <div class="noteToolGroup">
+                  <button type="button" class="noteToolGroupBtn" aria-haspopup="true"
+                    aria-expanded="false">
+                    <span class="noteToolGroupName" id="noteGrpEdit">Editar</span><span
+                      class="noteToolGroupCaret" aria-hidden="true">&#9662;</span>
+                  </button>
                   <div class="noteToolGroupRow">
                     <button type="button" class="noteToolBtn" id="noteUndoBtn"
                       title="Reverter a última alteração (Ctrl+Z)" disabled>
@@ -342,9 +363,13 @@
                       <span class="noteToolIcon">🗑</span><span class="noteToolLabel">Limpar</span>
                     </button>
                   </div>
-                  <span class="noteToolGroupName" id="noteGrpEdit">Editar</span>
                 </div>
                 <div class="noteToolGroup">
+                  <button type="button" class="noteToolGroupBtn" aria-haspopup="true"
+                    aria-expanded="false">
+                    <span class="noteToolGroupName" id="noteGrpView">Ver</span><span
+                      class="noteToolGroupCaret" aria-hidden="true">&#9662;</span>
+                  </button>
                   <div class="noteToolGroupRow">
                     <button type="button" class="noteToolBtn" id="noteZoomOutBtn"
                       title="Diminuir zoom (ou Ctrl+scroll no quadro)">
@@ -360,7 +385,6 @@
                       <span class="noteToolIcon">&#x26F6;</span><span class="noteToolLabel">Ecrã inteiro</span>
                     </button>
                   </div>
-                  <span class="noteToolGroupName" id="noteGrpView">Ver</span>
                 </div>
               </div>
               <div class="noteCanvas" id="noteCanvas">

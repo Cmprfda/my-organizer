@@ -2813,21 +2813,72 @@ function selectDrawn(sel, add) {
 function setNoteTool(tool) {
   noteTool = tool;
   $("noteToolbar").querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === tool));
+  paintNoteToolGroups();
   selectBox(null);
   selectDrawn(null);
   noteConnectFrom = null;
   highlightConnectFrom(null);
 }
 
+// ---------- friso em menus: cada grupo abre num painel ----------
+/* O nome do grupo é o botão; os botões dele ficam num painel por baixo (ver o
+   noteToolbar no index.html). O painel é `fixed` e colocado a partir do botão,
+   como o painel das cores: nas caixas estreitas a barra rola dentro de si
+   mesma, e um painel dentro dela era cortado pelo overflow. */
+let noteToolMenu = null;        // .noteToolGroup com o menu aberto
+let noteToolMenuHold = false;   // clicar outra vez no mesmo nome fecha (não reabre)
+
+function closeNoteToolMenu() {
+  if (!noteToolMenu) return;
+  noteToolMenu.querySelector(".noteToolGroupBtn").setAttribute("aria-expanded", "false");
+  noteToolMenu.classList.remove("open");
+  noteToolMenu = null;
+}
+
+function openNoteToolMenu(group) {
+  if (noteToolMenuHold) { noteToolMenuHold = false; return; }
+  closeNoteToolMenu();
+  const btn = group.querySelector(".noteToolGroupBtn");
+  const pop = group.querySelector(".noteToolGroupRow");
+  group.classList.add("open");
+  btn.setAttribute("aria-expanded", "true");
+  // medir só depois de abrir: fechado o painel não tem tamanho nenhum
+  const r = btn.getBoundingClientRect();
+  const below = r.bottom + 4;
+  pop.style.left = `${Math.max(6, Math.min(window.innerWidth - pop.offsetWidth - 6, r.left))}px`;
+  pop.style.top = `${below + pop.offsetHeight > window.innerHeight
+    ? Math.max(6, r.top - pop.offsetHeight - 4) : below}px`;
+  noteToolMenu = group;
+}
+
+// Com o menu fechado, o nome do grupo mostra o ícone da ferramenta armada —
+// senão não se via com o que se está a desenhar. O "selecionar" é o estado de
+// repouso do quadro: esse não se anuncia.
+function paintNoteToolGroups() {
+  $("noteToolbar").querySelectorAll(".noteToolGroup").forEach(g => {
+    const slot = g.querySelector(".noteToolGroupTool");
+    if (!slot) return;
+    const on = g.querySelector("[data-tool].active");
+    const arm = on && on.dataset.tool !== "select" ? on : null;
+    g.classList.toggle("armed", !!arm);
+    const icon = arm ? arm.querySelector(".noteToolIcon") : null;
+    slot.textContent = icon ? icon.textContent : "";
+  });
+}
+
 // o botão da tabela escreve dentro da caixa que está a ser escrita: não lhe
 // pode tirar o foco (o mesmo que se faz com o B / S da caixa)
 $("noteToolbar").addEventListener("mousedown", e => {
   // o Copiar lê o texto da caixa que está a ser escrita: tirar-lhe o foco
-  // levava o cursor daquela caixa sem necessidade nenhuma
-  if (e.target.closest("#noteTableBtn, #noteCopyBtn")) e.preventDefault();
+  // levava o cursor daquela caixa sem necessidade nenhuma. O nome do grupo
+  // entra na mesma lista: abrir o menu para chegar ao Tabela/Copiar não pode
+  // ser o que leva o cursor daquela caixa.
+  if (e.target.closest("#noteTableBtn, #noteCopyBtn, .noteToolGroupBtn")) e.preventDefault();
 });
 
 $("noteToolbar").addEventListener("click", e => {
+  const grpBtn = e.target.closest(".noteToolGroupBtn");
+  if (grpBtn) { openNoteToolMenu(grpBtn.closest(".noteToolGroup")); return; }
   const toolBtn = e.target.closest("[data-tool]");
   if (toolBtn) { setNoteTool(toolBtn.dataset.tool); return; }
   if (e.target.closest("#noteTableBtn")) { insertNoteTable(); return; }
@@ -2841,6 +2892,38 @@ $("noteToolbar").addEventListener("click", e => {
     });
   }
 });
+
+/* Escolher no menu fecha-o: quem clicou já sabe o que quer. Ficam abertos o
+   zoom e o ↺/↻ — usam-se a clicar várias vezes seguidas — e a cor, que abre o
+   seu próprio painel por cima deste. */
+const NOTE_MENU_KEEP =
+  "#noteZoomOutBtn, #noteZoomInBtn, #noteZoomLabel, #noteUndoBtn, #noteRedoBtn, #noteToolColor";
+
+$("noteToolbar").addEventListener("click", e => {
+  if (!noteToolMenu || e.target.closest(".noteToolGroupBtn, " + NOTE_MENU_KEEP)) return;
+  if (e.target.closest("button")) closeNoteToolMenu();
+});
+
+// clicar fora fecha; no próprio nome fecha e não deixa reabrir no mesmo clique
+document.addEventListener("pointerdown", e => {
+  if (!noteToolMenu || e.target.closest(".noteToolGroupRow, .noteColorPop")) return;
+  noteToolMenuHold = noteToolMenu.contains(e.target);
+  closeNoteToolMenu();
+}, true);
+
+// o painel fica preso ao ecrã: se o quadro rolar ou a janela mudar de tamanho,
+// deixa de estar junto ao nome do grupo (o mesmo que o painel das cores faz)
+$("noteCanvas").addEventListener("scroll", closeNoteToolMenu);
+window.addEventListener("resize", closeNoteToolMenu);
+
+// em captura, mas depois do painel das cores: com um menu aberto o Esc fecha-o
+// em vez de largar a ferramenta armada
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !noteToolMenu) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  closeNoteToolMenu();
+}, true);
 
 $("noteUndoBtn").addEventListener("click", () => revertNote());
 $("noteRedoBtn").addEventListener("click", () => revertNote(false));

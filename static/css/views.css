@@ -118,11 +118,32 @@ tr.flashSrc td:first-child {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-/* vista em cartões: a linha É o cartão (tr em coluna) — sem isto o
-   destaque só cobria a altura da 1.ª célula (o título), não o cartão todo */
+/* Vista em cartões: a linha É o cartão (tr em coluna), e o destaque do salto
+   fica-lhe só no contorno. Com o flashRow por dentro, cada célula do cartão
+   (que aqui é um bloco com o seu próprio fundo) acendia vermelha e a mancha
+   tapava o conteúdo da tarefa a que se acabou de saltar — o que se quer é
+   apontar o cartão, não pintá-lo. */
+@keyframes flashCard {
+
+  0%,
+  70% {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  100% {
+    border-color: var(--border);
+    box-shadow: var(--ios-shadow);
+  }
+}
+
 .tablebox.cards tr.flashSrc {
-  animation: flashRow 2.6s ease-out;
-  box-shadow: inset 3px 0 0 var(--accent);
+  animation: flashCard 2.6s ease-out;
+}
+
+/* o fundo das células é o que fazia a mancha por dentro do cartão */
+.tablebox.cards tr.flashSrc td {
+  animation: none;
 }
 
 .tablebox.cards tr.flashSrc td:first-child {
@@ -336,18 +357,13 @@ body.split #paneSide:has(#notesView:not(.hidden)) .noteZoomLabel {
   flex: 0 0 auto;
 }
 
-/* num painel estreito não há largura para as legendas dos grupos do friso
-   (ver .noteToolGroupName no notes.css): fica a fila dos botões, como já
-   acontece em ecrã inteiro e no telemóvel */
-body.split #paneMain:has(#notesView:not(.hidden)) .noteToolGroupName,
-body.split #paneSide:has(#notesView:not(.hidden)) .noteToolGroupName {
-  display: none;
-}
-
-body.split #paneMain:has(#notesView:not(.hidden)) .noteToolGroup,
-body.split #paneSide:has(#notesView:not(.hidden)) .noteToolGroup {
-  padding: 0 5px;
-  gap: 0;
+/* num painel estreito é o friso em menus que dá a largura (ver
+   .noteToolGroupBtn no notes.css): a barra são os cinco nomes, e as
+   ferramentas abrem num painel por cima do quadro */
+body.split #paneMain:has(#notesView:not(.hidden)) .noteToolGroupBtn,
+body.split #paneSide:has(#notesView:not(.hidden)) .noteToolGroupBtn {
+  margin: 0 2px;
+  padding: 5px 8px;
 }
 
 /* Um painel do ecrã dividido é estreito sem a JANELA o ser, por isso as medidas

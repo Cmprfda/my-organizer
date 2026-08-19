@@ -212,12 +212,12 @@
 }
 
 /* ---------- barra de ferramentas de desenho ---------- */
-/* Friso em grupos com nome (ver o noteToolbar no index.html): os itens da
-   barra são os grupos, não os botões — assim, quando não cabe tudo, a quebra
-   é entre grupos e nunca deixa um botão órfão numa fila só para ele. */
+/* Friso em menus (ver o noteToolbar no index.html): cada grupo é o seu nome, e
+   as ferramentas abrem num painel por baixo. A barra tem cinco nomes e cabe
+   em qualquer caixa; antes eram vinte botões que só cabiam a rolar. */
 .noteToolbar {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     flex-wrap: wrap;
     gap: 2px;
     padding: 2px 2px 4px;
@@ -225,11 +225,6 @@
 
 .noteToolGroup {
     flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    padding: 0 8px;
 }
 
 /* traço fino entre grupos, no lugar dos separadores soltos que a barra tinha */
@@ -237,10 +232,82 @@
     border-left: 1px solid var(--border);
 }
 
-.noteToolGroupRow {
+/* ---------- o nome do grupo é o botão que abre o menu ---------- */
+.noteToolGroupBtn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
+    margin: 0 4px;
+    padding: 6px 9px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ios-radius-btn);
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text);
+}
+
+.noteToolGroupBtn:hover {
+    background: var(--accent-soft);
+}
+
+/* menu aberto: fica marcado enquanto o painel está à frente */
+.noteToolGroup.open .noteToolGroupBtn {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.noteToolGroup.open .noteToolGroupName,
+.noteToolGroup.open .noteToolGroupCaret {
+    color: var(--accent-text);
+}
+
+.noteToolGroupCaret {
+    font-size: 9px;
+    line-height: 1;
+    color: var(--muted);
+}
+
+/* Ferramenta armada: com o menu fechado, o ícone dela fica no nome do grupo —
+   sem isto, fechar o menu deixava de se saber com o que se está a desenhar. */
+.noteToolGroupTool {
+    display: none;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.noteToolGroup.armed .noteToolGroupTool {
+    display: inline;
+}
+
+.noteToolGroup.armed .noteToolGroupBtn {
+    border-color: var(--accent);
+    color: var(--accent-text);
+}
+
+.noteToolGroup.armed .noteToolGroupName {
+    color: var(--accent-text);
+}
+
+/* ---------- o painel do menu ---------- */
+/* position: fixed (colocado pelo openNoteToolMenu, notes.js) e não absolute: a
+   barra rola dentro de si mesma nas caixas estreitas, e num painel absolute o
+   menu era cortado pelo overflow dela. Mesmo padrão do .noteColorPop. */
+.noteToolGroupRow {
+    display: none;
+}
+
+.noteToolGroup.open .noteToolGroupRow {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    box-shadow: var(--ios-shadow-lg);
 }
 
 .noteToolGroupName {
@@ -976,23 +1043,17 @@ body.notes-full .noteToolbar {
     padding: 1px 0 2px;
 }
 
-body.notes-full .noteToolLabel {
-    display: none;
-}
-
 body.notes-full .noteToolBtn {
     padding: 4px 7px;
 }
 
-/* em ecrã inteiro a altura é toda do quadro: os grupos ficam uma fila só, sem
-   legenda, e o traço entre eles é o que continua a mostrar a arrumação */
-body.notes-full .noteToolGroupName {
-    display: none;
-}
-
-body.notes-full .noteToolGroup {
-    padding: 0 4px;
-    gap: 0;
+/* Em ecrã inteiro a altura é toda do quadro — e é isso que os menus já dão: a
+   barra são cinco nomes numa fila. Os nomes dos grupos e as legendas dos
+   botões ficam (antes saíam para caber): agora quem os mostra é o painel do
+   menu, que não tira nada ao quadro. */
+body.notes-full .noteToolGroupBtn {
+    margin: 0 2px;
+    padding: 5px 8px;
 }
 
 /* botão «/» que prende a coluna aberta: só existe em ecrã inteiro */
@@ -1391,22 +1452,12 @@ body.notes-full .noteTree {
         flex: 0 0 auto;
     }
 
-    /* num ecrã estreito não há largura para as legendas dos grupos: fica a
-       fila dos botões, com o traço entre grupos a mostrar a arrumação */
-    .noteToolGroupName {
-        display: none;
-    }
-
-    .noteToolGroup {
-        padding: 0 5px;
-        gap: 0;
-    }
-
-    /* numa fila com scroll o ecrã inteiro ficava a dez ferramentas de distância
-       — e é ele que dá ao quadro a janela toda, que é o que faz falta num
-       telemóvel. Passa para a frente, antes do "+ Caixa". */
-    #noteFullscreenBtn {
-        order: -1;
+    /* num ecrã estreito é a barra em menus que dá a largura: cinco nomes em vez
+       de vinte botões, e o painel de cada grupo abre por cima do quadro (não
+       rola com a barra, ver .noteToolGroup.open .noteToolGroupRow) */
+    .noteToolGroupBtn {
+        margin: 0 2px;
+        padding: 7px 9px;
     }
 
     /* dedo em vez de rato: alvos de 44px, como manda a HIG */
