@@ -130,6 +130,14 @@ tr.flashSrc td:first-child {
 }
 
 /* ---- ecrã dividido ---- */
+/* Altura útil de um painel: a janela menos o topo de vidro e menos a pílula
+   flutuante dos separadores. Sem descontar a pílula (ver .tabs em layout.css)
+   o fundo do painel ficava escondido por baixo dela — era o que cortava o
+   último cartão do Início no ecrã dividido. */
+body.split {
+  --pane-h: calc(100dvh - 200px);
+}
+
 body.split .wrap {
   max-width: none;
 }
@@ -157,7 +165,7 @@ body.split #paneSide {
 body.split #paneMain,
 body.split #paneSide {
   align-self: stretch;
-  max-height: calc(100vh - 150px);
+  max-height: var(--pane-h);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -165,7 +173,7 @@ body.split #paneSide {
 /* ---- ecrã dividido: disposição vertical (empilhada) ---- */
 body.split.split-vertical #panes {
   flex-direction: column;
-  height: calc(100vh - 150px);
+  height: var(--pane-h);
 }
 
 body.split.split-vertical.side-left #panes {
@@ -247,7 +255,17 @@ body.split #paneSide:has(.noteCanvas) {
 
 body.split:not(.split-vertical) #paneMain:has(.noteCanvas),
 body.split:not(.split-vertical) #paneSide:has(.noteCanvas) {
-  height: calc(100vh - 150px);
+  height: var(--pane-h);
+}
+
+/* o painel lateral embrulha a vista num #sideBody: sem o pôr também em coluna,
+   a corrente de flex partia-se aí e o quadro voltava a medir-se pela tela de
+   4000px (o painel ficava com milhares de pixéis de altura) */
+body.split #paneSide:has(.noteCanvas)>#sideBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 body.split #paneMain:has(.noteCanvas) #notesView,
@@ -269,6 +287,52 @@ body.split #paneSide:has(.noteCanvas) .noteCanvas {
   height: auto;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* Num painel estreito a barra de ferramentas partia-se em dez filas e comia o
+   quadro todo — com o ecrã dividido perto do mínimo sobrava-lhe uma nesga. Uma
+   fila só com scroll, como o ecrã inteiro e o telemóvel já fazem (notes.css).
+   O `flex: 0 0 auto` é para o outro lado: numa coluna apertada a barra chegava
+   a ser esmagada a poucos pixéis, quando quem tem de ceder é o quadro. */
+body.split #paneMain:has(.noteCanvas) .notesHead,
+body.split #paneSide:has(.noteCanvas) .notesHead,
+body.split #paneMain:has(.noteCanvas) .noteToolbar,
+body.split #paneSide:has(.noteCanvas) .noteToolbar {
+  flex: 0 0 auto;
+}
+
+body.split #paneMain:has(.noteCanvas) .noteToolbar,
+body.split #paneSide:has(.noteCanvas) .noteToolbar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  padding-right: 26px;
+}
+
+body.split #paneMain:has(.noteCanvas) .noteToolbar::-webkit-scrollbar,
+body.split #paneSide:has(.noteCanvas) .noteToolbar::-webkit-scrollbar {
+  display: none;
+}
+
+body.split #paneMain:has(.noteCanvas) .noteToolBtn,
+body.split #paneMain:has(.noteCanvas) .noteToolSep,
+body.split #paneMain:has(.noteCanvas) .noteToolColor,
+body.split #paneMain:has(.noteCanvas) .noteZoomLabel,
+body.split #paneSide:has(.noteCanvas) .noteToolBtn,
+body.split #paneSide:has(.noteCanvas) .noteToolSep,
+body.split #paneSide:has(.noteCanvas) .noteToolColor,
+body.split #paneSide:has(.noteCanvas) .noteZoomLabel {
+  flex: 0 0 auto;
+}
+
+/* Um painel do ecrã dividido é estreito sem a JANELA o ser, por isso as medidas
+   por @media do notes.css não chegam aqui. Marcar a vista como container deixa
+   as regras do fim do notes.css medir o painel em vez da janela. */
+body.split #notesView {
+  container-type: inline-size;
+  container-name: notesview;
 }
 
 /* zonas onde se larga o botão para dividir o ecrã */

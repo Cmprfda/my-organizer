@@ -1532,3 +1532,36 @@ body.notes-solo #notePopBtn,
 body.notes-solo #noteDel {
     display: none;
 }
+
+/* ---------- a vista das notas num painel do ecrã dividido ----------
+   O painel é estreito sem a JANELA o ser, por isso as medidas por @media aqui
+   em cima não lhe chegam. O container é declarado no views.css (só existe com
+   o ecrã dividido); estas regras ficam neste ficheiro para ganharem às de
+   largura fixa acima.
+   Sem largura para as duas colunas, a das notas sobe para cima do quadro (com
+   altura curta e scroll próprio) em vez de o espremer até uma nesga — era o que
+   acontecia com o ecrã dividido perto do mínimo. */
+@container notesview (max-width: 620px) {
+    .notesLayout {
+        flex-direction: column;
+    }
+
+    .notesSide {
+        flex: 0 0 auto;
+        max-height: 170px;
+    }
+
+    /* empilhadas, as colunas passam a medir-se em altura: sem este mínimo a
+       zero a .notesMain crescia até aos 4000px da tela e o painel esticava */
+    .notesMain {
+        min-height: 0;
+    }
+
+    .noteTree {
+        min-height: 0;
+    }
+
+    .noteSideResize {
+        display: none;
+    }
+}

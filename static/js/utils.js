@@ -106,3 +106,16 @@ function statusLines(value) {
     .map(l => l.replace(/^TC: |^TP: /, "").trim())
     .filter(Boolean);
 }
+
+// Nome da coluna do Excel a partir do número (1 -> A, 27 -> AA). É o mesmo que
+// o get_column_letter do openpyxl faz do lado do servidor (cswaios/tasks.py).
+function colLetters(n) {
+  let num = Math.floor(+n || 0);
+  let out = "";
+  while (num > 0) {
+    const r = (num - 1) % 26;
+    out = String.fromCharCode(65 + r) + out;
+    num = Math.floor((num - 1) / 26);
+  }
+  return out;
+}

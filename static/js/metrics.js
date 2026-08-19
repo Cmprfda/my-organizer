@@ -332,15 +332,34 @@ const metricsEventTab = e =>
 const metricsEventWho = (e, tab) =>
   e.via === "app" || !tab ? "" : histWhoInTab(tab.id, e.ts);
 
+// A célula da folha onde a alteração aconteceu (ex.: "F12"). A letra vem do
+// xlcols do livro — o mapa nome da coluna -> número no Excel que a leitura já
+// traz. Sem esse mapa (livro ainda por ler, ou coluna que já lá não está)
+// sobra a linha, que é o que a app sabe de certeza.
+function metricsEventCell(e, tab) {
+  const xlcol = ((tab && tab.lastData && tab.lastData.xlcols) || {})[e.col];
+  if (!e.xlrow) return "";
+  return xlcol ? `${colLetters(xlcol)}${e.xlrow}` : tf("metric_row", e.xlrow);
+}
+
+// Onde é que isto foi mexido: livro, aba e célula. O nome do livro só entra
+// quando há mais do que um aberto — com um só, repeti-lo em todas as linhas era
+// ruído (a nota dos outros cartões já diz de que livros são as contas).
+function metricsEventWhere(e, tab) {
+  const livro = metricsOpenBooks().size > 1 ? (tab && tab.name) || "" : "";
+  return [livro, e.sheet, metricsEventCell(e, tab)].filter(Boolean).join(" · ");
+}
+
 // Os termos batem TODOS (E), como a pesquisa da tabela no modo "e": aqui não há
 // botão para trocar de modo, e um "obs carlos" em OU trazia tudo o que tem um
-// dos dois. Procura-se em tudo o que a linha mostra — tarefa, aba, coluna,
-// antes, depois, hora e quem gravou — para não haver texto à vista que a
-// pesquisa não encontre.
+// dos dois. Procura-se em tudo o que a linha mostra — tarefa, livro, aba,
+// célula, coluna, antes, depois, hora e quem gravou — para não haver texto à
+// vista que a pesquisa não encontre.
 function metricsDayMatch(e, termos, tab) {
   if (!termos.length) return true;
   const alvo = norm([e.fn, e.todo, e.sheet, e.col, e.from, e.to,
-    histWhen(e.ts), metricsEventWho(e, tab)].filter(Boolean).join(" "));
+    histWhen(e.ts), metricsEventWho(e, tab),
+    (tab && tab.name) || "", metricsEventCell(e, tab)].filter(Boolean).join(" "));
   return termos.every(term => alvo.includes(term));
 }
 
@@ -362,7 +381,7 @@ function metricsDayRowsHtml() {
     const tab = metricsEventTab(e);
     const tarefa = String(e.fn || "").trim() || String(e.todo || "").trim()
       || tf("metric_row", e.xlrow);
-    const onde = [tarefa, e.sheet].filter(Boolean).join(" · ");
+    const onde = metricsEventWhere(e, tab);
     const quem = metricsEventWho(e, tab);
     const marca = e.via === "app" ? t("hist_via_app")
       : (quem ? tf("hist_saved_by", quem) : t("hist_via_sheet"));
@@ -370,9 +389,11 @@ function metricsDayRowsHtml() {
     // metricsGoToEvent), como no painel Hoje
     return `<li class="metricDayItem"><button type="button" data-metricgo="${i}"
       class="histRow metricDayRow metricDayGo${e.via === "app" ? " histApp" : ""}"
-      title="${esc(`${onde} — ${marca} — ${t("t_metric_day_go")}`)}">
+      title="${esc([tarefa, onde].filter(Boolean).join(" — ")
+        + ` — ${marca} — ${t("t_metric_day_go")}`)}">
       <span class="histWhen">${esc(histWhen(e.ts))}</span>
-      <span class="metricDayTask">${esc(tarefa)}</span>
+      <span class="metricDayTask"><span class="metricDayName">${esc(tarefa)}</span>${onde
+        ? `<span class="metricDayWhere">${esc(onde)}</span>` : ""}</span>
       <span class="histCol">${esc(e.col)}</span>
       <span class="histVals"><span class="histFrom">${esc(histValue(e.from))}</span>
         <span class="histArrow">→</span>
