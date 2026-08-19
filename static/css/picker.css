@@ -155,12 +155,16 @@
     max-width: 22ch;
 }
 
+/* o afastamento e o respiro do ✕/⧉ medem-se na letra do separador (em), e não
+   em px: fechado, o separador tem font-size 0 e estes cantos passam também a
+   zero — senão o ✕ e o ⧉, invisíveis, continuavam a ocupar largura e os
+   separadores de livros/pastas ficavam mais gordos do que os das vistas */
 .tabs button[data-view^="wb:"] .wbTabClose,
 .tabs button[data-view^="wb:"] .wbTabPop,
 .tabs button[data-view^="code:"] .wbTabClose,
 .tabs button[data-view^="code:"] .wbTabPop {
-    margin-left: 6px;
-    padding: 0 2px;
+    margin-left: 0.46em;
+    padding: 0 0.15em;
     border-radius: 4px;
     color: var(--muted);
     opacity: 0;
