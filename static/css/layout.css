@@ -303,12 +303,13 @@ body.topShrunk .ios-top #chatBtn svg {
 /* ---------- página das definições (vista #settingsView) ----------
    Deixou de ser um balão por cima dos separadores: é uma página como as
    outras, com um cartão por assunto (aparência, OneDrive, Jira, app). */
+/* mosaico em colunas, pela mesma razão das métricas: numa grelha, o cartão do
+   OneDrive (o mais alto) mandava na altura da linha toda e os outros ficavam
+   com um vazio por baixo */
 .setPage {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 12px;
+  columns: 300px;
+  column-gap: 12px;
   padding: 12px 0;
-  align-items: start;
 }
 
 .setCard {
@@ -320,6 +321,8 @@ body.topShrunk .ios-top #chatBtn svg {
   min-width: 0;
   display: grid;
   gap: 12px;
+  margin: 0 0 12px;
+  break-inside: avoid;
 }
 
 .setCardTitle {

@@ -130,12 +130,13 @@
 }
 
 /* ---------- vista de métricas ---------- */
+/* mosaico em colunas (e não em grelha): numa grelha a linha toda ficava com a
+   altura do cartão mais alto e os baixos deixavam um buraco por baixo. Em
+   colunas cada cartão encosta ao de cima, e a página fica sem espaços mortos */
 .metricsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 12px;
+  columns: 300px;
+  column-gap: 12px;
   padding: 12px 0;
-  align-items: start;
 }
 
 .metricCard {
@@ -145,6 +146,10 @@
   box-shadow: var(--ios-shadow);
   padding: 14px 16px 12px;
   min-width: 0;
+  /* o espaço entre cartões da mesma coluna (o column-gap só trata do lado) e a
+     garantia de que um cartão não se parte a meio entre duas colunas */
+  margin: 0 0 12px;
+  break-inside: avoid;
 }
 
 .metricTitle {
@@ -335,7 +340,7 @@
    e origem): num mosaico de 300px o antes→depois quebrava em três linhas, por
    isso o cartão do dia vale dois lugares (com uma coluna só, o grid ignora-o) */
 .metricCard.metricCardWide {
-  grid-column: span 2;
+  column-span: all;
 }
 
 .metricDayList {
@@ -616,13 +621,7 @@ button.metricDayBack:hover {
 
 @media (max-width: 720px) {
   .metricsGrid {
-    grid-template-columns: 1fr;
-  }
-
-  /* com uma coluna só, o "span 2" não é ignorado: criava uma segunda coluna
-     implícita e esmagava os cartões seguintes contra a margem */
-  .metricCard.metricCardWide {
-    grid-column: auto;
+    columns: 1;
   }
 
   .histRow {
