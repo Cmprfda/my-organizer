@@ -374,10 +374,57 @@ def close_excel_workbook(basename):
         return False
 
 
+# A procura abaixo varre as pastas candidatas de cima a baixo (as do OneDrive
+# podem ser enormes, e com ficheiros só na nuvem cada entrada custa ainda mais).
+# É pedida em cada /api/tasks e também em cada /api/modified — o pedido "barato"
+# que a interface repete de 20 em 20 segundos por cada livro aberto — por isso
+# guarda-se o resultado. Volta a varrer quando alguma pasta candidata mexe (um
+# ficheiro novo lá dentro muda a data da pasta: é o caso do download do
+# SharePoint, que aterra direito na Downloads) ou passados _FILES_TTL segundos,
+# para apanhar o que aterre numa subpasta, onde a data da pasta de cima não
+# mexe. As datas mostradas na interface não passam por aqui (o build_payload
+# lê o mtime de cada ficheiro a cada pedido); o que pode ficar até _FILES_TTL
+# segundos velho é só a LISTA de ficheiros e a ordem entre eles.
+_FILES_TTL = 30.0
+_FILES_CACHE = {}   # chave -> (assinatura das pastas, momento da leitura, lista)
+
+
+def _dirs_signature():
+    """Data de cada pasta candidata — muda assim que lá aterra um ficheiro."""
+    marcas = []
+    for base in list(CANDIDATE_DIRS) + [HERE]:
+        try:
+            marcas.append(os.stat(base).st_mtime_ns)
+        except OSError:
+            marcas.append(None)
+    return tuple(marcas)
+
+
+def _cached_scan(key, scan):
+    """`scan()` guardado enquanto as pastas candidatas não mexerem."""
+    agora = time.time()
+    sig = _dirs_signature()
+    em_cache = _FILES_CACHE.get(key)
+    if em_cache and em_cache[0] == sig and agora - em_cache[1] < _FILES_TTL:
+        return list(em_cache[2])
+    achados = scan()
+    _FILES_CACHE[key] = (sig, agora, list(achados))
+    return achados
+
+
+def forget_files_cache():
+    """Força a próxima procura a varrer as pastas outra vez."""
+    _FILES_CACHE.clear()
+
+
 def find_tracker_files():
     """Todos os candidatos, do mais recente para o mais antigo."""
     if config.FORCED_FILE:
         return [config.FORCED_FILE] if os.path.isfile(config.FORCED_FILE) else []
+    return _cached_scan(("tracker",), _scan_tracker_files)
+
+
+def _scan_tracker_files():
     matches = set()
     for base in CANDIDATE_DIRS:
         if not os.path.isdir(base):
@@ -399,6 +446,10 @@ def find_named_file(name):
     OneDrive, que pode não ser o tracker (FILE_PATTERN não o apanharia)."""
     if not name:
         return []
+    return _cached_scan(("named", name), lambda: _scan_named_file(name))
+
+
+def _scan_named_file(name):
     pattern = glob.escape(name)
     matches = set()
     for base in CANDIDATE_DIRS:

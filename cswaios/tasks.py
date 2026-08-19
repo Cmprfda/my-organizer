@@ -15,8 +15,9 @@ from . import config
 from .config import (APP_VERSION, BASE_STATUSES, CANDIDATE_DIRS, DEFAULT_PERSON,
                      DEFAULT_SHEET, lan_ip)
 from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbook,
-                    detect_header_row, find_named_file, find_tracker_files, locate_row,
-                    pick_sheet, set_data_validation_fixed_list, set_data_validation_list,
+                    detect_header_row, find_named_file, find_tracker_files,
+                    forget_files_cache, locate_row, pick_sheet,
+                    set_data_validation_fixed_list, set_data_validation_list,
                     write_status_to_excel)
 from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_forget_item,
                     graph_ids_from_path, graph_load_rows, graph_modified, graph_path_for,
@@ -33,6 +34,12 @@ from .todos import load_todo, save_todo
 # fallback quando o Excel tem o ficheiro bloqueado em exclusivo
 _LAST_GOOD = {}
 
+# marca de versão da fonte na altura em que cada entrada do _RAW_CACHE foi
+# enchida, pela mesma chave (ficheiro, aba). Enquanto a marca não mudar, as
+# linhas em cache SÃO as linhas do livro: reler o .xlsx inteiro (ou voltar a
+# pedir todas as linhas à nuvem) daria exatamente o mesmo.
+_RAW_STAMP = {}
+
 # colunas fixas do tracker, pelo nome canónico (ver col_by_name em read_sheet):
 # o valor atual destas vai em row_meta["cur"], para o cartão do TODO mostrar a
 # linha ao vivo mesmo com a folha fora da vista
@@ -42,13 +49,16 @@ TRACKER_COLS = ("Function/TC", "To Do", "OBS", "Status TC", "Status TP")
 def forget_cache(path=None):
     """Esquece o que foi lido (de um ficheiro, ou de todos): a leitura seguinte
     vai buscar tudo de novo, como se a app tivesse acabado de abrir."""
-    for cache in (_RAW_CACHE, _LAST_GOOD):
+    for cache in (_RAW_CACHE, _RAW_STAMP, _LAST_GOOD):
         for key in [k for k in cache if k and (path is None or k[0] == path)]:
             cache.pop(key, None)
     for key in [k for k in _SYNC_CHECK if path is None or k[0] == path]:
         _SYNC_CHECK.pop(key, None)
     if path is None:
         _ADMIN_CACHE.clear()
+        # "Atualizar" relê tudo de raiz: também as pastas onde os livros são
+        # procurados, senão um ficheiro acabado de lá pôr só aparecia a seguir
+        forget_files_cache()
     else:
         _ADMIN_CACHE.pop(path, None)
 
@@ -164,38 +174,77 @@ def _split_key(key):
     return None, parts[0], parts[1], "||".join(parts[2:])
 
 
+def _source_stamp(path):
+    """Marca de versão da fonte (muda a cada gravação do livro), sem ler a
+    folha. None quando não se consegue saber — nesse caso relê-se sempre.
+
+    Não é a marca que vai para a interface (essa é a do current_stamp, ao
+    segundo, para o cliente comparar): esta só se compara consigo própria, por
+    isso leva a data ao nanossegundo e o tamanho — duas gravações no mesmo
+    segundo dariam a mesma marca ao segundo e a segunda passaria despercebida.
+    """
+    try:
+        if is_graph_path(path):
+            return graph_modified(*graph_ids_from_path(path))[1] or None
+        st = os.stat(path)
+        return f"{st.st_mtime_ns}|{st.st_size}"
+    except Exception:
+        return None
+
+
 def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     raw_key = (path, normalize(sheet_name))
     warning_ts = None
-    try:
-        if is_graph_path(path):
-            drive_id, item_id = graph_ids_from_path(path)
-            real_sheet, all_sheets, rows = graph_load_rows(drive_id, item_id, sheet_name)
-            if real_sheet is None:
-                return {"error": msg("err_nosheet", lang, s=sheet_name),
-                        "sheets": all_sheets}
-        else:
-            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-            try:
-                all_sheets = wb.sheetnames
-                real_sheet = pick_sheet(wb, sheet_name)
+    # a folha crua só se relê quando o livro foi gravado desde a última leitura.
+    # Sem isto, cada /api/tasks reabria o .xlsx inteiro (ou voltava a pedir
+    # todas as linhas à nuvem) para obter exatamente as mesmas linhas — e a
+    # interface pede-o de dois em dois minutos por cada livro aberto. Poupa-se
+    # só a leitura CRUA: tudo o que vem a seguir (overrides, notas, "à espera
+    # de alguém", histórico) continua a correr a cada pedido, porque muda sem o
+    # livro mudar.
+    stamp = _source_stamp(path)
+    em_cache = _RAW_CACHE.get(raw_key)
+    if em_cache and stamp and _RAW_STAMP.get(raw_key) == stamp:
+        _, real_sheet, all_sheets, rows = em_cache
+    else:
+        try:
+            if is_graph_path(path):
+                drive_id, item_id = graph_ids_from_path(path)
+                real_sheet, all_sheets, rows = graph_load_rows(drive_id, item_id, sheet_name)
                 if real_sheet is None:
                     return {"error": msg("err_nosheet", lang, s=sheet_name),
                             "sheets": all_sheets}
-                ws = wb[real_sheet]
-                rows = [list(r) for r in ws.iter_rows(values_only=True)]
-            finally:
-                wb.close()
-        _RAW_CACHE[raw_key] = (datetime.now(), real_sheet, all_sheets, rows)
-    except Exception as exc:
-        # ficheiro bloqueado pelo Excel (ou a meio da sincronização):
-        # continua com a última leitura crua — os filtros e as edições de
-        # estado aplicam-se na mesma
-        if raw_key not in _RAW_CACHE:
-            raise
-        warning_ts, real_sheet, all_sheets, rows = _RAW_CACHE[raw_key]
-        log_event(f"leitura de {path} falhou ({exc!r}) - "
-                  f"a servir a leitura das {warning_ts:%H:%M}")
+            else:
+                wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+                try:
+                    all_sheets = wb.sheetnames
+                    real_sheet = pick_sheet(wb, sheet_name)
+                    if real_sheet is None:
+                        return {"error": msg("err_nosheet", lang, s=sheet_name),
+                                "sheets": all_sheets}
+                    ws = wb[real_sheet]
+                    rows = [list(r) for r in ws.iter_rows(values_only=True)]
+                finally:
+                    wb.close()
+            _RAW_CACHE[raw_key] = (datetime.now(), real_sheet, all_sheets, rows)
+            # sem marca (não se conseguiu saber a versão da fonte) não se guarda
+            # nada: a leitura seguinte volta a ler, como antes desta cache
+            if stamp:
+                _RAW_STAMP[raw_key] = stamp
+            else:
+                _RAW_STAMP.pop(raw_key, None)
+        except Exception as exc:
+            # ficheiro bloqueado pelo Excel (ou a meio da sincronização):
+            # continua com a última leitura crua — os filtros e as edições de
+            # estado aplicam-se na mesma
+            if raw_key not in _RAW_CACHE:
+                raise
+            # a leitura falhou: a marca guardada já não descreve o que está em
+            # cache, senão o pedido seguinte servia isto como se fosse fresco
+            _RAW_STAMP.pop(raw_key, None)
+            warning_ts, real_sheet, all_sheets, rows = _RAW_CACHE[raw_key]
+            log_event(f"leitura de {path} falhou ({exc!r}) - "
+                      f"a servir a leitura das {warning_ts:%H:%M}")
 
     header_index = detect_header_row(rows)
     if header_index is None:
@@ -835,6 +884,13 @@ def push_overrides(target):
         if not entry:
             overrides.pop(key, None)
     save_overrides(overrides)
+    if pushed:
+        # o valor local (✎) que segurava a célula acabou de ser apagado: a
+        # leitura seguinte tem de vir do livro, senão mostrava as linhas de
+        # antes da escrita e o estado parecia ter voltado atrás. Não se confia
+        # na data do ficheiro para dar por isso — o Excel pode ainda não a ter
+        # atualizado quando o pedido a seguir chegar.
+        forget_cache(target)
     return target, pushed, failed
 
 
