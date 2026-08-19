@@ -1,9 +1,10 @@
-// My Organizer — abrir livros de Excel (um separador por livro)
+// My Organizer — abrir páginas pelo "+" (um separador por livro/pasta)
 //
-// A app não abre nenhum livro por si: arranca sem nenhum e é o "+" (na barra
-// dos separadores ou no painel de boas-vindas) que abre esta janela. Daqui
-// sai-se ou para o explorador do OneDrive (picker.js) ou para o diálogo de
-// ficheiros do Windows (/api/workbook/browse_local).
+// A app não abre nada por si: arranca sem nenhum livro e é o "+" (na barra dos
+// separadores ou no painel de boas-vindas) que abre esta janela. Daqui sai-se
+// para o explorador do OneDrive (picker.js), para o diálogo de ficheiros do
+// Windows (/api/workbook/browse_local) ou para o de pastas, quando o que se
+// quer é uma pasta de código (pickCodeFolder em code.js).
 
 // "procurar no disco" só existe na janela da app (no browser não há diálogo
 // nativo). Depois de o servidor o dizer uma vez, não se volta a oferecer.
@@ -18,6 +19,9 @@ function setAddWorkbookOpen(open) {
   // não existe — abriria no PC, não aqui. Fica só o OneDrive, que é lido pelo
   // servidor com a sessão já aberta e por isso funciona em qualquer aparelho
   $("wbAddLocal").classList.toggle("hidden", localBrowseUnavailable || !isLocalClient());
+  // uma pasta de código é lida no disco deste PC: pela rede não há nada para
+  // mostrar (ver /api/repo em cswaios/server.py)
+  $("wbAddCode").classList.toggle("hidden", !isLocalClient());
 }
 
 function wbAddNote(msg) {
@@ -138,6 +142,13 @@ $("wbAddLocal").addEventListener("click", async e => {
   } finally {
     btn.disabled = false;
   }
+});
+
+// ---------- opção 3: pasta de código no disco ----------
+$("wbAddCode").addEventListener("click", async e => {
+  e.stopPropagation();
+  setAddWorkbookOpen(false);
+  await pickCodeFolder();   // o separador da pasta nasce lá (ver code.js)
 });
 
 // ---------- abrir/fechar a janela ----------

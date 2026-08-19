@@ -29,16 +29,7 @@ function applyLang() {
   document.querySelector('.tabs button[data-view="todo"]').textContent = t("tab_todo");
   document.querySelector('.tabs button[data-view="notes"]').textContent = t("tab_notes");
   document.querySelector('.tabs button[data-view="feedback"]').textContent = t("tab_feedback");
-  document.querySelector('.tabs button[data-view="code"]').textContent = t("tab_code");
-  $("codeEmptyTitle").textContent = t("code_empty_t");
-  $("codeEmptyText").textContent = t("code_empty_p");
-  $("codeEmptyAdd").textContent = t("code_empty_add");
-  $("codeRemoteTitle").textContent = t("code_remote_t");
-  $("codeRemoteText").textContent = t("code_remote_p");
   $("codeFilter").placeholder = t("ph_code_filter");
-  $("codeAddBtn").title = t("t_code_add");
-  $("codePathBtn").title = t("t_code_path");
-  $("codeCloseBtn").title = t("t_code_close");
   const sheetTxt = $("sheetName").textContent, personTxt = $("personName").textContent;
   $("excelSub").innerHTML = `${t("sub_sheet")} <strong id="sheetName">${esc(sheetTxt)}</strong> · ` +
     `${t("sub_tasks_of")} <strong id="personName">${esc(personTxt)}</strong>`;
@@ -150,17 +141,20 @@ function applyLang() {
   $("pickerClose").title = t("t_close");
   $("pickerSearch").placeholder = t("pick_search");
   $("pickerOverlay").setAttribute("aria-label", t("pick_title"));
-  // abrir livros: botão "+", janela de escolha e painel de boas-vindas
-  $("addWorkbookBtn").title = t("wb_add_title");
-  $("addWorkbookBtn").setAttribute("aria-label", t("wb_add_title"));
-  $("wbAddTitle").textContent = t("wb_add_title");
+  // abrir páginas: botão "+", janela de escolha e painel de boas-vindas
+  $("addWorkbookBtn").title = t("page_add_title");
+  $("addWorkbookBtn").setAttribute("aria-label", t("page_add_title"));
+  $("wbAddTitle").textContent = t("page_add_title");
   $("wbAddClose").title = t("t_close");
-  $("wbAddOverlay").setAttribute("aria-label", t("wb_add_title"));
+  $("wbAddOverlay").setAttribute("aria-label", t("page_add_title"));
   $("wbAddOneDriveTxt").textContent = t("wb_from_onedrive");
   $("wbAddOneDriveSub").textContent = t("wb_from_onedrive_sub");
   $("wbAddLocalTxt").textContent = t("wb_from_local");
   $("wbAddLocalSub").textContent = t("wb_from_local_sub");
+  $("wbAddCodeTxt").textContent = t("wb_from_code");
+  $("wbAddCodeSub").textContent = t("wb_from_code_sub");
   renderWorkbookTabs();   // já trata do painel de boas-vindas
+  renderCodeTabs();       // os ✕/⧉ dos separadores das pastas levam textos
   $("itemClose").title = t("t_close");
   $("itemOverlay").setAttribute("aria-label", t("item_box"));
   // botão/campos do Jira (o estado em si vive em jira.js)

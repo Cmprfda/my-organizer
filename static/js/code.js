@@ -1,24 +1,57 @@
 // My Organizer — vista "Código": abrir uma pasta do disco (um repositório, a
 // pasta dos scripts) e ler o que lá está sem sair da app.
 //
+// Cada pasta aberta tem o seu separador ("code:<id>"), como cada livro de Excel
+// tem o dele: abre-se pelo "+" da barra dos separadores e fecha-se pelo ✕ do
+// separador. O painel #codeView é um só e mostra sempre a pasta do separador
+// ativo — é o codeRepoId que manda (ver setActiveCodeTab). A lista das pastas
+// abertas não é deste browser: vem do servidor (repos.json, ver repo.py).
+//
 // É só leitura: a app mostra a árvore e o texto dos ficheiros, não grava nada
-// por cima deles (ver cswaios/repo.py). Os ficheiros vivem no PC onde a app
-// corre, por isso o servidor só responde a estes pedidos a partir daí — quem
-// abre a app pelo telemóvel ou por outro PC da rede vê a vista a dizer isso.
+// por cima deles. Os ficheiros vivem no PC onde a app corre, por isso o
+// servidor só responde a estes pedidos a partir daí — de outro aparelho a lista
+// vem vazia e não há nenhum separador de código para abrir.
 
 let codeRepos = [];
-let codeLocal = true;               // este cliente é o PC onde a app corre
 let codeRepoId = localStorage.getItem("bsp-tracker-code-repo") || "";
-let codeFile = "";                  // ficheiro aberto (caminho relativo à raiz)
-let codeFileData = null;            // resposta do servidor para esse ficheiro
-const codeOpenDirs = new Set();     // pastas abertas na árvore
-const codeDirCache = new Map();     // "pasta" -> entradas já lidas
-const codeSkipDirs = new Set();     // pastas que não se abrem (.git, node_modules…)
-let codeHits = null;                // resultado da procura por nome (null = árvore)
 let codeSearchTimer = null;
 
-const codeVisible = () => currentView === "code" || sideView === "code";
+/* Estado de cada pasta aberta: a árvore por onde se andou, o ficheiro à frente
+   e a procura são de cada separador (como o lastData de cada livro), por isso
+   voltar a um separador devolve-o exatamente onde estava. */
+const codeStates = new Map();
+
+function codeState(id) {
+  id = id || codeRepoId;
+  let st = codeStates.get(id);
+  if (!st) {
+    st = {
+      open: new Set(),    // pastas abertas na árvore
+      cache: new Map(),   // "pasta" -> entradas já lidas
+      skip: new Set(),    // pastas que não se abrem (.git, node_modules…)
+      file: "",           // ficheiro aberto (caminho relativo à raiz)
+      data: null,         // resposta do servidor para esse ficheiro
+      hits: null,         // resultado da procura por nome (null = árvore)
+      filter: "",         // o que está na caixa de procura
+      seeded: false,      // a raiz desta pasta já foi lida uma vez
+    };
+    codeStates.set(id, st);
+  }
+  return st;
+}
+
+// estados de pastas que já não estão abertas não têm para onde voltar
+function pruneCodeStates() {
+  [...codeStates.keys()].forEach(id => {
+    if (!codeRepos.some(r => r.id === id)) codeStates.delete(id);
+  });
+}
+
+const codeVisible = () => isCodeView(currentView) || isCodeView(sideView);
 const codeRepo = () => codeRepos.find(r => r.id === codeRepoId) || null;
+// ficheiro onde se estava em cada pasta (uma chave por pasta: os separadores
+// não se pisam uns aos outros)
+const codeFileKey = id => `bsp-tracker-code-file:${id}`;
 
 // ---------- servidor ----------
 
@@ -41,60 +74,60 @@ async function codePost(body) {
   }
 }
 
+// as pastas abertas (e por isso os separadores) vêm do servidor: de outro
+// aparelho da rede a lista vem vazia e não há nenhum separador de código
 async function loadRepos() {
   try {
     const res = await fetch("/api/repos");
     const out = await res.json();
     codeRepos = out.repos || [];
-    codeLocal = out.local !== false;
   } catch (err) {
     return;
   }
+  // numa janela dedicada a uma pasta só entra essa (as outras continuam na
+  // janela principal), como o SOLO_WB faz aos livros
+  if (SOLO_CODE) {
+    codeRepos = codeRepos.filter(r => r.id === SOLO_CODE);
+    codeRepoId = SOLO_CODE;
+  }
   if (!codeRepo()) codeRepoId = (codeRepos[0] || {}).id || "";
-  renderCode();
+  setCodeRepos(codeRepos);
 }
 
-function setCodeRepos(repos, pick) {
+// a lista mudou (abriu-se ou fechou-se uma pasta): separadores novos
+function setCodeRepos(repos) {
   codeRepos = repos || [];
-  codeDirCache.clear();
-  codeOpenDirs.clear();
-  codeSkipDirs.clear();
-  codeHits = null;
-  if (pick) codeRepoId = pick;
-  if (!codeRepo()) codeRepoId = (codeRepos[0] || {}).id || "";
-  localStorage.setItem("bsp-tracker-code-repo", codeRepoId);
-  codeFile = "";
-  codeFileData = null;
-  renderCode();
-  // a raiz da pasta nova ainda não está lida: sem isto a árvore ficava vazia
-  // até se sair da vista e voltar
-  if (codeRepoId) codeDir("").then(renderCode);
+  pruneCodeStates();
+  renderCodeTabs();
+  if (codeVisible()) renderCode();
 }
 
 // ---------- árvore ----------
 
-async function codeDir(path) {
-  if (codeDirCache.has(path)) return codeDirCache.get(path);
-  const out = await codePost({ action: "list", id: codeRepoId, path });
+async function codeDir(id, path) {
+  const st = codeState(id);
+  if (st.cache.has(path)) return st.cache.get(path);
+  const out = await codePost({ action: "list", id, path });
   const entries = out ? out.entries : [];
-  entries.forEach(e => { if (e.dir && e.skip) codeSkipDirs.add(e.path); });
-  codeDirCache.set(path, entries);
+  entries.forEach(e => { if (e.dir && e.skip) st.skip.add(e.path); });
+  st.cache.set(path, entries);
   return entries;
 }
 
 async function toggleCodeDir(path) {
-  if (codeOpenDirs.has(path)) codeOpenDirs.delete(path);
+  const st = codeState();
+  if (st.open.has(path)) st.open.delete(path);
   else {
-    codeOpenDirs.add(path);
-    await codeDir(path);
+    st.open.add(path);
+    await codeDir(codeRepoId, path);
   }
   renderCodeTree();
 }
 
-const codeIcon = e => (e.dir ? (codeOpenDirs.has(e.path) ? "▾" : "▸") : "");
+const codeIcon = (st, e) => (e.dir ? (st.open.has(e.path) ? "▾" : "▸") : "");
 
-function codeTreeHtml(path, depth) {
-  const entries = codeDirCache.get(path) || [];
+function codeTreeHtml(st, path, depth) {
+  const entries = st.cache.get(path) || [];
   let html = "";
   for (const e of entries) {
     const pad = 6 + depth * 12;
@@ -103,13 +136,13 @@ function codeTreeHtml(path, depth) {
       // existem) mas não se abrem: encher a árvore com elas não serve a ninguém
       html += `<div class="codeRow codeDirRow${e.skip ? " skip" : ""}" data-cdir="${esc(e.path)}"
         style="padding-left:${pad}px" title="${esc(e.skip ? t("t_code_skip") : e.path)}">
-        <span class="codeCaret">${e.skip ? "·" : codeIcon(e)}</span>
+        <span class="codeCaret">${e.skip ? "·" : codeIcon(st, e)}</span>
         <span class="codeName">${esc(e.name)}</span>
       </div>`;
-      if (!e.skip && codeOpenDirs.has(e.path)) html += codeTreeHtml(e.path, depth + 1);
+      if (!e.skip && st.open.has(e.path)) html += codeTreeHtml(st, e.path, depth + 1);
       continue;
     }
-    html += `<div class="codeRow codeFileRow${e.path === codeFile ? " active" : ""}"
+    html += `<div class="codeRow codeFileRow${e.path === st.file ? " active" : ""}"
       data-cfile="${esc(e.path)}" style="padding-left:${pad + 14}px" title="${esc(e.path)}">
       <span class="codeName">${esc(e.name)}</span>
       <span class="codeSize">${esc(codeSizeLabel(e.size))}</span>
@@ -118,29 +151,31 @@ function codeTreeHtml(path, depth) {
   return html;
 }
 
-function codeHitsHtml() {
-  if (!codeHits.hits.length) return `<div class="codeTreeEmpty">${esc(t("code_no_hits"))}</div>`;
-  const rows = codeHits.hits.map(h => {
+function codeHitsHtml(st) {
+  if (!st.hits.hits.length) return `<div class="codeTreeEmpty">${esc(t("code_no_hits"))}</div>`;
+  const rows = st.hits.hits.map(h => {
     const dir = h.path.slice(0, h.path.length - h.name.length).replace(/\/$/, "");
-    return `<div class="codeRow codeFileRow${h.path === codeFile ? " active" : ""}"
+    return `<div class="codeRow codeFileRow${h.path === st.file ? " active" : ""}"
       data-cfile="${esc(h.path)}" title="${esc(h.path)}">
       <span class="codeName">${esc(h.name)}</span>
       <span class="codeHitDir">${esc(dir)}</span>
     </div>`;
   }).join("");
-  const more = codeHits.partial ? `<div class="codeTreeEmpty">${esc(t("code_hits_partial"))}</div>` : "";
+  const more = st.hits.partial ? `<div class="codeTreeEmpty">${esc(t("code_hits_partial"))}</div>` : "";
   return rows + more;
 }
 
 function renderCodeTree() {
   const box = $("codeTree");
   if (!box) return;
-  if (!codeRepo()) { box.innerHTML = ""; return; }
-  if (codeRepo().missing) {
+  const repo = codeRepo();
+  if (!repo) { box.innerHTML = ""; return; }
+  if (repo.missing) {
     box.innerHTML = `<div class="codeTreeEmpty">${esc(t("code_missing"))}</div>`;
     return;
   }
-  box.innerHTML = codeHits ? codeHitsHtml() : codeTreeHtml("", 0);
+  const st = codeState();
+  box.innerHTML = st.hits ? codeHitsHtml(st) : codeTreeHtml(st, "", 0);
 }
 
 // ---------- ficheiro aberto ----------
@@ -154,28 +189,33 @@ function codeSizeLabel(bytes) {
 }
 
 async function openCodeFile(path) {
-  if (!codeRepoId || !path) return;
-  codeFile = path;
-  codeFileData = null;
+  const id = codeRepoId;
+  if (!id || !path) return;
+  const st = codeState(id);
+  st.file = path;
+  st.data = null;
   renderCodeTree();
   renderCodeFile();
-  const out = await codePost({ action: "read", id: codeRepoId, path });
-  if (!out || codeFile !== path) return;   // já se abriu outro entretanto
-  codeFileData = out;
-  localStorage.setItem("bsp-tracker-code-file", `${codeRepoId}|${path}`);
-  renderCodeFile();
+  const out = await codePost({ action: "read", id, path });
+  if (!out || st.file !== path) return;   // já se abriu outro entretanto
+  st.data = out;
+  localStorage.setItem(codeFileKey(id), path);
+  // a pasta pode ter mudado de separador entretanto: só se pinta se ainda é esta
+  if (codeRepoId === id) renderCodeFile();
 }
 
 function renderCodeFile() {
   const head = $("codeFileHead");
   const body = $("codeFileBody");
   if (!head || !body) return;
+  const st = codeState();
+  const codeFile = st.file;
   if (!codeFile) {
     head.innerHTML = "";
     body.innerHTML = `<div class="codeHint">${esc(t("code_pick_file"))}</div>`;
     return;
   }
-  const d = codeFileData;
+  const d = st.data;
   const bits = [];
   if (d && !d.binary) bits.push(`${d.text.split("\n").length} ${t("code_lines")}`);
   if (d) bits.push(codeSizeLabel(d.size));
@@ -373,18 +413,6 @@ function codeHighlight(text, lang) {
 
 // ---------- a vista ----------
 
-function renderCodeRepos() {
-  const sel = $("codeRepoSel");
-  if (!sel) return;
-  sel.innerHTML = codeRepos.map(r =>
-    `<option value="${esc(r.id)}"${r.id === codeRepoId ? " selected" : ""}>` +
-    `${esc(r.name)}${r.missing ? " (?)" : ""}</option>`).join("");
-  sel.classList.toggle("hidden", !codeRepos.length);
-  $("codeCloseBtn").classList.toggle("hidden", !codeRepos.length);
-  const repo = codeRepo();
-  sel.title = repo ? repo.path : "";
-}
-
 // A vista ocupa o que sobra da janela e é lá dentro que a árvore e o ficheiro
 // rolam — a página em si não cresce. A mesma conta do fitNoteCanvas (notes.js).
 function fitCodeLayout() {
@@ -401,90 +429,179 @@ window.addEventListener("resize", fitCodeLayout);
 
 function renderCode() {
   if (!$("codeView")) return;
-  renderCodeRepos();
-  const has = !!codeRepo();
-  $("codeEmpty").classList.toggle("hidden", has || !codeLocal);
-  $("codeRemote").classList.toggle("hidden", codeLocal);
-  $("codeLayout").classList.toggle("hidden", !has || !codeLocal);
-  if (!has || !codeLocal) {
-    // sem pasta aberta o painel fica escondido: limpar o que lá estava evita
-    // que a árvore antiga reapareça ao abrir a pasta seguinte
+  const repo = codeRepo();
+  $("codeLayout").classList.toggle("hidden", !repo);
+  if (!repo) {
+    // sem pasta à frente (fechou-se o separador) o painel fica escondido:
+    // limpar o que lá estava evita que a árvore antiga reapareça no seguinte
     $("codeTree").innerHTML = "";
     $("codeFileHead").innerHTML = "";
     $("codeFileBody").innerHTML = "";
     return;
   }
   fitCodeLayout();
+  // a procura é de cada separador, como a árvore e o ficheiro
+  $("codeFilter").value = codeState().filter;
   renderCodeTree();
   renderCodeFile();
 }
 
 // ---------- procurar um ficheiro pelo nome ----------
 
-async function runCodeSearch(q) {
-  if (!codeRepoId) return;
-  if (q.trim().length < 2) { codeHits = null; renderCodeTree(); return; }
-  const out = await codePost({ action: "search", id: codeRepoId, query: q });
+async function runCodeSearch(id, q) {
+  if (!id) return;
+  const st = codeState(id);
+  if (q.trim().length < 2) { st.hits = null; renderCodeTree(); return; }
+  const out = await codePost({ action: "search", id, query: q });
   if (!out) return;
-  codeHits = { hits: out.hits || [], partial: !!out.partial };
-  renderCodeTree();
+  st.hits = { hits: out.hits || [], partial: !!out.partial };
+  if (codeRepoId === id) renderCodeTree();
+}
+
+/* ---------- abrir uma pasta ----------
+   O "+" da barra dos separadores (a mesma janela que abre os livros de Excel,
+   ver workbooks.js) chama o pickCodeFolder; daqui sai-se com um separador novo
+   para a pasta escolhida. */
+
+// escrever o caminho à mão: é assim que se abre uma pasta numa aba do browser,
+// onde não há diálogo do Windows nenhum
+async function askCodeFolder() {
+  const path = prompt(t("code_ask_path"), "");
+  if (path === null || !path.trim()) return;
+  const out = await codePost({ action: "add", path: path.trim() });
+  if (out) openCodeTab(out.repos, out.id);
+}
+
+// a janela do Windows para escolher a pasta só existe na janela nativa da app;
+// numa aba do browser cai-se logo no caminho escrito à mão
+async function pickCodeFolder() {
+  const out = await codePost({ action: "browse" });
+  if (!out || out.cancelled) return;   // o utilizador fechou o diálogo
+  if (out.unavailable) { askCodeFolder(); return; }
+  openCodeTab(out.repos, out.id);
+}
+
+/* Mostra o separador da pasta escolhida. Abrir duas vezes a mesma pasta não
+   cria dois separadores — o id vem do caminho (ver repo_id em repo.py), por
+   isso salta-se para o que já lá está, como no openWorkbookTab. */
+function openCodeTab(repos, id) {
+  const jaEstava = codeRepos.some(r => r.id === id);
+  setCodeRepos(repos);
+  if (!id) return;
+  const repo = codeRepos.find(r => r.id === id);
+  showView(`code:${id}`);
+  toast(tf(jaEstava ? "code_already_open" : "code_opened", (repo || {}).name || ""), "ok");
+}
+
+/* ---------- separadores das pastas abertas ----------
+   Um separador por pasta, ao lado dos dos livros e com o mesmo desenho (nome,
+   ⧉ e ✕) e as mesmas peças (wireTabButton em views.js, wireTabDrag em
+   split.js). A ordem guardada neste browser manda depois disto, como nos
+   livros — ver applyStoredTabOrder. */
+function renderCodeTabs() {
+  const nav = document.querySelector(".tabs");
+  if (!nav) return;
+  const existentes = new Map([...nav.querySelectorAll('button[data-view^="code:"]')]
+    .map(b => [codeViewId(b.dataset.view), b]));
+  codeRepos.forEach(repo => {
+    let b = existentes.get(repo.id);
+    if (b) existentes.delete(repo.id);
+    else {
+      b = document.createElement("button");
+      b.dataset.view = `code:${repo.id}`;
+      b.dataset.icon = "⌨";
+      b.draggable = true;
+      b.type = "button";
+      const primeiroFixo = nav.querySelector(
+        'button[data-view]:not([data-view^="wb:"]):not([data-view^="code:"])');
+      nav.insertBefore(b, primeiroFixo || $("addWorkbookBtn"));
+      wireTabButton(b);
+      wireTabDrag(b);
+    }
+    b.dataset.label = repo.name;
+    b.title = repo.missing ? `${repo.path} — ${t("code_missing")}` : repo.path;
+    b.innerHTML = `<span class="wbTabName">${esc(repo.name)}${repo.missing ? " (?)" : ""}</span>` +
+      // numa janela já dedicada a esta pasta o ⧉ não tem para onde abrir (é
+      // esta mesma janela outra vez), como no SOLO_WB dos livros
+      (SOLO_CODE ? "" :
+        `<span class="wbTabPop" data-codepop="${esc(repo.id)}" title="${esc(t("code_window"))}" ` +
+        `role="button" aria-label="${esc(t("code_window"))}">⧉</span>`) +
+      `<span class="wbTabClose" data-codeclose="${esc(repo.id)}" title="${esc(t("t_code_close"))}" ` +
+      `role="button" aria-label="${esc(t("t_code_close"))}">✕</span>`;
+  });
+  // separadores de pastas que já não estão abertas
+  existentes.forEach(b => b.remove());
+  applyStoredTabOrder();
+  markActiveCodeTab();
+}
+
+function markActiveCodeTab() {
+  document.querySelectorAll('.tabs button[data-view^="code:"]').forEach(b => {
+    b.classList.toggle("wbActive", codeViewId(b.dataset.view) === codeRepoId);
+  });
+}
+
+// troca a pasta em foco: o painel é um só e passa a mostrar esta (o estado da
+// anterior fica guardado na sua entrada de codeStates, intacto)
+function setActiveCodeTab(id) {
+  if (id === codeRepoId) return;
+  codeRepoId = id || "";
+  // numa janela dedicada a uma pasta a escolha não se grava: o localStorage é
+  // o mesmo da janela principal e tirava-a de onde está (ver SOLO_WB)
+  if (!SOLO_CODE) localStorage.setItem("bsp-tracker-code-repo", codeRepoId);
+  markActiveCodeTab();
+}
+
+// fechar um separador = fechar a pasta na app. Nada é apagado no disco: é só
+// deixar de a mostrar (ver remove_repo em cswaios/repo.py).
+async function closeCodeTab(id) {
+  const i = codeRepos.findIndex(r => r.id === id);
+  if (i < 0 || !confirm(tf("code_confirm_close", codeRepos[i].name))) return;
+  const out = await codePost({ action: "remove", id });
+  if (!out) return;
+  const vista = `code:${id}`;
+  const estavaNoEcra = currentView === vista;
+  // sair do ecrã dividido antes de o separador desaparecer (o painel ainda tem
+  // de ser encontrado para voltar ao sítio)
+  if (sideView === vista) exitSplit();
+  setCodeRepos(out.repos);
+  const seguinte = codeRepos[Math.min(i, codeRepos.length - 1)] || null;
+  if (codeRepoId === id) setActiveCodeTab(seguinte ? seguinte.id : "");
+  // só se muda de vista se era esta pasta que estava no ecrã: fechar um
+  // separador que está atrás não tira ninguém de onde está
+  if (estavaNoEcra) showView(seguinte ? `code:${seguinte.id}` : fallbackView());
+  else if (codeVisible()) renderCode();
+}
+
+// ⧉ do separador (ou o botão do meio do rato): a app noutra janela já nesta
+// pasta, para se ler duas pastas ao mesmo tempo (ver SOLO_CODE em state.js)
+function openCodeWindow(id) {
+  if (!codeRepos.some(r => r.id === id)) return;
+  return openAppWindow(`/?code=${encodeURIComponent(id)}`, `myorg_code_${id}`);
+}
+
+// atalho da pesquisa (cmd_code): salta para a pasta onde se estava ou, sem
+// nenhuma aberta, abre a janela do "+" para se escolher uma
+function goToCode() {
+  if (codeRepos.length) showView(`code:${codeRepoId || codeRepos[0].id}`);
+  else setAddWorkbookOpen(true);
 }
 
 // ---------- ligações da interface ----------
 
 if ($("codeView")) {
-  // escrever o caminho à mão: é assim que se abre uma pasta numa aba do
-  // browser, onde não há diálogo do Windows nenhum
-  async function askCodeFolder() {
-    const path = prompt(t("code_ask_path"), "");
-    if (path === null || !path.trim()) return;
-    const out = await codePost({ action: "add", path: path.trim() });
-    if (out) setCodeRepos(out.repos, out.id);
-  }
-
-  // a janela do Windows para escolher a pasta só existe na janela nativa da
-  // app; numa aba do browser cai-se logo no caminho escrito à mão
-  async function pickCodeFolder() {
-    const out = await codePost({ action: "browse" });
-    if (!out || out.cancelled) return;
-    if (out.unavailable) { askCodeFolder(); return; }
-    setCodeRepos(out.repos, out.id);
-  }
-
-  $("codeAddBtn").addEventListener("click", pickCodeFolder);
-  $("codeEmptyAdd").addEventListener("click", pickCodeFolder);
-  $("codePathBtn").addEventListener("click", askCodeFolder);
-
-  $("codeCloseBtn").addEventListener("click", async () => {
-    const repo = codeRepo();
-    if (!repo || !confirm(tf("code_confirm_close", repo.name))) return;
-    const out = await codePost({ action: "remove", id: repo.id });
-    if (out) setCodeRepos(out.repos, "");
-  });
-
-  $("codeRepoSel").addEventListener("change", e => {
-    codeRepoId = e.target.value;
-    localStorage.setItem("bsp-tracker-code-repo", codeRepoId);
-    codeDirCache.clear();
-    codeOpenDirs.clear();
-    codeSkipDirs.clear();
-    codeHits = null;
-    codeFile = "";
-    codeFileData = null;
-    $("codeFilter").value = "";
-    codeDir("").then(renderCode);
-  });
-
   $("codeFilter").addEventListener("input", e => {
     const q = e.target.value;
+    const id = codeRepoId;
+    codeState(id).filter = q;
     clearTimeout(codeSearchTimer);
-    codeSearchTimer = setTimeout(() => runCodeSearch(q), 250);
+    codeSearchTimer = setTimeout(() => runCodeSearch(id, q), 250);
   });
 
   $("codeTree").addEventListener("click", e => {
     const dir = e.target.closest("[data-cdir]");
     if (dir) {
-      if (codeSkipDirs.has(dir.dataset.cdir)) { toast(t("t_code_skip")); return; }
+      if (codeState().skip.has(dir.dataset.cdir)) { toast(t("t_code_skip")); return; }
       toggleCodeDir(dir.dataset.cdir);
       return;
     }
@@ -493,26 +610,28 @@ if ($("codeView")) {
   });
 
   $("codeFileHead").addEventListener("click", e => {
+    const st = codeState();
     if (e.target.closest("#codeCopyBtn")) {
-      if (codeFileData && !codeFileData.binary) copyToClipboard(codeFileData.text);
+      if (st.data && !st.data.binary) copyToClipboard(st.data.text);
       return;
     }
-    if (e.target.closest("#codeReloadBtn") && codeFile) openCodeFile(codeFile);
+    if (e.target.closest("#codeReloadBtn") && st.file) openCodeFile(st.file);
   });
 }
 
-// a árvore da raiz só se lê quando a vista abre pela primeira vez (não vale a
-// pena andar no disco de quem nunca cá vem)
-let codeTreeSeeded = false;
-
+// A árvore da raiz de cada pasta só se lê quando o separador dela abre pela
+// primeira vez (não vale a pena andar no disco de quem nunca cá vem).
 async function renderCodePage() {
-  const primeiraVez = !codeTreeSeeded;
-  if (!codeRepos.length && primeiraVez) await loadRepos();
-  if (codeRepoId && !codeDirCache.has("")) await codeDir("");
-  codeTreeSeeded = true;
-  renderCode();
-  // volta ao ficheiro onde se estava da última vez (guardado no openCodeFile)
-  if (!primeiraVez || codeFile || !codeRepoId) return;
-  const [repo, path] = String(localStorage.getItem("bsp-tracker-code-file") || "").split("|");
-  if (repo === codeRepoId && path) openCodeFile(path);
+  if (!codeRepos.length) await loadRepos();
+  const id = codeRepoId;
+  const st = id ? codeState(id) : null;
+  if (st && !st.seeded) {
+    st.seeded = true;
+    await codeDir(id, "");
+    // volta ao ficheiro onde se estava da última vez nesta pasta (guardado no
+    // openCodeFile), se o separador ainda for este
+    const path = localStorage.getItem(codeFileKey(id)) || "";
+    if (path && !st.file && codeRepoId === id) openCodeFile(path);
+  }
+  if (codeVisible()) renderCode();
 }

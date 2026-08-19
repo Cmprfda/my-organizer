@@ -214,6 +214,15 @@ if (SOLO_NOTE) {
   applyNoteSolo();
   toast(t("note_window_solo"), "ok");
 }
+// separadores das pastas de código: a lista é do servidor (/api/repos), por isso
+// os separadores nascem quando ela chegar. Numa janela dedicada a uma pasta
+// (?code=) é aí que se salta para ela, com o nome dela no título.
+loadRepos().then(() => {
+  if (!SOLO_CODE || !codeRepo()) return;
+  document.title = `${codeRepo().name} — My Organizer`;
+  showView(`code:${SOLO_CODE}`);
+  toast(t("code_window_solo"), "ok");
+});
 // o notifyTaskChanges() da primeira carga só semeia o retrato das minhas linhas
 // (não avisa nada): sem isto, a primeira comparação teria de esperar 20s
 // o painel "Hoje" abre logo (uma vez por dia): as secções que dependem dos

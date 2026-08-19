@@ -145,16 +145,20 @@
     background: var(--accent-soft);
 }
 
-/* separador de um livro: o nome e o ✕ só aparecem quando o separador está
-   aberto ou com o rato em cima (o resto da barra funciona da mesma maneira) */
-.tabs button[data-view^="wb:"] .wbTabName {
+/* separador de um livro (ou de uma pasta de código: o desenho é o mesmo): o
+   nome e o ✕ só aparecem quando o separador está aberto ou com o rato em cima
+   (o resto da barra funciona da mesma maneira) */
+.tabs button[data-view^="wb:"] .wbTabName,
+.tabs button[data-view^="code:"] .wbTabName {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 22ch;
 }
 
 .tabs button[data-view^="wb:"] .wbTabClose,
-.tabs button[data-view^="wb:"] .wbTabPop {
+.tabs button[data-view^="wb:"] .wbTabPop,
+.tabs button[data-view^="code:"] .wbTabClose,
+.tabs button[data-view^="code:"] .wbTabPop {
     margin-left: 6px;
     padding: 0 2px;
     border-radius: 4px;
@@ -168,18 +172,27 @@
 .tabs button[data-view^="wb:"].side .wbTabClose,
 .tabs button[data-view^="wb:"]:hover .wbTabPop,
 .tabs button[data-view^="wb:"].active .wbTabPop,
-.tabs button[data-view^="wb:"].side .wbTabPop {
+.tabs button[data-view^="wb:"].side .wbTabPop,
+.tabs button[data-view^="code:"]:hover .wbTabClose,
+.tabs button[data-view^="code:"].active .wbTabClose,
+.tabs button[data-view^="code:"].side .wbTabClose,
+.tabs button[data-view^="code:"]:hover .wbTabPop,
+.tabs button[data-view^="code:"].active .wbTabPop,
+.tabs button[data-view^="code:"].side .wbTabPop {
     opacity: 1;
 }
 
 .tabs button[data-view^="wb:"] .wbTabClose:hover,
-.tabs button[data-view^="wb:"] .wbTabPop:hover {
+.tabs button[data-view^="wb:"] .wbTabPop:hover,
+.tabs button[data-view^="code:"] .wbTabClose:hover,
+.tabs button[data-view^="code:"] .wbTabPop:hover {
     color: var(--accent);
     background: var(--accent-soft);
 }
 
-/* livro em foco sem ser o separador à frente (está no painel do lado) */
-.tabs button[data-view^="wb:"].wbActive:not(.active):not(.side) {
+/* livro/pasta em foco sem ser o separador à frente (está no painel do lado) */
+.tabs button[data-view^="wb:"].wbActive:not(.active):not(.side),
+.tabs button[data-view^="code:"].wbActive:not(.active):not(.side) {
     color: var(--text);
 }
 

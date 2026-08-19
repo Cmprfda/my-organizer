@@ -111,7 +111,7 @@ function searchActionHits(termos) {
     { title: t("cmd_todo"), go: () => showView("todo") },
     { title: t("cmd_ccrs"), go: () => showView("ccrs") },
     { title: t("cmd_notes"), go: () => showView("notes") },
-    { title: t("cmd_code"), go: () => showView("code") },
+    { title: t("cmd_code"), go: () => goToCode() },
     { title: t("cmd_feedback"), go: () => showView("feedback") },
     { title: t("cmd_refresh"), go: () => load(true, true) },
     { title: t("cmd_settings"), go: () => setSettingsOpen(true) },

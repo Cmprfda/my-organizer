@@ -4,7 +4,7 @@
 // aberto — não tem separador próprio, é o que se mostra no lugar deles.
 const VIEWS = {
   workbooks: "wbEmptyView", ccrs: "ccrView", todo: "todoView",
-  notes: "notesView", code: "codeView", metrics: "metricsView",
+  notes: "notesView", metrics: "metricsView",
   feedback: "fbView", jira: "jiraView",
   // as definições são uma página como as outras; o separador delas é a roda
   // dentada (#settingsBtn), que não tem data-view e por isso não se arrasta
@@ -26,17 +26,34 @@ const workbookViewId = name => String(name || "").startsWith("wb:") ? String(nam
 // vista do livro ativo (ou o painel de boas-vindas, sem livros abertos)
 const workbookView = () => activeTabId ? `wb:${activeTabId}` : "workbooks";
 
-// "excel" (origem guardada) -> o separador do livro ativo
+/* ---------- separadores das pastas de código ----------
+   Exatamente o mesmo desenho dos livros: cada pasta aberta tem o seu separador
+   ("code:<id>"), o painel #codeView é um só e mostra a pasta do separador ativo
+   (o codeRepoId, ver setActiveCodeTab em code.js). "code" continua a ser aceite
+   como nome de vista e quer dizer "a pasta que estiver ativa". */
+const isCodeView = name => name === "code" || String(name || "").startsWith("code:");
+const codeViewId = name => String(name || "").startsWith("code:") ? String(name).slice(5) : "";
+const codeView = () => codeRepoId ? `code:${codeRepoId}` : "";
+
+// "excel"/"code" (origens guardadas) -> o separador do livro/pasta ativo
 function normalizeView(name) {
+  if (isCodeView(name)) {
+    const cid = codeViewId(name);
+    if (cid && codeRepos.some(r => r.id === cid)) return name;
+    // sem nenhuma pasta aberta não há painel de código para mostrar
+    return codeView() || fallbackView();
+  }
   if (!isWorkbookView(name)) return name;
   const id = workbookViewId(name);
   if (id && tabById(id)) return name;
   return workbookView();
 }
 
-// elemento da vista: os livros partilham todos o mesmo painel
+// elemento da vista: os livros partilham todos o mesmo painel, as pastas de
+// código também
 function viewEl(name) {
   if (isWorkbookView(name)) return $("excelView");
+  if (isCodeView(name)) return $("codeView");
   return VIEWS[name] ? $(VIEWS[name]) : null;
 }
 
@@ -72,9 +89,11 @@ function markActiveWorkbookTab() {
 function showView(name) {
   name = normalizeView(name);
   // o painel do livro é um só: não pode estar ao lado e no principal ao mesmo
-  // tempo com livros diferentes
+  // tempo com livros diferentes (o do código é igual)
   if (isWorkbookView(name) && isWorkbookView(sideView)) exitSplit();
+  if (isCodeView(name) && isCodeView(sideView)) exitSplit();
   if (isWorkbookView(name)) setActiveTab(workbookViewId(name));
+  if (isCodeView(name)) setActiveCodeTab(codeViewId(name));
   currentView = name;
   document.querySelectorAll(".tabs button[data-view]").forEach(x => {
     x.classList.toggle("active", x.dataset.view === name);
@@ -89,6 +108,8 @@ function showView(name) {
   }
   $("excelView").classList.toggle("hidden", !wbOnScreen);
   $("excelSub").classList.toggle("hidden", !wbOnScreen);
+  const codeOnScreen = isCodeView(name) || isCodeView(sideView);
+  $("codeView").classList.toggle("hidden", !codeOnScreen);
   $("settingsBtn").classList.toggle("active", name === "settings");
   if (name === "settings") $("settingsBtn").setAttribute("aria-current", "page");
   else $("settingsBtn").removeAttribute("aria-current");
@@ -98,9 +119,9 @@ function showView(name) {
   if (name === "todo" || sideView === "todo") renderTodo();
   if (name === "notes" || sideView === "notes") renderNotes();
   if (name === "jira" || sideView === "jira") renderJiraPage();
-  // a pasta de código só se lê quando a vista abre (não se anda no disco de
-  // quem nunca cá vem) — ver renderCodePage em code.js
-  if (name === "code" || sideView === "code") renderCodePage();
+  // a pasta de código só se lê quando o separador dela abre (não se anda no
+  // disco de quem nunca cá vem) — ver renderCodePage em code.js
+  if (codeOnScreen) renderCodePage();
   if (name === "metrics" || sideView === "metrics") {
     // a atividade de todos os livros só se vai buscar quando esta vista abre
     // (não vale a pena pedi-la a quem nunca cá vem)
@@ -194,17 +215,27 @@ function closeWorkbookTab(id) {
 }
 
 function wireTabButton(b) {
-  // botão do meio num separador de livro: janela nova, como nos browsers
+  // botão do meio num separador de livro (ou de pasta de código): janela nova,
+  // como nos browsers
   b.addEventListener("auxclick", e => {
-    if (e.button !== 1 || !isWorkbookView(b.dataset.view)) return;
-    e.preventDefault();
-    openWorkbookWindow(workbookViewId(b.dataset.view));
+    if (e.button !== 1) return;
+    if (isWorkbookView(b.dataset.view)) {
+      e.preventDefault();
+      openWorkbookWindow(workbookViewId(b.dataset.view));
+    } else if (isCodeView(b.dataset.view)) {
+      e.preventDefault();
+      openCodeWindow(codeViewId(b.dataset.view));
+    }
   });
   b.addEventListener("click", e => {
     const p = e.target.closest("[data-wbpop]");
     if (p) { e.preventDefault(); e.stopPropagation(); openWorkbookWindow(p.dataset.wbpop); return; }
     const x = e.target.closest("[data-wbclose]");
     if (x) { e.preventDefault(); e.stopPropagation(); closeWorkbookTab(x.dataset.wbclose); return; }
+    const cp = e.target.closest("[data-codepop]");
+    if (cp) { e.preventDefault(); e.stopPropagation(); openCodeWindow(cp.dataset.codepop); return; }
+    const cx = e.target.closest("[data-codeclose]");
+    if (cx) { e.preventDefault(); e.stopPropagation(); closeCodeTab(cx.dataset.codeclose); return; }
     // clicar no separador da vista que está ao lado devolve-a ao ecrã inteiro
     if (sideView === b.dataset.view) exitSplit();
     showView(b.dataset.view);

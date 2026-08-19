@@ -64,11 +64,10 @@
       <button data-view="todo" data-icon="&#10004;" draggable="true">TODO</button>
       <button data-view="notes" data-icon="&#9998;" draggable="true">Notas</button>
       <button data-view="metrics" data-icon="&#128200;" draggable="true">Métricas</button>
-      <button data-view="code" data-icon="&#9000;" draggable="true">Código</button>
       <button data-view="feedback" data-icon="&#9993;" draggable="true">Feedback</button>
       <button data-view="jira" data-icon="" draggable="true" class="hidden"><img src="/static/img/jira.svg" alt="" width="17" height="17" style="flex-shrink:0">Jira</button>
-      <button id="addWorkbookBtn" type="button" class="addWbBtn" title="Abrir um livro de Excel"
-        aria-label="Abrir um livro de Excel" aria-expanded="false">&#43;</button>
+      <button id="addWorkbookBtn" type="button" class="addWbBtn" title="Abrir uma página"
+        aria-label="Abrir uma página" aria-expanded="false">&#43;</button>
       <button id="settingsBtn" type="button" title="Definições" aria-label="Definições">&#9881;</button>
     </nav>
 
@@ -332,23 +331,8 @@
         </div>
 
         <div id="codeView" class="hidden">
-          <div class="state hidden" id="codeRemote">
-            <h2 id="codeRemoteTitle">Só no computador onde a app corre.</h2>
-            <p id="codeRemoteText">Os ficheiros estão nesse PC — pela rede local esta página não os lê.</p>
-          </div>
-          <div class="state hidden" id="codeEmpty">
-            <h2 id="codeEmptyTitle">Nenhuma pasta aberta.</h2>
-            <p id="codeEmptyText">Abre a pasta dos teus scripts (ou um repositório) para a leres aqui. A app só lê: nada é gravado por cima dos teus ficheiros.</p>
-            <button type="button" id="codeEmptyAdd" class="wbEmptyAdd">&#43; Abrir pasta</button>
-          </div>
           <div class="codeLayout hidden" id="codeLayout">
             <aside class="codeSide">
-              <div class="codeSideBar">
-                <select id="codeRepoSel" title="Pasta aberta"></select>
-                <button type="button" id="codeAddBtn" title="Abrir outra pasta">&#43;</button>
-                <button type="button" id="codePathBtn" class="secondary" title="Abrir uma pasta escrevendo o caminho">&#9998;</button>
-                <button type="button" id="codeCloseBtn" class="secondary" title="Fechar esta pasta (não apaga nada)">&#10005;</button>
-              </div>
               <input type="text" id="codeFilter" placeholder="Procurar ficheiro…">
               <div class="codeTree" id="codeTree"></div>
             </aside>
@@ -691,10 +675,10 @@
     </div>
   </div>
 
-  <div id="wbAddOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Abrir um livro de Excel">
+  <div id="wbAddOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Abrir uma página">
     <div class="helpCard pickerCard">
       <div class="helpHead">
-        <strong id="wbAddTitle">Abrir um livro de Excel</strong>
+        <strong id="wbAddTitle">Abrir uma página</strong>
         <button type="button" class="ccr-x" id="wbAddClose" title="Fechar">✕</button>
       </div>
       <div id="wbAddBody">
@@ -707,6 +691,11 @@
           <span class="pickIcon">📁</span>
           <span class="pickName"><strong id="wbAddLocalTxt">Excel de um ficheiro local</strong>
             <small id="wbAddLocalSub">Escolher um .xlsx neste computador</small></span>
+        </button>
+        <button type="button" class="pickRow" id="wbAddCode">
+          <span class="pickIcon">&#128187;</span>
+          <span class="pickName"><strong id="wbAddCodeTxt">Pasta de código</strong>
+            <small id="wbAddCodeSub">Ler os teus scripts (ou um repositório) deste computador</small></span>
         </button>
         <div class="pickNote hidden" id="wbAddNote"></div>
       </div>

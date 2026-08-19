@@ -29,22 +29,6 @@
     padding: 10px;
 }
 
-.codeSideBar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.codeSideBar select {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.codeSideBar button {
-    flex: 0 0 auto;
-    padding: 5px 9px;
-}
-
 .codeTree {
     flex: 1 1 auto;
     min-height: 240px;

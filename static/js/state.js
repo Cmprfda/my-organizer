@@ -36,6 +36,12 @@ const SOLO_WB = new URLSearchParams(location.search).get("wb") || "";
    exatamente como acontece com a lista de livros do SOLO_WB. */
 const SOLO_NOTE = new URLSearchParams(location.search).get("note") || "";
 
+/* Janela dedicada a UMA pasta de código: `?code=<id>`, aberta pelo ⧉ do
+   separador (ver openCodeWindow em code.js). É a mesma app, mas só com aquela
+   pasta: os outros separadores de código ficam na janela principal e a pasta
+   ativa não se grava — o localStorage é o mesmo das duas, tal como no SOLO_WB. */
+const SOLO_CODE = new URLSearchParams(location.search).get("code") || "";
+
 // identidade estável: o mesmo livro dá sempre o mesmo id, entre arranques e
 // entre separadores (é o que permite não abrir o mesmo livro duas vezes)
 function workbookId(kind, key) {

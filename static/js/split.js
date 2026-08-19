@@ -141,8 +141,10 @@ function enterSplitView(side, view) {
   view = normalizeView(view);
   if (!viewEl(view)) return;
   if (sideView && sideView !== view) exitSplit();
-  // o painel do livro é um só: pô-lo ao lado obriga a que seja esse o livro ativo
+  // o painel do livro é um só: pô-lo ao lado obriga a que seja esse o livro
+  // ativo (o do código é igual, ver setActiveCodeTab)
   if (isWorkbookView(view)) setActiveTab(workbookViewId(view));
+  if (isCodeView(view)) setActiveCodeTab(codeViewId(view));
   sideView = view;
   const el = viewEl(view);
   $("sideBody").appendChild(el);
@@ -152,11 +154,14 @@ function enterSplitView(side, view) {
   $("splitBar").classList.remove("hidden");
   document.body.classList.add("split");
   document.body.classList.toggle("side-left", side === "left");
-  // o painel principal fica com a vista atual; se for a mesma, escolhe outra
-  // (nunca outro livro: o painel dos livros já está do lado)
-  showView(currentView === view || isWorkbookView(currentView)
-    ? (isWorkbookView(view) ? "todo" : fallbackView())
-    : currentView);
+  // O painel principal fica com a vista atual; se for a mesma, escolhe outra —
+  // e nunca outro livro (nem outra pasta de código) quando é isso que está do
+  // lado, porque esses painéis são um só e não podem estar nos dois sítios.
+  const mesmoPainel = currentView === view ||
+    (isWorkbookView(currentView) && isWorkbookView(view)) ||
+    (isCodeView(currentView) && isCodeView(view));
+  showView(!mesmoPainel ? currentView
+    : (isWorkbookView(view) || isCodeView(view)) ? "todo" : fallbackView());
 }
 
 function exitSplit() {
