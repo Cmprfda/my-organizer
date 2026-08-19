@@ -207,7 +207,7 @@ function renderChatLog() {
 }
 
 function renderChatSuggestions() {
-  $("chatSuggest").innerHTML = ["chat_sug_tasks", "chat_sug_stale", "chat_sug_todo", "chat_sug_help"]
+  $("chatSuggest").innerHTML = ["chat_sug_tasks", "chat_sug_next", "chat_sug_stale", "chat_sug_todo", "chat_sug_help"]
     .map(k => `<button type="button" class="chatChip" data-chatsug="${esc(t(k))}">${esc(t(k))}</button>`)
     .join("");
 }
@@ -330,6 +330,29 @@ async function chatAddNote(action) {
   return true;
 }
 
+// Uma nota nova no quadro: primeiro a nota, depois — se o assistente montou
+// uma tabela — uma caixa com ela. A caixa é alta o suficiente para o que leva
+// (o texto sai em linhas de "| coluna |", ver noteTableBlock em notes.js), e no
+// fim abre-se a nota: quem pediu quer vê-la.
+async function chatNewNote(action) {
+  const out = await postNotepad({ action: "add_note", title: action.title, folder: "" });
+  if (!out) return false;
+  const nota = (out.notepad.notes || [])[(out.notepad.notes || []).length - 1];
+  if (!nota) return false;
+  const texto = String(action.text || "");
+  if (texto) {
+    const linhas = texto.split("\n").length;
+    const feito = await postNotepad({
+      action: "add_box", id: nota.id, x: 80, y: 80,
+      w: 520, h: Math.max(160, Math.min(900, 28 * linhas + 40)), text: texto,
+    });
+    if (!feito) return false;
+  }
+  setCurrentNote(nota.id);
+  showView("notes");
+  return true;
+}
+
 async function runChatAction(action) {
   if (!action) return false;
   if (action.kind === "todo_add") {
@@ -340,8 +363,15 @@ async function runChatAction(action) {
   }
   if (action.kind === "todo_done")
     return await postTodo({ action: "set_col", id: action.id, col: "done" });
+  if (action.kind === "todo_col")
+    return await postTodo({ action: "set_col", id: action.id, col: action.col });
+  if (action.kind === "todo_priority")
+    return await postTodo({ action: "set_priority", id: action.id, priority: action.priority });
+  if (action.kind === "todo_delete")
+    return await postTodo({ action: "delete", id: action.id });
   if (action.kind === "status_set") return await chatSetStatus(action);
   if (action.kind === "note_add") return await chatAddNote(action);
+  if (action.kind === "note_new") return await chatNewNote(action);
   return false;
 }
 

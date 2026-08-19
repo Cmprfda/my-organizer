@@ -160,6 +160,111 @@ class TestAssistente(unittest.TestCase):
         self.assertEqual(out["action"]["note"], "falhou no run 7")
         self.assertEqual(out["action"]["ref"]["fn"], "TC-42")
 
+    # ---------- perguntas novas ----------
+    def test_estatisticas_contam_por_classe_de_estado(self):
+        ctx = contexto([linha("A", 2, tc="In progress"), linha("B", 3, tc="Done"),
+                        linha("C", 4, tc="Blocked")])
+        out = chat.answer("estatisticas", ctx)
+        self.assertEqual(out["intent"], "stats")
+        self.assertIn("1 concluída(s), 1 em curso, 1 bloqueada(s)", out["reply"])
+
+    def test_linhas_sem_estado_sao_as_que_estao_por_preencher(self):
+        ctx = contexto([linha("VAZIA", 2, tc="", tp=""), linha("CHEIA", 3, tc="Done")])
+        out = chat.answer("linhas sem estado", ctx)
+        self.assertEqual(out["intent"], "gaps")
+        self.assertEqual([i["title"] for i in out["items"]], ["VAZIA"])
+
+    def test_o_que_faco_a_seguir_poe_o_urgente_a_frente(self):
+        ctx = contexto([linha("PARADA", 2, age=30)],
+                       todos=[{"id": "t1", "title": "normal", "col": "todo", "done": False},
+                              {"id": "t2", "title": "a arder", "col": "todo",
+                               "priority": "urgent", "done": False}])
+        out = chat.answer("o que faço a seguir", ctx)
+        self.assertEqual(out["intent"], "next")
+        self.assertEqual(out["items"][0]["title"], "a arder")
+        # a linha parada entra a seguir aos itens do quadro, sem se repetir
+        self.assertIn("PARADA", [i["title"] for i in out["items"]])
+
+    def test_urgentes_so_conta_o_que_esta_por_fechar(self):
+        ctx = contexto(todos=[{"id": "t1", "title": "feito", "col": "done",
+                               "priority": "urgent", "done": True},
+                              {"id": "t2", "title": "por fazer", "col": "todo",
+                               "priority": "high", "done": False}])
+        out = chat.answer("urgentes", ctx)
+        self.assertEqual([i["title"] for i in out["items"]], ["por fazer"])
+
+    def test_livros_abertos_dizem_qual_esta_a_vista(self):
+        out = chat.answer("livros abertos", contexto([linha("A", 2)]))
+        self.assertEqual(out["intent"], "where")
+        self.assertIn("livro_de_teste.xlsx", out["reply"])
+        self.assertIn(ABA, out["reply"])
+
+    # ---------- ordens novas ----------
+    def test_obs_escreve_se_pelo_mesmo_caminho_dos_estados(self):
+        out = chat.answer("obs em FN_A: a aguardar o fornecedor", contexto([linha("FN_A", 2)]))
+        self.assertEqual(out["intent"], "obs_set")
+        self.assertEqual(out["action"]["kind"], "status_set")   # /api/update, local (✎)
+        self.assertEqual(out["action"]["column"], "OBS")
+        self.assertEqual(out["action"]["value"], "a aguardar o fornecedor")
+
+    def test_mover_item_usa_a_coluna_do_quadro_de_quem_pergunta(self):
+        ctx = contexto(todos=[{"id": "t1", "title": "rever o TC-42", "col": "todo",
+                               "col_label": "Por fazer", "done": False},
+                              {"id": "t2", "title": "outro", "col": "espera",
+                               "col_label": "À espera", "done": False}])
+        out = chat.answer("move rever o TC-42 para à espera", ctx)
+        self.assertEqual(out["action"], {"kind": "todo_col", "id": "t1", "col": "espera",
+                                         "title": "rever o TC-42"})
+
+    def test_coluna_desconhecida_nao_propoe_nada(self):
+        ctx = contexto(todos=[{"id": "t1", "title": "x", "col": "todo", "done": False}])
+        out = chat.answer("move x para xpto", ctx)
+        self.assertIsNone(out["action"])
+
+    def test_prioridade_e_uma_ordem_mas_prioridade_alta_e_uma_pergunta(self):
+        ctx = contexto(todos=[{"id": "t1", "title": "rever o TC-42", "col": "todo",
+                               "priority": "normal", "done": False}])
+        ordem = chat.answer("prioridade de rever o TC-42 para urgente", ctx)
+        self.assertEqual(ordem["action"], {"kind": "todo_priority", "id": "t1",
+                                           "priority": "urgent", "title": "rever o TC-42"})
+        pergunta = chat.answer("prioridade alta", ctx)
+        self.assertEqual(pergunta["intent"], "urgent")
+        self.assertIsNone(pergunta["action"])
+
+    def test_apagar_da_lista_diz_que_nao_se_desfaz(self):
+        ctx = contexto(todos=[{"id": "t1", "title": "rever o TC-42", "col": "todo",
+                               "done": False}])
+        out = chat.answer("remove da lista: rever o TC-42", ctx)
+        self.assertEqual(out["action"], {"kind": "todo_delete", "id": "t1",
+                                         "title": "rever o TC-42"})
+        self.assertIn("não se desfaz", out["confirm"])
+
+    def test_nota_nova_vazia_nao_e_um_item_da_lista(self):
+        out = chat.answer("cria uma nota: Reunião de sexta", contexto())
+        self.assertEqual(out["intent"], "note_new")
+        self.assertEqual(out["action"], {"kind": "note_new", "title": "Reunião de sexta",
+                                         "text": ""})
+
+    def test_nota_nova_com_tabela_do_que_esta_aberto(self):
+        ctx = contexto([linha("PARADA", 2, age=30), linha("NOVA", 3, age=1)])
+        out = chat.answer("cria uma nota com as minhas tarefas paradas", ctx)
+        texto = out["action"]["text"]
+        # o formato é o que a caixa da nota desenha (ver noteTableBlock, notes.js)
+        self.assertIn("| Tarefa | O que fazer | Estado | Livro |", texto)
+        self.assertIn("| --- | --- | --- | --- |", texto)
+        self.assertIn("| PARADA |", texto)
+        self.assertNotIn("| NOVA |", texto)
+
+    def test_titulo_com_a_palavra_com_continua_a_ser_so_um_titulo(self):
+        out = chat.answer("cria uma nota: Reunião com o fornecedor", contexto())
+        self.assertEqual(out["action"]["title"], "Reunião com o fornecedor")
+        self.assertEqual(out["action"]["text"], "")
+
+    def test_celulas_da_tabela_nao_partem_a_linha(self):
+        ctx = contexto([linha("A|B", 2, todo="uma\nduas", age=30)])
+        texto = chat.answer("cria uma nota com as tarefas paradas", ctx)["action"]["text"]
+        self.assertIn("| A/B | uma duas |", texto)
+
     # ---------- motores ----------
     def test_motor_llm_nao_configurado_cai_no_local_com_aviso(self):
         """Sem SDK/credencial, uma pergunta livre e respondida pelo motor local

@@ -144,3 +144,11 @@
   lista*, *estado de X para Done*) continuam a passar pelo motor local, com a
   confirmação de sempre. Sem SDK, sem chave ou sem rede, responde o motor local
   e diz que foi ele.
+- **Mais comandos no assistente**: além do que já sabia, responde a *o que faço a
+  seguir* (o urgente, o que está em curso e o que está parado, por essa ordem),
+  *urgentes*, *estatísticas*, *linhas sem estado* e *livros abertos*. E aceita
+  mais ordens, sempre com o Confirmar de antes: *obs em &lt;tarefa&gt;: &lt;texto&gt;*
+  (fica local ✎ até ao Enviar), *move &lt;item&gt; para em curso*, *prioridade de
+  &lt;item&gt; para alta*, *remove da lista: &lt;item&gt;* e *cria uma nota: &lt;título&gt;* —
+  esta última também põe na nota uma **tabela** do que está aberto (*cria uma
+  nota com as minhas tarefas paradas*, *com a lista por fazer*, *com as ccrs*).

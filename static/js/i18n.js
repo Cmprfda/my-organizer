@@ -851,6 +851,7 @@ const TR = {
   chat_expired: ["Proposta de antes de fechar a app — pede outra vez.",
     "Proposed before the app was closed — ask again."],
   chat_sug_tasks: ["as minhas tarefas", "my tasks"],
+  chat_sug_next: ["o que faço a seguir", "what next"],
   chat_sug_stale: ["tarefas paradas", "stale tasks"],
   chat_sug_todo: ["o que tenho por fazer", "what do I have to do"],
   chat_sug_help: ["ajuda", "help"],
