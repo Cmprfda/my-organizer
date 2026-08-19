@@ -413,3 +413,86 @@ input[type=text] {
   padding: 8px 10px;
   max-width: 230px;
 }
+
+/* ---------- lista do que está por enviar (botão ao lado do Enviar) ----------
+   Reaproveita a caixa flutuante do painel das colunas do quadro
+   (.todoColsPop, todo.css): aqui só muda o conteúdo, uma linha do Excel por
+   cartão com os campos alterados lá dentro. */
+.pendingPop {
+  width: 340px;
+}
+
+.pendingPopList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pendingPopItem {
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  padding: 7px 9px;
+}
+
+.pendingPopTask {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.pendingPopSheet {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.pendingPopFields {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* campo: nome, valor que está na folha, valor que o Push vai escrever */
+.pendingPopChange {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.pendingPopChange b {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pendingPopOld {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.pendingPopArrow {
+  color: var(--muted);
+}
+
+.pendingPopNew {
+  color: var(--accent-text);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.pendingPopEmpty {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.pendingPopFoot {
+  margin: 9px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}

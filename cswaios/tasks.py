@@ -913,14 +913,14 @@ def pending_overrides_summary():
             col_i = int(col0)
             field = headers[col_i] if headers and 0 <= col_i < len(headers) else f"Coluna {col_i + 1}"
             out.append({"sheet": sheet, "task": f"Linha {xlrow}", "field": field,
-                        "value": entry.get("value", "")})
+                        "value": entry.get("value", ""), "base": entry.get("base", "")})
             continue
         _, sheet, fn, todo = _split_key(key)
         task = fn if not todo or todo == fn else f"{fn} — {todo}"
         for col, sub in entry.items():
             if isinstance(sub, dict):
                 out.append({"sheet": sheet, "task": task, "field": col,
-                            "value": sub.get("value", "")})
+                            "value": sub.get("value", ""), "base": sub.get("base", "")})
     return out
 
 

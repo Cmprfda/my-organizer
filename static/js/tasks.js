@@ -1026,6 +1026,80 @@ function pendingSummary(details) {
   return details.map(d => `${d.sheet} · ${d.task} · ${d.field}: ${d.value}`).join("\n");
 }
 
+// ---------- painel das alterações locais, ao lado do botão Enviar ----------
+// O que vai ser enviado estava só no title do botão: aparecia de passagem e no
+// telemóvel nunca. Este painel abre com um toque no botão ao lado do Enviar e
+// mostra cada alteração agrupada pela linha a que pertence, com o valor que
+// está na folha e o que o vai substituir.
+
+let pendingPop = null;       // {el, anchor} enquanto está aberto
+let pendingPopHold = false;  // clicar no próprio botão fecha sem reabrir
+
+function closePendingPop() {
+  if (!pendingPop) return;
+  pendingPop.el.remove();
+  pendingPop = null;
+}
+
+function pendingPopHtml(details) {
+  const list = details || [];
+  // uma entrada por linha do Excel (aba + tarefa), com os campos alterados
+  // dessa linha lá dentro: o mesmo estado mudado em duas colunas lê-se junto
+  const grupos = new Map();
+  list.forEach(d => {
+    const chave = `${d.sheet}||${d.task}`;
+    if (!grupos.has(chave)) grupos.set(chave, { sheet: d.sheet, task: d.task, campos: [] });
+    grupos.get(chave).campos.push(d);
+  });
+  const vazio = `<i class="pendingPopEmpty">${esc(t("pending_pop_empty"))}</i>`;
+  const campo = d => `<li class="pendingPopChange"><b>${esc(d.field)}</b>` +
+    (d.base ? `<span class="pendingPopOld">${esc(d.base)}</span><span class="pendingPopArrow">→</span>` : "") +
+    `<span class="pendingPopNew">${d.value ? esc(d.value) : vazio}</span></li>`;
+  return `<div class="todoColsPopHead">${esc(tf("pending_pop_title", list.length))}</div>` +
+    `<ul class="pendingPopList">` +
+    [...grupos.values()].map(g => `<li class="pendingPopItem">` +
+      `<div class="pendingPopTask">${esc(g.task)}</div>` +
+      `<div class="pendingPopSheet">${esc(g.sheet)}</div>` +
+      `<ul class="pendingPopFields">${g.campos.map(campo).join("")}</ul></li>`).join("") +
+    `</ul><p class="pendingPopFoot">${esc(t("pending_pop_hint"))}</p>`;
+}
+
+// abre/fecha o painel ancorado ao botão que foi carregado (há um em cada barra)
+function openPendingPop(anchor) {
+  if (pendingPopHold) { pendingPopHold = false; return; }
+  const aberto = !!pendingPop;
+  closePendingPop();
+  if (aberto) return;
+  const el = document.createElement("div");
+  el.className = "todoColsPop pendingPop";
+  el.innerHTML = pendingPopHtml(lastData && lastData.pending_details);
+  document.body.appendChild(el);
+  pendingPop = { el, anchor };
+  const r = anchor.getBoundingClientRect();
+  el.style.left = `${Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.right - el.offsetWidth))}px`;
+  const abaixo = r.bottom + 6;
+  el.style.top = `${abaixo + el.offsetHeight > window.innerHeight
+    ? Math.max(6, r.top - el.offsetHeight - 6) : abaixo}px`;
+}
+
+$("pendingBtn").addEventListener("click", () => openPendingPop($("pendingBtn")));
+$("pendingBtnTodo").addEventListener("click", () => openPendingPop($("pendingBtnTodo")));
+
+// clicar fora fecha; no próprio botão fecha e não deixa reabrir no mesmo clique
+document.addEventListener("pointerdown", e => {
+  if (!pendingPop || e.target.closest(".pendingPop")) return;
+  pendingPopHold = pendingPop.anchor.contains(e.target);
+  closePendingPop();
+}, true);
+
+// em captura na janela (antes de qualquer tratador do document): com o painel
+// aberto o Esc só desiste dele
+window.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !pendingPop) return;
+  e.stopPropagation();
+  closePendingPop();
+}, true);
+
 function render() {
   if (editorOpen) return;  // não destruir um editor de nota/estado a meio
   const data = lastData;
@@ -1062,6 +1136,15 @@ function render() {
   $("refreshTodo").textContent = pushLabel;
   $("refreshTodo").title = pending ? pushTitle : t("t_push_todo");
   $("refreshTodo").classList.toggle("hidden", !pending);
+  // o botão que abre a lista do que está por enviar, nas duas barras: sem nada
+  // pendente não há lista, e um painel aberto acompanha os dados que chegaram
+  [$("pendingBtn"), $("pendingBtnTodo")].forEach(b => {
+    b.textContent = t("pending_btn");
+    b.title = t("t_pending_btn");
+    b.classList.toggle("hidden", !pending);
+  });
+  if (!pending) closePendingPop();
+  else if (pendingPop) pendingPop.el.innerHTML = pendingPopHtml(data.pending_details);
 
   // sem nenhum livro aberto o painel das tarefas não tem nada que mostrar
   // (quem está no ecrã é o painel de boas-vindas, ver renderWorkbookEmptyState).
