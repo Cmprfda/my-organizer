@@ -287,37 +287,108 @@ function metricsActivityItems() {
 // na folha). É onde se cai ao clicar numa coluna do gráfico.
 const METRICS_DAY_ROWS = 60;
 
+// O que se escreveu na caixa de pesquisa do cartão. Vive fora do desenho porque
+// a vista se redesenha a cada leitura da folha (ver load, tasks.js) — se o
+// filtro morasse no <input>, cada leitura apagava-o.
+let metricsDaySearch = "";
+// os eventos DESENHADOS, pela ordem em que estão no ecrã: o clique numa linha
+// lê daqui pelo índice, em vez de levar a tarefa escrita no HTML (um "o que
+// fazer" com um | partia a chave)
+let metricsDayShown = [];
+
+// o separador do livro a que uma alteração pertence (as que se mostram são
+// sempre de livros abertos, ver metricsEvents)
+const metricsEventTab = e =>
+  (workbookTabs || []).find(x => x.lastData && x.lastData.file === e.book) || null;
+
+// quem gravou a versão do livro que apanhou esta alteração: o dia à lupa junta
+// todos os livros abertos, por isso o nome sai das versões do livro dela (ver
+// histWhoInTab)
+const metricsEventWho = (e, tab) =>
+  e.via === "app" || !tab ? "" : histWhoInTab(tab.id, e.ts);
+
+// Os termos batem TODOS (E), como a pesquisa da tabela no modo "e": aqui não há
+// botão para trocar de modo, e um "obs carlos" em OU trazia tudo o que tem um
+// dos dois. Procura-se em tudo o que a linha mostra — tarefa, aba, coluna,
+// antes, depois, hora e quem gravou — para não haver texto à vista que a
+// pesquisa não encontre.
+function metricsDayMatch(e, termos, tab) {
+  if (!termos.length) return true;
+  const alvo = norm([e.fn, e.todo, e.sheet, e.col, e.from, e.to,
+    histWhen(e.ts), metricsEventWho(e, tab)].filter(Boolean).join(" "));
+  return termos.every(term => alvo.includes(term));
+}
+
+function metricsDayEvents() {
+  const termos = norm(metricsDaySearch).split(/\s+/).filter(Boolean);
+  return metricsEvents().filter(e => metricsDayMatch(e, termos, metricsEventTab(e)));
+}
+
+// Só as linhas (e a nota do que ficou de fora): é isto que se volta a desenhar
+// a cada letra escrita na pesquisa, sem mexer no resto do cartão — assim o
+// cursor não salta da caixa a meio de uma palavra.
+function metricsDayRowsHtml() {
+  const eventos = metricsDayEvents();
+  metricsDayShown = eventos.slice(0, METRICS_DAY_ROWS);
+  if (!eventos.length) {
+    return metricEmpty(t(metricsDaySearch.trim() ? "metric_day_nomatch" : "metric_day_none"));
+  }
+  const linhas = metricsDayShown.map((e, i) => {
+    const tab = metricsEventTab(e);
+    const tarefa = String(e.fn || "").trim() || String(e.todo || "").trim()
+      || tf("metric_row", e.xlrow);
+    const onde = [tarefa, e.sheet].filter(Boolean).join(" · ");
+    const quem = metricsEventWho(e, tab);
+    const marca = e.via === "app" ? t("hist_via_app")
+      : (quem ? tf("hist_saved_by", quem) : t("hist_via_sheet"));
+    // a linha inteira é um botão: clicar leva à linha dela na folha (ver
+    // metricsGoToEvent), como no painel Hoje
+    return `<li class="metricDayItem"><button type="button" data-metricgo="${i}"
+      class="histRow metricDayRow metricDayGo${e.via === "app" ? " histApp" : ""}"
+      title="${esc(`${onde} — ${marca} — ${t("t_metric_day_go")}`)}">
+      <span class="histWhen">${esc(histWhen(e.ts))}</span>
+      <span class="metricDayTask">${esc(tarefa)}</span>
+      <span class="histCol">${esc(e.col)}</span>
+      <span class="histVals"><span class="histFrom">${esc(histValue(e.from))}</span>
+        <span class="histArrow">→</span>
+        <span class="histTo">${esc(histValue(e.to))}</span></span>
+      <span class="histVia">${e.via === "app" ? "✎" : "☁"}${quem ? ` <span class="histWho">${esc(quem)}</span>` : ""}</span>
+    </button></li>`;
+  }).join("");
+  const demais = eventos.length > METRICS_DAY_ROWS
+    ? `<p class="metricNote">${esc(tf("metric_day_more", METRICS_DAY_ROWS, eventos.length))}</p>`
+    : "";
+  return `<ul class="histList metricDayList">${linhas}</ul>` + demais;
+}
+
 function metricsDayHtml() {
   const voltar = metricsPrevMode
     ? `<p class="metricDayBackWrap"><button type="button" class="metricDayBack">${esc(t("metric_day_back"))}</button></p>`
     : "";
   if (!metricsActivity) return voltar + metricEmpty(t("loading"));
-  const eventos = metricsEvents();
-  if (!eventos.length) return voltar + metricEmpty(t("metric_day_none"));
-  const linhas = eventos.slice(0, METRICS_DAY_ROWS).map(e => {
-    const tarefa = String(e.fn || "").trim() || String(e.todo || "").trim()
-      || tf("metric_row", e.xlrow);
-    const onde = [tarefa, e.sheet].filter(Boolean).join(" · ");
-    // o dia à lupa junta todos os livros abertos: o nome de quem gravou sai
-    // das versões do livro a que a alteração pertence (ver histWhoInTab)
-    const tabDoEvento = (workbookTabs || []).find(x => x.lastData && x.lastData.file === e.book);
-    const quem = e.via === "app" || !tabDoEvento ? "" : histWhoInTab(tabDoEvento.id, e.ts);
-    const marca = e.via === "app" ? t("hist_via_app")
-      : (quem ? tf("hist_saved_by", quem) : t("hist_via_sheet"));
-    return `<li class="histRow metricDayRow${e.via === "app" ? " histApp" : ""}">
-      <span class="histWhen">${esc(histWhen(e.ts))}</span>
-      <span class="metricDayTask" title="${esc(onde)}">${esc(tarefa)}</span>
-      <span class="histCol">${esc(e.col)}</span>
-      <span class="histVals"><span class="histFrom">${esc(histValue(e.from))}</span>
-        <span class="histArrow">→</span>
-        <span class="histTo">${esc(histValue(e.to))}</span></span>
-      <span class="histVia" title="${esc(marca)}">${e.via === "app" ? "✎" : "☁"}${quem ? ` <span class="histWho">${esc(quem)}</span>` : ""}</span>
-    </li>`;
-  }).join("");
-  const demais = eventos.length > METRICS_DAY_ROWS
-    ? `<p class="metricNote">${esc(tf("metric_day_more", METRICS_DAY_ROWS, eventos.length))}</p>`
-    : "";
-  return voltar + `<ul class="histList metricDayList">${linhas}</ul>` + demais;
+  // sem nada no dia não há o que procurar: a caixa de pesquisa só aparece
+  // quando há uma lista para filtrar
+  if (!metricsEvents().length) return voltar + metricEmpty(t("metric_day_none"));
+  const busca = `<p class="metricDaySearchWrap"><input type="search" id="metricsDaySearch"
+    class="viewMapSearch" value="${esc(metricsDaySearch)}"
+    placeholder="${esc(t("metric_day_search_ph"))}"
+    aria-label="${esc(t("metric_day_search_ph"))}"></p>`;
+  return voltar + busca + `<div class="metricDayRows">${metricsDayRowsHtml()}</div>`;
+}
+
+// Clicar numa alteração leva à linha dela na folha (revealSource, split.js): a
+// vista diz o que mudou, e o trabalho a seguir é na folha. Se a linha não
+// estiver à vista — outra aba, ou fora do filtro da pessoa — é o revealSource
+// que o diz.
+function metricsGoToEvent(i) {
+  const e = metricsDayShown[+i];
+  if (!e) return;
+  const tab = metricsEventTab(e);
+  if (!tab) return;
+  revealSource({
+    view: "excel", fn: e.fn || "", todo: e.todo || "",
+    sheet: e.sheet || "", workbook: tab.name || "",
+  });
 }
 
 // Salta para um dia (clique numa coluna), guardando o período de onde se veio
@@ -500,6 +571,13 @@ function renderMetrics() {
   // dizem-no, senão o número mudava com um botão que está noutra vista
   const ambito = t(showAll ? "metric_scope_all" : "metric_scope_mine");
 
+  // A vista redesenha-se a cada leitura da folha (ver load, tasks.js): sem
+  // guardar o cursor, quem estivesse a escrever na pesquisa do dia perdia-o a
+  // meio da palavra.
+  const busca = document.activeElement;
+  const escrevia = !!busca && busca.id === "metricsDaySearch";
+  const cursor = escrevia ? busca.selectionStart : 0;
+
   box.innerHTML =
     metricsActivityCard() +
     metricCard(t("metric_stale"), metricsStaleHtml(),
@@ -514,6 +592,11 @@ function renderMetrics() {
     metricCard(t("metric_hours"), metricsTimesheetHtml(), t("metric_hours_note"),
       metricsRange().days > 7 ? "metricCardWide" : "") +
     metricCard(t("metric_todo"), metricBars(metricsTodoItems()));
+
+  if (escrevia) {
+    const agora = $("metricsDaySearch");
+    if (agora) { agora.focus(); agora.setSelectionRange(cursor, cursor); }
+  }
 }
 
 // ---------- exportar o período para um ficheiro ----------
@@ -670,6 +753,7 @@ $("staleSel").addEventListener("change", () => setStaleDays($("staleSel").value)
 // o período mudou: os campos, os dados e o desenho vão todos atrás dele
 function metricsApplyRange() {
   metricsSyncControls();
+  metricsDaySearch = "";       // outro dia, outra lista: o filtro de antes não se aplica
   loadMetricsActivity(true);
   renderMetrics();
 }
@@ -716,7 +800,18 @@ $("metricsToInput").addEventListener("change", () => metricsSetRange("to"));
 $("metricsBody").addEventListener("click", e => {
   const col = e.target.closest(".metricColBtn");
   if (col) { metricsShowDay(col.dataset.day); return; }
-  if (e.target.closest(".metricDayBack")) metricsBackToPeriod();
+  if (e.target.closest(".metricDayBack")) { metricsBackToPeriod(); return; }
+  const ir = e.target.closest("[data-metricgo]");
+  if (ir) metricsGoToEvent(ir.dataset.metricgo);
+});
+
+// pesquisa nas alterações do dia: só se redesenha a lista, nunca o cartão todo
+$("metricsBody").addEventListener("input", e => {
+  const caixa = e.target.closest("#metricsDaySearch");
+  if (!caixa) return;
+  metricsDaySearch = caixa.value;
+  const lista = document.querySelector(".metricDayRows");
+  if (lista) lista.innerHTML = metricsDayRowsHtml();
 });
 $("metricsExportBtn").addEventListener("click", () => openExportPop($("metricsExportBtn")));
 $("reportSave").addEventListener("click", () => exportMetrics("report"));

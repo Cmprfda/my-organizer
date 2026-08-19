@@ -360,8 +360,35 @@
   white-space: nowrap;
 }
 
-.metricDayBackWrap {
+.metricDayBackWrap,
+.metricDaySearchWrap {
   margin: 0 0 8px;
+}
+
+/* clicar numa alteração salta para a linha dela na folha (metricsGoToEvent,
+   static/js/metrics.js): a linha inteira é o botão, e a grelha continua a ser a
+   do .histRow — daí o reset do que o botão traz de origem */
+.metricDayItem {
+  display: flex;
+  min-width: 0;
+}
+
+button.metricDayGo {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* o realce é uma moldura e não uma cor de fundo: as linhas feitas nesta app já
+   têm fundo próprio (.histApp) e ficavam sem realce nenhum */
+button.metricDayGo:hover,
+button.metricDayGo:focus-visible {
+  filter: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 button.metricDayBack {

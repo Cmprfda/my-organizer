@@ -92,6 +92,27 @@ function todayUnlogged() {
   return (todos || []).reduce((s, it) => s + (todoCanLogTime(it) ? todoUnloggedMs(it) : 0), 0);
 }
 
+// Esta alteração é numa linha MINHA? O histórico do servidor guarda a folha
+// inteira (todas as linhas, seja de quem for — ver record_read, history.py), mas
+// este painel é o meu ponto de situação: o que mexeu na linha de outra pessoa
+// não é novidade minha.
+//
+// A resposta sai das linhas que os livros abertos trouxeram: com o "Ver tudo"
+// desligado o servidor já as filtrou pela pessoa, com ele ligado a pertença
+// decide-se pelo nome (chatRowIsMine, static/js/chat.js). Uma alteração numa
+// folha que não está aberta fica de fora — sem as linhas dela não há como saber
+// de quem é, e adivinhar enchia a lista com o trabalho dos outros.
+function todayEventIsMine(e) {
+  if (!e) return false;
+  const tab = (workbookTabs || []).find(x => x.lastData && !x.lastData.error
+    && x.lastData.file === e.book && x.lastData.sheet === e.sheet);
+  if (!tab) return false;
+  const metas = tab.lastData.row_meta || [];
+  const i = metas.findIndex(m => m && String(m.xlrow) === String(e.xlrow));
+  if (i < 0) return false;
+  return chatRowIsMine((tab.lastData.rows || [])[i], metas[i]);
+}
+
 // o que mexeu na folha desde a última visita (só o que não saiu desta app: o
 // que fui eu a mandar já sei)
 async function loadTodayEvents() {
@@ -160,7 +181,10 @@ function renderToday() {
   const minhas = todayMySideRows();
   const paradas = todayStaleRows();
   const porRegistar = todayUnlogged();
-  const eventos = todayEvents || [];
+  // filtra-se aqui e não em loadTodayEvents porque os livros chegam depois do
+  // painel abrir: no momento da resposta do histórico ainda não há linhas com
+  // que comparar (ver refreshTodayIfOpen)
+  const eventos = (todayEvents || []).filter(todayEventIsMine);
 
   const partes = [
     todaySection(t("today_due"), vencidos.slice(0, TODAY_MAX_ROWS).map(todayTodoRow), vencidos.length),
