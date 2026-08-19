@@ -64,7 +64,7 @@
   - **O motor LLM continua a não escrever** e a não ler a folha: as ferramentas
     leem o retrato que o cliente mandou, e as ordens continuam no motor local
     com o Confirmar de sempre.
-- **Released in:** v153.
+- **Released in:** v154.
 - **Known limits (worth revisiting):**
   - As cópias são uma por dia e por ficheiro (14 por ficheiro): duas coisas
     apagadas no mesmo dia repõem-se ao mesmo ponto — o do princípio do dia.
