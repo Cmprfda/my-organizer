@@ -768,6 +768,9 @@ const TR = {
 
   // ---------- métricas ----------
   tab_metrics: ["Métricas", "Metrics"],
+  // o separador das Métricas passou a ser o do Início: é a página onde a app
+  // abre e está encostado à esquerda da barra (ver o nav no index.html)
+  tab_home: ["Início", "Home"],
   lbl_period: ["Período", "Period"],
   t_period: ["Período em análise", "Period analysed"],
   opt_period_day: ["um dia", "single day"],
@@ -813,6 +816,9 @@ const TR = {
   // com o nome do livro lia-se como sendo o livro todo
   metric_scope_mine: ["Só as tuas linhas — liga o \"Ver tudo\" nas Tarefas para contar o livro inteiro.",
     "Your rows only — turn \"Show all\" on in Tasks to count the whole workbook."],
+  // as contas dos cartões são de todos os livros abertos (não só do que está
+  // à frente): a nota diz quais
+  metric_books: ["Livros abertos: {0}.", "Open workbooks: {0}."],
   metric_scope_all: ["Todas as linhas da folha (\"Ver tudo\" ligado).",
     "Every row of the sheet (\"Show all\" is on)."],
   metric_status_note: ["O Status TC e o Status TP contam à parte: são dois trabalhos na mesma linha.",

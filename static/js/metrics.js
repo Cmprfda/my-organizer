@@ -217,13 +217,39 @@ function metricTiles(tiles) {
 }
 
 // ---------- contas ----------
-// Estados da folha do separador ativo. Conta-se por VERTENTE (Status TC e
+// As linhas de TODOS os livros abertos, cada uma com o separador de onde veio.
+// Estes cartões contavam só a folha do separador ativo: com dois livros abertos
+// diziam "sem dados" enquanto o outro estava cheio de trabalho — e o painel Hoje
+// e o cartão das alterações já falavam dos livros todos (pedido no feedback).
+function metricsRows() {
+  const out = [];
+  (workbookTabs || []).forEach(tab => {
+    const data = tab && tab.lastData;
+    if (!data || data.error) return;
+    (data.row_meta || []).forEach(meta => { if (meta) out.push({ tab, meta }); });
+  });
+  return out;
+}
+
+// nomes dos livros abertos que trouxeram linhas, para a nota dos cartões dizer
+// de onde vêm as contas
+function metricsBookNames() {
+  const nomes = [];
+  (workbookTabs || []).forEach(tab => {
+    const data = tab && tab.lastData;
+    if (!data || data.error || !((data.row_meta || []).length)) return;
+    const nome = tab.name || data.sheet || "";
+    if (nome && !nomes.includes(nome)) nomes.push(nome);
+  });
+  return nomes;
+}
+
+// Estados de todos os livros abertos. Conta-se por VERTENTE (Status TC e
 // Status TP são trabalhos diferentes na mesma linha, como no resto da app), e
 // sempre o valor em vigor (meta.cur, já com as alterações locais ✎).
 function metricsStatusItems() {
-  const metas = ((lastData && lastData.row_meta) || []);
   const contas = new Map();
-  metas.forEach(m => {
+  metricsRows().forEach(({ meta: m }) => {
     ["Status TC", "Status TP"].forEach(col => {
       const v = String(((m && m.cur) || {})[col] || "").trim();
       if (!v || norm(v) === "n/a") return;
@@ -238,9 +264,8 @@ function metricsStatusItems() {
 // Carga por pessoa: quem está do lado de uma tarefa que ainda não está feita.
 // Uma pessoa conta uma vez por linha, mesmo que seja autora e revisora dela.
 function metricsPeopleItems() {
-  const metas = ((lastData && lastData.row_meta) || []);
   const contas = new Map();
-  metas.forEach(m => {
+  metricsRows().forEach(({ meta: m }) => {
     if (!m || taskIsDone(m)) return;
     const nomes = new Set();
     Object.values((m.people) || {}).forEach(p => {
@@ -411,21 +436,26 @@ function metricsBackToPeriod() {
 // As tarefas paradas há mais tempo (as mais antigas primeiro). Devolve a lista
 // TODA: quem desenha corta-a e diz quantas ficaram de fora.
 function metricsStaleRows() {
-  const metas = ((lastData && lastData.row_meta) || []);
-  return metas
-    .filter(m => taskIsStale(m))
-    .map(m => ({ meta: m, age: taskAge(m) }))
+  // a idade de uma linha sai do histórico do LIVRO dela (taskAgeInTab), como no
+  // painel Hoje: com vários livros abertos, medi-la pelo que está à frente dava
+  // números de outra folha
+  return metricsRows()
+    .filter(({ tab, meta }) => taskIsStaleInTab(tab.id, meta))
+    .map(({ tab, meta }) => ({ tab, meta, age: taskAgeInTab(tab.id, meta) }))
     .sort((a, b) => (b.age ? b.age.days : 0) - (a.age ? a.age.days : 0));
 }
 
 const METRICS_STALE_ROWS = 8;
 
 function metricsStaleHtml() {
-  if (!activeHistory()) return metricEmpty(t("metric_no_history"));
+  // o histórico é por livro: basta um dos abertos já o ter para haver contas
+  const semHistorico = !(workbookTabs || []).some(tab => taskHistoryByTab.get(tab.id));
+  if (semHistorico) return metricEmpty(t("metric_no_history"));
   const todas = metricsStaleRows();
   const linhas = todas.slice(0, METRICS_STALE_ROWS);
   if (!linhas.length) return metricEmpty(t("metric_no_stale"));
-  return `<ul class="metricList">` + linhas.map(({ meta, age }) => {
+  return `<ul class="metricList">` + linhas.map(({ tab, meta, age }) => {
+    const nomeLivro = (tab && tab.name) || "";
     const titulo = String(meta.fn || "").trim() || tf("metric_row", meta.xlrow);
     // o estado que se mostra é o que está a prender a tarefa, não o primeiro
     // que aparece: numa linha com o TC feito e o TP à espera de revisão, ler
@@ -433,8 +463,10 @@ function metricsStaleHtml() {
     const aplicaveis = [((meta.cur || {})["Status TC"]), ((meta.cur || {})["Status TP"])]
       .map(s => String(s || "").trim()).filter(s => s && norm(s) !== "n/a");
     const estado = aplicaveis.find(s => !statusIsFinal(s)) || aplicaveis[0] || "";
+    // com vários livros abertos, saber a tarefa não basta: o nome do livro vai
+    // no título, onde não rouba espaço à linha
     return `<li class="metricListRow">
-      <span class="metricListName" title="${esc(titulo)}">${esc(titulo)}</span>
+      <span class="metricListName" title="${esc([titulo, nomeLivro].filter(Boolean).join(" · "))}">${esc(titulo)}</span>
       ${estado ? `<span class="badge ${statusClass(estado)}">${esc(estado)}</span>` : ""}
       <span class="metricListAge">${esc(ageLabel(age))}</span>
     </li>`;
@@ -564,12 +596,14 @@ function renderMetrics() {
   const box = $("metricsBody");
   if (!box) return;
   metricsSyncControls();
-  const livro = activeBookName() || (lastData && lastData.sheet) || "";
-  const semLivro = !((lastData && lastData.row_meta) || []).length;
-  // as linhas que a folha do separador ativo trouxe são as da pessoa ou as
-  // todas, conforme o "Ver tudo" da vista Tarefas: os cartões que as contam
-  // dizem-no, senão o número mudava com um botão que está noutra vista
-  const ambito = t(showAll ? "metric_scope_all" : "metric_scope_mine");
+  const livros = metricsBookNames();
+  const semLivro = !metricsRows().length;
+  // as linhas que as folhas trouxeram são as da pessoa ou as todas, conforme o
+  // "Ver tudo" da vista Tarefas: os cartões que as contam dizem-no, senão o
+  // número mudava com um botão que está noutra vista. E dizem também de que
+  // livros são as contas, que já não é só o que está à frente.
+  const ambito = (livros.length ? `${tf("metric_books", livros.join(", "))} ` : "")
+    + t(showAll ? "metric_scope_all" : "metric_scope_mine");
 
   // A vista redesenha-se a cada leitura da folha (ver load, tasks.js): sem
   // guardar o cursor, quem estivesse a escrever na pesquisa do dia perdia-o a
@@ -582,7 +616,7 @@ function renderMetrics() {
     metricsActivityCard() +
     metricCard(t("metric_stale"), metricsStaleHtml(),
       activeHistory() ? tf("t_stale", staleDays()) : "") +
-    metricCard(t("metric_status") + (livro ? ` · ${livro}` : ""),
+    metricCard(t("metric_status"),
       semLivro ? metricEmpty(t("metric_no_book")) : metricBars(metricsStatusItems()),
       semLivro ? "" : `${t("metric_status_note")} ${ambito}`) +
     metricCard(t("metric_people"),
@@ -709,7 +743,7 @@ async function copyWeekReport() {
 // Etiquetas destas peças novas, chamadas pelo applyLang (settings.js) — os
 // selects e as janelas ficam com o nome certo ao trocar de língua, como o resto.
 function applyInsightsLang() {
-  document.querySelector('.tabs button[data-view="metrics"]').textContent = t("tab_metrics");
+  $("homeTab").textContent = t("tab_home");
   document.querySelector('label[for="metricsDaysSel"]').textContent = t("lbl_period");
   $("metricsDaysSel").title = t("t_period");
   [...$("metricsDaysSel").options].forEach(o => {
@@ -727,7 +761,7 @@ function applyInsightsLang() {
   $("metricsReportBtn").title = t("t_week_report");
   $("metricsDayReportBtn").textContent = t("btn_day_report");
   $("metricsDayReportBtn").title = t("t_day_report");
-  $("metricsView").setAttribute("aria-label", t("tab_metrics"));
+  $("metricsView").setAttribute("aria-label", t("tab_home"));
   document.querySelector('label[for="staleSel"]').textContent = t("stale_title");
   $("staleSel").title = t("t_stale_sel");
   [...$("staleSel").options].forEach(o => { o.textContent = tf("opt_days", o.value); });

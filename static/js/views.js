@@ -100,6 +100,11 @@ function showView(name) {
     // a vista do painel lateral também está no ecrã: marca-se como aberta
     x.classList.toggle("side", x.dataset.view === sideView && x.dataset.view !== name);
   });
+  // com muitos livros abertos (ou num telefone) o separador da vista pode estar
+  // fora da parte visível da barra, que rola (ver .tabsScroll no layout.css):
+  // só se mexe o que rola na horizontal, nunca a página
+  const ativo = document.querySelector('.tabs .tabsGroup button[data-view].active');
+  if (ativo) ativo.scrollIntoView({ inline: "nearest", block: "nearest" });
   const wbOnScreen = isWorkbookView(name) || isWorkbookView(sideView);
   for (const [view, elId] of Object.entries(VIEWS)) {
     // a vista do painel lateral fica sempre visível, seja qual for o separador ativo
@@ -150,8 +155,11 @@ function renderWorkbookTabs() {
       b.dataset.icon = "▤";
       b.draggable = true;
       b.type = "button";
-      const primeiroFixo = nav.querySelector('button[data-view]:not([data-view^="wb:"])');
-      nav.insertBefore(b, primeiroFixo || $("addWorkbookBtn"));
+      // grupo dos documentos (livros e pastas), o segundo da barra: os livros
+      // ficam antes das pastas de código (ver os grupos no index.html)
+      const docs = $("tabsDocs");
+      const primeiroCode = docs.querySelector('button[data-view^="code:"]');
+      docs.insertBefore(b, primeiroCode || null);
       wireTabButton(b);
       wireTabDrag(b);
     }
@@ -252,7 +260,9 @@ document.querySelectorAll(".tabs button[data-view]").forEach(wireTabButton);
 // dividido. O botão das Definições (sem data-view) nunca se mexe.
 const TAB_ORDER_KEY = "bsp-tracker-tab-order";
 
-const tabOrderButtons = () => [...document.querySelectorAll(".tabs button[data-view]")];
+// só os separadores dos grupos do meio se reordenam: o Início está encostado à
+// esquerda e o "+"/Definições à direita, que é o que lhes dá o lugar fixo
+const tabOrderButtons = () => [...document.querySelectorAll(".tabs .tabsGroup button[data-view]")];
 
 function saveTabOrder() {
   localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrderButtons().map(b => b.dataset.view)));
@@ -263,6 +273,9 @@ function saveTabOrder() {
 function applyStoredTabOrder() {
   const nav = document.querySelector(".tabs");
   if (!nav) return;
+  // o traço entre os documentos e as vistas só faz sentido com documentos
+  const sep = $("tabsDocsSep");
+  if (sep) sep.classList.toggle("hidden", !$("tabsDocs").children.length);
   let stored = null;
   try {
     stored = JSON.parse(localStorage.getItem(TAB_ORDER_KEY) || "null");
@@ -270,16 +283,26 @@ function applyStoredTabOrder() {
     stored = null;
   }
   if (!Array.isArray(stored) || !stored.length) return;
-  const left = new Map(tabOrderButtons().map(b => [b.dataset.view, b]));
-  const ordered = [];
-  stored.forEach(view => {
-    const b = left.get(view);
-    if (b) { ordered.push(b); left.delete(view); }
+  // cada grupo é arrumado à parte: um separador nunca muda de grupo, por isso a
+  // ordem guardada (uma lista só, na ordem em que estão na barra) vale como
+  // ordem relativa dentro de cada um
+  const porGrupo = new Map();
+  tabOrderButtons().forEach(b => {
+    const grupo = b.parentElement;
+    if (!porGrupo.has(grupo)) porGrupo.set(grupo, []);
+    porGrupo.get(grupo).push(b);
   });
-  left.forEach(b => ordered.push(b));
-  // inserir antes do "+" mantém-no (e às Definições) sempre no fim
-  const anchor = $("addWorkbookBtn") || $("settingsBtn");
-  ordered.forEach(b => nav.insertBefore(b, anchor));
+  porGrupo.forEach((botoes, grupo) => {
+    const ordered = [];
+    stored.forEach(view => {
+      const i = botoes.findIndex(b => b.dataset.view === view);
+      if (i >= 0) ordered.push(botoes.splice(i, 1)[0]);
+    });
+    // separadores que a ordem guardada não conheça (ex.: acrescentados numa
+    // versão nova da app) ficam no fim do grupo deles
+    botoes.forEach(b => ordered.push(b));
+    ordered.forEach(b => grupo.appendChild(b));
+  });
 }
 applyStoredTabOrder();
 
@@ -315,6 +338,9 @@ if (tabsNav) {
     if (!p || p.kind !== "tab" || !p.view) return;
     const dragged = tabOrderButtons().find(b => b.dataset.view === p.view);
     if (!dragged || dragged === target) return;
+    // um livro não vai para o meio das vistas nem o Início sai da esquerda: a
+    // reordenação é só dentro do grupo (ver os grupos no index.html)
+    if (dragged.parentElement !== target.parentElement) return;
     // metade esquerda do separador de destino = antes dele, direita = depois
     const r = target.getBoundingClientRect();
     const after = r.width ? (e.clientX - r.left) > r.width / 2 : false;

@@ -41,6 +41,11 @@
     padding: 5px;
   }
 
+  .tabsScroll,
+  .tabsGroup {
+    gap: 2px;
+  }
+
   /* sem rato não há "abrir ao passar por cima" (e o hover ficaria preso depois
      de um toque): aqui os nomes não aparecem nunca, só o ícone */
   .tabs button[data-view],
@@ -51,6 +56,17 @@
     gap: 0;
     padding: 9px 13px;
     color: var(--muted);
+  }
+
+  /* num telefone nem o Início leva nome: com ele, os separadores dos livros
+     ficavam sem espaço na pílula */
+  .tabs button.tabHome,
+  .tabs button.tabHome:hover,
+  .tabs button.tabHome.active,
+  .tabs button.tabHome.side {
+    font-size: 0;
+    gap: 0;
+    padding: 9px 13px;
   }
 
   /* sem palavras, a vista ativa precisa de cor para se distinguir */

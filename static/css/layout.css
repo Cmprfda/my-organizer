@@ -210,7 +210,44 @@ body.topShrunk .ios-top #chatBtn svg {
   padding: 6px;
 }
 
+/* Quatro grupos: Início | documentos | vistas | "+" e Definições (ver o nav no
+   index.html). O do meio é o único que rola: sem isto, num telefone os
+   separadores saíam para fora da pílula em vez de ficarem lá dentro.
+   `flex: 0 1 auto` — encolhe quando não cabe, mas não estica: a barra continua
+   a ter a largura do que tem dentro, como sempre teve. */
+.tabsScroll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;          /* uma barra de rolagem dentro da pílula ficava mal */
+  -ms-overflow-style: none;
+}
+
+.tabsScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tabsGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* traço fino entre grupos: mostra os grupos sem lhes dar caixa nem fundo */
+.tabsSep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  border-radius: 1px;
+}
+
 .tabs button {
+  flex: 0 0 auto;                 /* nunca encolher um separador até o ícone sair */
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -285,6 +322,17 @@ body.topShrunk .ios-top #chatBtn svg {
 
 .tabs button[data-view]:active {
   cursor: grabbing;
+}
+
+/* o Início é o ponto de partida da app: está sempre no mesmo lugar e diz o nome
+   sem ser preciso passar o rato por cima */
+.tabs button.tabHome,
+.tabs button.tabHome:hover,
+.tabs button.tabHome.active,
+.tabs button.tabHome.side {
+  font-size: 13px;
+  gap: 7px;
+  padding: 9px 14px;
 }
 
 .tabs #settingsBtn {

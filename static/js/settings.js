@@ -238,7 +238,7 @@ applyTheme();
 // está agora. As opções que são separadores usam as etiquetas deles; "CCRs"
 // é igual nas duas línguas e por isso não tem chave.
 const HOME_OPT_KEYS = {
-  metrics: "tab_metrics", workbook: "home_active_book",
+  metrics: "tab_home", workbook: "home_active_book",
   todo: "tab_todo", notes: "tab_notes",
 };
 

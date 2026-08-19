@@ -514,9 +514,9 @@ function renderCodeTabs() {
       b.dataset.icon = "⌨";
       b.draggable = true;
       b.type = "button";
-      const primeiroFixo = nav.querySelector(
-        'button[data-view]:not([data-view^="wb:"]):not([data-view^="code:"])');
-      nav.insertBefore(b, primeiroFixo || $("addWorkbookBtn"));
+      // mesmo grupo dos livros (o dos documentos), depois deles — ver os
+      // grupos da barra no index.html
+      $("tabsDocs").appendChild(b);
       wireTabButton(b);
       wireTabDrag(b);
     }
