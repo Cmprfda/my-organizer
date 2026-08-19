@@ -200,7 +200,11 @@ body.split.split-vertical #paneSide {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 6px;
+  /* A pílula tem borda e cantos redondos: sem espaço à esquerda o título
+     encostava à borda (e ao canto), e com espaço só em baixo o conteúdo todo
+     ficava acima do meio — era o que o utilizador via na v149. À direita
+     chegam 4px, porque os botões já trazem 8px de padding próprio. */
+  padding: 6px 4px 6px 12px;
   margin-bottom: 4px;
   font-size: 13px;
   font-weight: 600;

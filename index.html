@@ -611,6 +611,11 @@
     <div class="dropZone" data-side="right"><span id="dropRightTxt">◨ Largar aqui<br>painel à direita</span></div>
   </div>
 
+  <!-- Só aparece nas janelas dedicadas (?wb= / ?note= / ?code=, ver SOLO em
+       state.js), onde a barra de cima e os separadores estão escondidos: é
+       por aqui que se voltam a mostrar sem sair da janela. -->
+  <button type="button" id="soloChrome" class="soloChrome" aria-pressed="false">&#9776;</button>
+
   <div id="verBadge" class="verBadge hidden" title="My Organizer — CSW.AI.OS"></div>
 
   <div id="helpOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true" aria-label="Como usar">

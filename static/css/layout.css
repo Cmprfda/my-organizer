@@ -823,3 +823,68 @@ header .sub {
 .setPage .setNote.readonly input {
   opacity: .6;
 }
+
+/* ---------- janela dedicada a uma coisa só (?wb= / ?note= / ?code=) ---------- */
+/* Quem manda uma destas janelas para outro ecrã quer lá o livro, a nota ou a
+   pasta — não a barra do título nem a pílula dos separadores, que naquela
+   janela só repetem o que já está na principal (ver SOLO em state.js). Fica
+   só o conteúdo, com a janela toda para ele.
+   Nada se perde: o ☰ do canto tira o `solo-bare` e a barra e os separadores
+   voltam — é assim que se chega às Definições, ao "Hoje" ou ao assistente sem
+   sair desta janela. */
+body.solo-bare .ios-top,
+body.solo-bare .tabs {
+  display: none;
+}
+
+/* sem a pílula flutuante em baixo, o espaço que lhe estava reservado (92px no
+   .wrap) deixa de fazer sentido — era uma faixa vazia no fundo da janela */
+body.solo-bare .wrap {
+  padding: 10px 14px 16px;
+}
+
+/* O painel do ecrã dividido mede-se pela janela menos a barra de cima e a
+   pílula (ver --pane-h no views.css): sem elas, sobra tudo isso para os
+   painéis — fica só o que o .wrap acima reserva (10px + 16px). Só se chega
+   aqui dividindo com os menus à vista e escondendo-os a seguir, mas sem isto
+   os painéis ficavam com um palmo de janela por usar. */
+body.solo-bare.split {
+  --pane-h: calc(100dvh - 30px);
+}
+
+/* O ☰ vive no canto inferior esquerdo (o direito é da versão e do assistente)
+   e só existe nas janelas dedicadas. Discreto de propósito: é uma saída de
+   emergência para os menus, não um botão de trabalho. */
+.soloChrome {
+  display: none;
+  position: fixed;
+  left: 12px;
+  bottom: 14px;
+  z-index: 46;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  background: var(--ios-glass-bg);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--ios-glass-border);
+  border-radius: 50%;
+  box-shadow: var(--ios-shadow);
+  opacity: .55;
+  transition: opacity var(--dur-base) var(--ease-standard),
+    color var(--dur-base) var(--ease-standard);
+}
+
+body.solo .soloChrome {
+  display: block;
+}
+
+.soloChrome:hover,
+.soloChrome:focus-visible {
+  opacity: 1;
+  color: var(--accent-text);
+}

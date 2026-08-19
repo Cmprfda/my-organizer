@@ -42,6 +42,15 @@ const SOLO_NOTE = new URLSearchParams(location.search).get("note") || "";
    ativa não se grava — o localStorage é o mesmo das duas, tal como no SOLO_WB. */
 const SOLO_CODE = new URLSearchParams(location.search).get("code") || "";
 
+/* Qualquer uma destas janelas é dedicada a uma coisa só, e quem a põe noutro
+   ecrã quer ver essa coisa e mais nada: a barra de cima e a pílula dos
+   separadores saem do caminho (classe `solo`, ver o layout.css). Os menus não
+   se perdem — o botão ☰ do canto traz tudo de volta nesta janela (ver
+   toggleSoloChrome em main.js). A classe põe-se aqui, antes do primeiro
+   desenho, para a barra não chegar a piscar no ecrã. */
+const SOLO = SOLO_WB || SOLO_NOTE || SOLO_CODE;
+if (SOLO) document.body.classList.add("solo", "solo-bare");
+
 // identidade estável: o mesmo livro dá sempre o mesmo id, entre arranques e
 // entre separadores (é o que permite não abrir o mesmo livro duas vezes)
 function workbookId(kind, key) {

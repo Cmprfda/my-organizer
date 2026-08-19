@@ -225,9 +225,10 @@ function closeToday() {
 }
 
 // primeira abertura do dia: mostra-se sozinho. Numa janela dedicada a um livro
-// (⧉) ou a uma nota (↗) não — essa janela é para olhar para aquilo, não para o dia.
+// (⧉), a uma nota (↗) ou a uma pasta de código não — essa janela é para olhar
+// para aquilo, não para o dia (e agora nem menus tem, ver SOLO em state.js).
 function maybeOpenToday() {
-  if (SOLO_WB || SOLO_NOTE) return;
+  if (SOLO) return;
   if (localStorage.getItem(TODAY_SEEN_KEY) === todayISO()) return;
   // o aviso do dono da instalação (announce.js) também aparece no arranque:
   // duas janelas ao mesmo tempo tapavam-se uma à outra — aqui o aviso ganha e

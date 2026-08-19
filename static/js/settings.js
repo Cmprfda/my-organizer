@@ -128,6 +128,11 @@ function applyLang() {
   $("sideSwap").title = t("t_swap");
   $("sideClose").title = t("t_closepane");
   if (sideView) $("sideTitle").textContent = tabLabel(sideView);
+  // o ☰ das janelas dedicadas: a legenda diz o que o clique vai fazer, por
+  // isso depende de os menus estarem escondidos agora (ver toggleSoloChrome)
+  $("soloChrome").title = t(document.body.classList.contains("solo-bare")
+    ? "t_solo_chrome_show" : "t_solo_chrome_hide");
+  $("soloChrome").setAttribute("aria-label", $("soloChrome").title);
   document.querySelector('label[for="fbText"]').textContent = t("lbl_fb");
   $("fbText").placeholder = t("ph_fb");
   document.querySelector('label[for="fbFiles"]').textContent = t("lbl_imgs");

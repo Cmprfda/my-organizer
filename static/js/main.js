@@ -195,6 +195,21 @@ $("toggleAll").addEventListener("click", () => {
   loadAllTabs();
 });
 
+// ---------- janelas dedicadas: os menus dentro ou fora ----------
+// Nestas janelas (?wb= / ?note= / ?code=, ver SOLO em state.js) a barra de
+// cima e a pílula dos separadores nascem escondidas — a janela é da coisa a
+// que foi dedicada. Este ☰ traz tudo de volta quando é preciso ir às
+// Definições ou ao "Hoje", e volta a tirar. É só desta janela: nada se grava,
+// porque a próxima que se abrir há de querer outra vez só o conteúdo.
+function toggleSoloChrome() {
+  const bare = document.body.classList.toggle("solo-bare");
+  const btn = $("soloChrome");
+  btn.setAttribute("aria-pressed", bare ? "false" : "true");
+  btn.title = t(bare ? "t_solo_chrome_show" : "t_solo_chrome_hide");
+  btn.setAttribute("aria-label", btn.title);
+}
+$("soloChrome").addEventListener("click", toggleSoloChrome);
+
 // separadores dos livros que ficaram abertos da última vez (a app não abre
 // nenhum por si: se a lista estiver vazia, fica o painel de boas-vindas)
 renderWorkbookTabs();

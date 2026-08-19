@@ -612,6 +612,8 @@ const TR = {
   wb_window_failed: ["Não foi possível abrir a janela.", "The window could not be opened."],
   wb_window_solo: ["Esta janela é só deste livro — os separadores ficaram na janela principal.",
     "This window is for this workbook only — the other tabs stayed in the main window."],
+  t_solo_chrome_show: ["Mostrar os menus nesta janela", "Show the menus in this window"],
+  t_solo_chrome_hide: ["Esconder os menus (só o conteúdo)", "Hide the menus (content only)"],
   push_need_book: ["Abre o livro para onde queres enviar as alterações.",
     "Open the workbook you want to push the changes to."],
   btn_note_add: ["+ Nota", "+ Note"],
