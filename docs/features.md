@@ -257,3 +257,11 @@
 - **Uma escrita no Excel de cada vez, e agora diz-se**: quando um Push espera
   que outro acabe, a janela que está à espera passa a dizê-lo em vez de mostrar
   o mesmo rodar de sempre.
+
+## v156
+
+- **O feedback de quem não tem a pasta partilhada deixa de se perder**: a app
+  dava a sugestão por entregue numa pasta do computador de quem a escreveu — que
+  ninguém lê — e, por estar "entregue", nem oferecia a alternativa. Agora fica
+  guardada como pendente (e segue sozinha assim que houver acesso) e aparece o
+  botão para abrir a issue no GitHub já preenchida.

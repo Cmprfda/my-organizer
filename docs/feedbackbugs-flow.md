@@ -5,7 +5,11 @@ Frontend (manual feedback or JS error) + backend (exceptions) ->
 -> `feedback.deliver()` tries (1) upload via Microsoft Graph to the shared
 folder `config.FEEDBACK_SHARE_URL` (a SharePoint link with write access for
 anyone at Critical Software; overridden via the `BSP_FEEDBACK_SHARE`
-variable), (2) the locally synced `feedback\` folder, (3) stays pending and
+variable), (2) the locally synced `feedback\` folder — **only when the shared
+folder is actually within reach**: `feedback_root()` returns `""` otherwise, and
+step (2) is skipped. It used to fall back to the app's own folder, which counted
+as a delivery into a place nobody reads *and* suppressed the public route below
+(reported in `20260820_105055`, fixed in v156) —, (3) stays pending and
 is retried later by `feedback.flush_pending()`. Bug deduplication by
 signature in [bug_reports.json](bug_reports.json) + appended
 [tracker.log](tracker.log); repeats write `repeticao_NN.txt` in the same

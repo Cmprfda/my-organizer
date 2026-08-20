@@ -155,9 +155,17 @@ def share_url():
 
 
 def feedback_root():
-    """Onde vivem as pastas de feedback sincronizadas localmente
-    (BSP_FEEDBACK_DIR permite testar sem tocar na pasta partilhada)."""
-    return os.environ.get("BSP_FEEDBACK_DIR") or find_releases_dir() or HERE
+    """Onde vivem as pastas de feedback sincronizadas localmente, ou "" quando a
+    partilha não está ao alcance desta máquina (BSP_FEEDBACK_DIR permite testar
+    sem tocar na pasta partilhada).
+
+    Caía para `HERE` — a pasta da própria app — e isso era pior do que não
+    entregar nada: o feedback de quem não alcança a partilha ficava dado como
+    ENTREGUE numa pasta do computador dele, que ninguém lê. E, por estar
+    "entregue", a app nem chegava a oferecer a via pública (a issue no GitHub
+    já preenchida). Foi o que aconteceu ao colega do reporte 20260820_105055.
+    """
+    return os.environ.get("BSP_FEEDBACK_DIR") or find_releases_dir() or ""
 
 
 def stage_feedback_folder(nome):
@@ -212,13 +220,18 @@ def deliver(folder, allow_relay=True):
     except Exception as exc:
         log_event(f"feedback: link partilhado indisponivel ({exc}) - "
                   f"a tentar a pasta sincronizada")
-    try:
-        _move_into(folder, os.path.join(feedback_root(), "feedback", nome))
-        log_event(f"feedback: {nome} entregue na pasta sincronizada")
-        return "local"
-    except OSError as exc:
-        log_event(f"feedback: pasta sincronizada indisponivel ({exc}) - "
-                  f"a tentar relay LAN")
+    raiz = feedback_root()
+    if raiz:
+        try:
+            _move_into(folder, os.path.join(raiz, "feedback", nome))
+            log_event(f"feedback: {nome} entregue na pasta sincronizada")
+            return "local"
+        except OSError as exc:
+            log_event(f"feedback: pasta sincronizada indisponivel ({exc}) - "
+                      f"a tentar relay LAN")
+    else:
+        log_event("feedback: sem pasta partilhada ao alcance desta maquina - "
+                  "a tentar relay LAN")
     if allow_relay:
         try:
             _relay_to_server(nome, folder)
@@ -246,7 +259,8 @@ def delivered_folder_exists(nome):
         return False
     if os.path.isdir(os.path.join(PENDING_DIR, nome)):
         return True
-    if os.path.isdir(os.path.join(feedback_root(), "feedback", nome)):
+    raiz = feedback_root()
+    if raiz and os.path.isdir(os.path.join(raiz, "feedback", nome)):
         return True
     try:
         from . import graph

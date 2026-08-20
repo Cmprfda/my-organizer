@@ -1,5 +1,30 @@
 ## Backlog
 
+### [DONE] O feedback de quem não alcança a partilha ficava dado como entregue
+- **Source:** feedback `20260820_105055_Carlos_Andrade` (v154, página Sugestões):
+  "o meu colega tentou dar-me uma sugestão e não conseguiu escrever na pasta do
+  OneDrive nem a app abriu uma issue no git já preenchida".
+- **What landed:** `feedback.feedback_root()` devolve `""` quando a pasta
+  partilhada não está ao alcance (caía para `HERE`, a pasta da app), o
+  `deliver()` salta a via da pasta sincronizada nesse caso e o
+  `delivered_folder_exists()` deixa de olhar para um caminho relativo.
+  `tests/test_feedback_entrega.py` (novo) prova as duas pontas.
+- **Design:** entregar para um sítio que ninguém lê é pior do que não entregar.
+  A via da pasta sincronizada só conta quando ela existe; sem ela o feedback fica
+  em `feedback_pending\` (e o `flush_pending` volta a tentar) e a resposta traz o
+  `issue_url` — que era exactamente a via que este bug estava a esconder, porque
+  ela só é oferecida quando a entrega ficou pendente.
+- **Released in:** v156.
+- **Known limits (worth revisiting):**
+  - A sugestão do colega continua na pasta `feedback\` da instalação dele: esta
+    correção evita o caso a partir de agora, não vai buscar o que já ficou para
+    trás (ele pode reenviá-la, ou mandar a pasta à mão).
+  - A via automática do GitHub (`gh issue create`) continua a precisar do GitHub
+    CLI instalado, o que ninguém fora do desenvolvimento tem; para os outros o
+    que vale é o botão que abre a issue já preenchida no browser.
+  - Um teste destes abre issues a sério no repositório público se o `gh` não for
+    dado como ausente — foi o que aconteceu às issues #1 a #6, fechadas à mão.
+
 ### [DONE] Avisos do servidor, arquivo do histórico, autoria por célula, ocorrências, ferramentas do assistente, folha de horas no Jira, filtros da equipa, bloqueios, tabela de rotas, testes da interface, blocos de código e menus no telemóvel
 - **Source:** ronda pedida pelo Carlos Andrade (2026-08-20) a partir da lista de
   melhorias que ele pediu para levantar, mais dois pedidos do feedback
