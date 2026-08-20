@@ -1009,9 +1009,10 @@ function metricsCompareHtml() {
     // a seta é sobre a distância ao costume, não sobre bem ou mal: fechar menos
     // numa semana de reuniões não é um defeito, é uma semana de reuniões
     const seta = pct == null ? "" : pct > 9 ? "▲" : pct < -9 ? "▼" : "";
+    // uma linha só, escrita como se fala: "▼ 40% do teu costume (20)"
     const nota = pct == null ? ""
       : Math.abs(pct) <= 9 ? t("compare_usual")
-        : `${seta} ${Math.abs(pct)}% ${t("compare_typical")} (${f.time ? formatTodoElapsed(antes) : antes})`;
+        : `${seta} ${Math.abs(pct)}% ${tf("compare_typical", f.time ? formatTodoElapsed(antes) : antes)}`;
     return { value: valor, label: `${t(f.label)}${nota ? ` · ${nota}` : ""}` };
   });
   return metricTiles(tiles) + (metricsCompare.thin

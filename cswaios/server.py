@@ -13,7 +13,7 @@ import threading
 import time
 import traceback
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timedelta
 import gzip
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -372,9 +372,18 @@ class Handler(BaseHTTPRequestHandler):
             # dois metros) e o comando (o telemóvel a conduzir o computador).
             # Nenhuma delas carrega a interface toda — são para ficar abertas.
             nome = f"{parsed.path.strip('/')}.html"
+            try:
+                with open(os.path.join(HERE, nome), encoding="utf-8") as f:
+                    corpo = f.read()
+            except OSError:
+                # uma instalação que se atualizou a partir de uma release onde
+                # estas páginas ainda não iam: dizê-lo é melhor do que um erro
+                # interno (e um reporte automático) por um ficheiro que falta
+                log_event(f"{ip} pediu {nome}, que não está nesta instalação")
+                self._send(404, msg("err_page_missing", "pt", n=nome), "text/plain")
+                return
             log_event(f"{ip} abriu {nome}")
-            with open(os.path.join(HERE, nome), encoding="utf-8") as f:
-                self._send(200, f.read(), "text/html")
+            self._send(200, corpo, "text/html")
         elif parsed.path.startswith('/static/'):
             self.send_static(parsed.path[len("/static/"):])
         elif parsed.path.startswith('/api/notepad/img/'):
@@ -532,7 +541,10 @@ class Handler(BaseHTTPRequestHandler):
             "ok": True,
             **stale_summary(dias),
             "chase": cobrar,
-            "pending": pending_overrides_summary().get("total", 0),
+            # o resumo é uma LISTA (uma entrada por campo por enviar), e não um
+            # dicionário com um total: é o número de alterações que o próximo
+            # Envio leva
+            "pending": len(pending_overrides_summary()),
             "unlogged_ms": sum(int(l.get("ms") or 0) for l in linhas),
             "doing": len([t for t in todos if isinstance(t, dict)
                           and not t.get("done") and t.get("col") == "inprogress"]),

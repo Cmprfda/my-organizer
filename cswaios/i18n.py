@@ -23,6 +23,12 @@ MSGS = {
               "snapshot from {t}, saved at the end of the last successful read — "
               "your local edits (✎), TODO list and notes still work.",
     },
+    "err_page_missing": {
+        "pt": "Esta página ({n}) não veio na versão instalada. Atualiza a app "
+              "(Definições -> Aplicação -> Atualizar app) e volta a tentar.",
+        "en": "This page ({n}) did not ship with the installed version. Update the "
+              "app (Settings -> Application -> Update app) and try again.",
+    },
     "toast_timer_title": {
         "pt": "Cronómetro a correr",
         "en": "Timer still running",

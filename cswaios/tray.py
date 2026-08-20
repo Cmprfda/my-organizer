@@ -199,7 +199,8 @@ class Farol:
         from datetime import datetime
 
         try:
-            porEnviar = int(pending_overrides_summary().get("total", 0))
+            # uma entrada por campo por enviar (é uma lista, não um total)
+            porEnviar = len(pending_overrides_summary())
         except Exception:
             porEnviar = 0
         hoje = datetime.now().strftime("%Y-%m-%d")
