@@ -534,6 +534,38 @@ td.role.unassigned,
   color: var(--status-info-fg);
 }
 
+/* o que esta a segurar a linha: mesma forma do chip da espera, ao lado dele.
+   Quando salta para o que bloqueia e um <button>, e ai o cursor diz-lo. */
+.blockChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+button.blockChip.go {
+  cursor: pointer;
+}
+
+button.blockChip.go:hover {
+  border-color: var(--accent, var(--text));
+  color: var(--text);
+}
+
+/* a lista do que se desbloqueia (no editor da espera) */
+.waitNote.unblocks {
+  color: var(--muted);
+}
+
 /* prazo passado (ou sem prazo): e o que ha a cobrar */
 .waitChip.chase {
   background: var(--status-doing-bg);

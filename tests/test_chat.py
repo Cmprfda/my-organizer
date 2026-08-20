@@ -15,7 +15,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cswaios import chat
+from cswaios import chat, chatllm
 
 LIVRO = "C:/qualquer/livro_de_teste.xlsx"
 ABA = "PRJ_CFG1_reworks_julho"
@@ -298,7 +298,7 @@ class TestAssistente(unittest.TestCase):
     def test_contexto_do_pedido_ao_modelo_so_leva_o_que_esta_aberto(self):
         """O texto que vai no pedido sai das listas do contexto — e nada mais."""
         ctx = chat.normalize_context(contexto([linha("FN_A", 2, todo="fazer isto")]))
-        texto = chat._llm_context_text(ctx, "pt")
+        texto = chatllm._llm_context_text(ctx, "pt")
         self.assertIn("FN_A", texto)
         self.assertIn("fazer isto", texto)
 

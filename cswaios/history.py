@@ -30,6 +30,14 @@ from .text import normalize
 
 HISTORY_FILE = os.path.join(HERE, "history.json")
 
+# Arquivo do que sai da janela viva, um ficheiro por mês. O `history.json` guarda
+# os últimos MAX_EVENTS eventos e nada mais: numa folha com movimento isso são
+# semanas, e o que passava desse limite desaparecia — com ele desaparecia o
+# desfazer de um Push antigo (precisa dos eventos DAQUELE envio) e a vista de
+# métricas de um período mais atrás ficava vazia sem dizer porquê. Agora só sai
+# da memória viva, não da app.
+ARCHIVE_DIRNAME = "history"
+
 # colunas seguidas: as mesmas que a app sabe ler e escrever na folha (as de
 # notify.js). Os valores comparados são sempre os da FOLHA (row_meta["orig"]),
 # nunca os que já têm uma alteração local (✎) aplicada por cima — senão marcar
@@ -44,6 +52,10 @@ _APP_WRITE_TTL = 3600      # segundos que uma escrita da app fica reconhecível
 _SEM_FIM = "9999-99-99"
 
 _lock = threading.Lock()
+
+# (pasta, mês) -> ((mtime, tamanho), eventos): ler o arquivo do disco a cada pergunta das
+# métricas custava mais do que o valor de o ter
+_ARCHIVE_CACHE = {}
 
 # Escritas feitas por esta app (Push para o Excel), para o histórico poder
 # distinguir "fui eu daqui" de "alguém mexeu na folha". Só em memória e de vida
@@ -167,6 +179,96 @@ def _load():
 def _save(data):
     """Chamar sempre com o _lock preso."""
     write_json(HISTORY_FILE, data)
+
+
+def _mes(ts):
+    """"2026-08" a partir da marca de um evento ("" se ela não presta)."""
+    m = str(ts or "")[:7]
+    return m if len(m) == 7 and m[4] == "-" else ""
+
+
+def _archive_dir():
+    """A pasta do arquivo é vizinha do `history.json` e não a da app: os testes
+    apontam o HISTORY_FILE para uma pasta temporária, e um arquivo de teste a
+    aterrar na pasta a sério ficava lá a contar história que não aconteceu."""
+    return os.path.join(os.path.dirname(os.path.abspath(HISTORY_FILE)),
+                        ARCHIVE_DIRNAME)
+
+
+def _archive_path(mes):
+    return os.path.join(_archive_dir(), f"history-{mes}.json")
+
+
+def _archive(eventos):
+    """Manda para o arquivo do mês os eventos que saem da janela viva.
+
+    Sem cópia de segurança de propósito: o arquivo só cresce por acrescento e
+    uma cópia diária de um ficheiro destes seria a mesma coisa outra vez.
+    """
+    por_mes = {}
+    for e in eventos:
+        mes = _mes(e.get("ts"))
+        if mes:
+            por_mes.setdefault(mes, []).append(e)
+    for mes, lista in por_mes.items():
+        caminho = _archive_path(mes)
+        atual = read_json(caminho)
+        try:
+            os.makedirs(_archive_dir(), exist_ok=True)
+            write_json(caminho, (atual if isinstance(atual, list) else []) + lista,
+                       backup=False)
+        except OSError:
+            # sem escrita na pasta: perde-se o arquivo, não o resto do histórico
+            pass
+        _ARCHIVE_CACHE.pop((_archive_dir(), mes), None)
+
+
+def _archive_read(mes):
+    """Os eventos arquivados de um mês (em cache, revalidada pela data)."""
+    caminho = _archive_path(mes)
+    try:
+        st = os.stat(caminho)
+        marca = (int(st.st_mtime), st.st_size)
+    except OSError:
+        return []
+    chave = (_archive_dir(), mes)
+    guardado = _ARCHIVE_CACHE.get(chave)
+    if guardado and guardado[0] == marca:
+        return guardado[1]
+    lista = read_json(caminho)
+    lista = [e for e in lista if isinstance(e, dict)] if isinstance(lista, list) else []
+    _ARCHIVE_CACHE[chave] = (marca, lista)
+    return lista
+
+
+def _meses_entre(baixo, alto):
+    """Os meses que um intervalo ISO toca, do mais antigo para o mais recente."""
+    a, b = _mes(baixo), _mes(alto)
+    if not a:
+        return []
+    # nunca há arquivo do futuro: sem este teto, um limite aberto (_SEM_FIM)
+    # dava 240 procuras no disco por cada pergunta ao histórico
+    hoje = datetime.now().strftime("%Y-%m")
+    if not b or b > hoje:
+        b = hoje
+    if b < a:
+        b = a
+    out, ano, mes = [], int(a[:4]), int(a[5:7])
+    while f"{ano:04d}-{mes:02d}" <= b and len(out) < 240:
+        out.append(f"{ano:04d}-{mes:02d}")
+        mes += 1
+        if mes > 12:
+            ano, mes = ano + 1, 1
+    return out
+
+
+def archived_events(baixo, alto):
+    """Os eventos arquivados dentro de [baixo, alto) — só os meses que ele toca."""
+    out = []
+    for mes in _meses_entre(baixo, alto):
+        out.extend(e for e in _archive_read(mes)
+                   if baixo <= str(e.get("ts") or "") < alto)
+    return out
 
 
 def load_history():
@@ -317,7 +419,10 @@ def record_read(workbook_id, sheet, rows):
         book["keyed"] = "ident"
         data["snapshots"][key] = book
         if mudancas:
-            data["events"] = (data["events"] + mudancas)[-MAX_EVENTS:]
+            todos = data["events"] + mudancas
+            if len(todos) > MAX_EVENTS:
+                _archive(todos[:len(todos) - MAX_EVENTS])
+            data["events"] = todos[-MAX_EVENTS:]
         if mudancas or antes != depois:
             _save(data)
         return len(mudancas)
@@ -334,6 +439,10 @@ def sheet_history(workbook_id, sheet, days=30, limit=400):
         eventos = [e for e in data["events"]
                    if e.get("book") == workbook_id and e.get("sheet") == sheet]
     corte = (datetime.now() - timedelta(days=max(1, int(days)))).isoformat()
+    # o arquivo entra primeiro: os eventos ficam por ordem de tempo, que é o que
+    # o `[-limit:]` lá abaixo assume para cortar pelos mais recentes
+    eventos = [e for e in archived_events(corte, _SEM_FIM)
+               if e.get("book") == workbook_id and e.get("sheet") == sheet] + eventos
     eventos = [e for e in eventos if str(e.get("ts") or "") >= corte]
     # a interface encontra as linhas pelo número que a folha tem AGORA: o
     # retrato é guardado por identidade, e é aqui que se volta a essa chave
@@ -372,8 +481,11 @@ def recent_events(days=7, limit=1000, since="", until=""):
     range_bounds)."""
     baixo, alto = range_bounds(days, since, until)
     with _lock:
-        eventos = [e for e in _load()["events"]
-                   if baixo <= str(e.get("ts") or "") < alto]
+        vivos = [e for e in _load()["events"]
+                 if baixo <= str(e.get("ts") or "") < alto]
+    # um período que chegue mais atrás do que a janela viva vinha vazio: os
+    # eventos estão no arquivo do mês (ver _archive)
+    eventos = archived_events(baixo, alto) + vivos
     return eventos[-max(1, int(limit)):][::-1]
 
 
@@ -384,7 +496,37 @@ def batch_events(batch):
     if not batch:
         return []
     with _lock:
-        return [dict(e) for e in _load()["events"] if str(e.get("batch") or "") == batch]
+        vivos = [dict(e) for e in _load()["events"] if str(e.get("batch") or "") == batch]
+    if vivos:
+        return vivos
+    # o lote saiu da janela viva: o nome dele é "p" + o instante do Push em
+    # milissegundos, e é isso que diz em que mês do arquivo ele está — assim não
+    # se lê o arquivo todo para desfazer um envio
+    quando = _batch_month(batch)
+    if not quando:
+        return []
+    for mes in quando:
+        achados = [dict(e) for e in _archive_read(mes)
+                   if str(e.get("batch") or "") == batch]
+        if achados:
+            return achados
+    return []
+
+
+def _batch_month(batch):
+    """Os meses onde procurar um lote: o do instante no nome dele e os vizinhos
+    (um Push à meia-noite do dia 1 pode ter eventos dos dois lados)."""
+    if not (batch.startswith("p") and batch[1:].isdigit()):
+        return []
+    try:
+        quando = datetime.fromtimestamp(int(batch[1:]) / 1000.0)
+    except (OverflowError, OSError, ValueError):
+        return []
+    mes, ano = quando.month, quando.year
+    vizinhos = [(ano, mes)]
+    vizinhos.append((ano - 1, 12) if mes == 1 else (ano, mes - 1))
+    vizinhos.append((ano + 1, 1) if mes == 12 else (ano, mes + 1))
+    return [f"{a:04d}-{m:02d}" for a, m in vizinhos]
 
 
 def forget_history(workbook_id=None):

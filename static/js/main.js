@@ -342,5 +342,31 @@ async function checkForChanges() {
   // que não pode mexer na célula em edição
   if (mudou) await notifyTaskChanges();
 }
-setInterval(checkForChanges, 20000);
-setInterval(() => loadAllTabs(), 120000);
+// Os ciclos são a rede de segurança dos avisos do servidor (static/js/events.js),
+// não a maneira normal de dar por uma alteração: com a ligação de pé espaça-se
+// para um terço do ritmo (o aviso chega em menos de um segundo), e sem ela
+// volta-se aos 20s/2min de sempre. Uma ligação pendurada morre calada — é por
+// isso que os ciclos não desaparecem.
+const POLL_FAST = 20000, POLL_SLOW = 60000;
+const RELOAD_FAST = 120000, RELOAD_SLOW = 360000;
+let pollTimer = null, reloadTimer = null;
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
+    try { await checkForChanges(); } finally { schedulePoll(); }
+  }, eventsLive() ? POLL_SLOW : POLL_FAST);
+}
+
+function scheduleReload() {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(async () => {
+    try { await loadAllTabs(); } finally { scheduleReload(); }
+  }, eventsLive() ? RELOAD_SLOW : RELOAD_FAST);
+}
+
+schedulePoll();
+scheduleReload();
+// numa janela dedicada também vale: são janelas da mesma app e é justamente
+// entre elas que os avisos servem para algo
+eventsStart();

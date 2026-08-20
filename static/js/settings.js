@@ -17,7 +17,7 @@ function applyLang() {
   document.querySelector('label[for="themeSel"]').textContent = t("theme_title");
   document.querySelector('label[for="langSel"]').textContent = t("lang_title");
   applyHomeLang();
-  applyInsightsLang();
+  if (typeof applyInsightsLang === "function") applyInsightsLang();
   applyTodayLang();
   applyChatLang();
   applyAnnounceLang();
@@ -188,7 +188,7 @@ function applyLang() {
   $("changelogBtn").textContent = t("btn_changelog");
   $("changelogBtn").title = t("t_changelog");
   $("changelogTitle").textContent = t("changelog_title");
-  renderHelp();
+  if (typeof renderHelp === "function") renderHelp();
   // a página do Jira monta os seus textos no render (painel "Tarefas por ligar")
   jiraRenderPageIfVisible();
   if (currentView === "todo" || sideView === "todo") renderTodo();

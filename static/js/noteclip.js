@@ -224,6 +224,18 @@ function ncTableHtml(table) {
 // para o <foreignObject> da imagem, que é lido como XML: daí o <br/> fechado e
 // o &#160; em vez do &nbsp; (entidade que o XML não conhece e que fazia a
 // imagem não carregar de todo)
+const NC_MONO_FONT = 'Consolas, "Cascadia Mono", "Courier New", monospace';
+
+// o bloco de código para quem cola texto formatado: <pre> com uma fonte de
+// largura fixa e um fundo, que é como o Teams, o Outlook e o OneNote o mostram.
+// Sem os marcadores por dentro — ali é código, não texto com negrito.
+function ncCodeHtml(block) {
+  const corpo = block.body.map(l => esc(l.text) || "&#160;").join("<br/>");
+  return `<pre style="font-family:${NC_MONO_FONT};font-size:12.5px;line-height:1.45;` +
+    `background:#f4f4f6;border:1px solid #dcdce0;border-radius:6px;` +
+    `padding:8px 10px;margin:6px 0;white-space:pre-wrap">${corpo}</pre>`;
+}
+
 function noteMarksToHtml(text) {
   const lines = noteTextLines(String(text || ""));
   let html = "";
@@ -235,6 +247,13 @@ function noteMarksToHtml(text) {
   };
   let i = 0;
   while (i < lines.length) {
+    const code = noteCodeBlock(lines, i);
+    if (code) {
+      flushPara();
+      html += ncCodeHtml(code);
+      i += code.count;
+      continue;
+    }
     const table = noteTableBlock(lines, i);
     if (table) {
       flushPara();
@@ -258,6 +277,12 @@ function noteMarksToHtml(text) {
 const NC_CANVAS_FONT = '"Segoe UI", Calibri, Arial, sans-serif';
 const NC_TEXT_SIZE = 13;
 const NC_LINE_H = 19;
+// o bloco de código é desenhado com uma fonte de largura fixa e linhas mais
+// juntas, como se lê um ficheiro
+const NC_CODE_FONT = 'Consolas, "Cascadia Mono", "Courier New", monospace';
+const NC_CODE_SIZE = 12;
+const NC_CODE_LINE_H = 16;
+const NC_CODE_PAD = 7;
 const NC_BOX_PAD = 10;
 const NC_CELL_PAD = 6;
 
@@ -423,6 +448,42 @@ function ncPaintTable(ctx, table, x, y, maxW, color) {
 
 // o texto com marcadores desenhado dentro de um retângulo (o que não couber
 // fica de fora, tal como na caixa no ecrã)
+// o bloco de código na tela: fundo, moldura e uma fonte de largura fixa. Sem
+// dobrar as linhas — código dobrado deixa de se ler; o que não cabe fica de
+// fora, que é o mesmo que a caixa faz no ecrã.
+function ncPaintCode(ctx, block, x, y, maxW, color) {
+  const linhas = block.body.map(l => l.text);
+  const alturaTexto = Math.max(1, linhas.length) * NC_CODE_LINE_H;
+  const alto = alturaTexto + 2 * NC_CODE_PAD;
+  ctx.save();
+  ctx.fillStyle = ncMix(color, 0.08);
+  ctx.strokeStyle = ncMix(color, 0.22);
+  ctx.beginPath();
+  ctx.rect(x + 0.5, y + 0.5, maxW - 1, alto - 1);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.rect(x, y, maxW, alto);
+  ctx.clip();
+  ctx.font = `${NC_CODE_SIZE}px ${NC_CODE_FONT}`;
+  ctx.fillStyle = color;
+  linhas.forEach((linha, n) => {
+    ctx.fillText(linha, x + NC_CODE_PAD,
+                 y + NC_CODE_PAD + (n + 1) * NC_CODE_LINE_H - 4);
+  });
+  ctx.restore();
+  return alto + 4;
+}
+
+// a cor do fundo do bloco: a cor do texto com pouca opacidade, para funcionar
+// no tema claro e no escuro sem ter de saber em qual deles estamos
+function ncMix(color, alpha) {
+  const m = /^rgba?\(([^)]+)\)/.exec(String(color || ""));
+  if (!m) return `rgba(128,128,128,${alpha})`;
+  const [r, g, b] = m[1].split(",").map(v => parseFloat(v) || 0);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function ncPaintText(ctx, text, x, y, w, h, color) {
   ctx.save();
   ctx.beginPath();
@@ -433,6 +494,12 @@ function ncPaintText(ctx, text, x, y, w, h, color) {
   let cy = y + NC_LINE_H - 5;
   let i = 0;
   while (i < lines.length && cy < y + h + NC_LINE_H) {
+    const code = noteCodeBlock(lines, i);
+    if (code) {
+      cy += ncPaintCode(ctx, code, x, cy - NC_LINE_H + 5, w, color);
+      i += code.count;
+      continue;
+    }
     const table = noteTableBlock(lines, i);
     if (table) {
       cy += ncPaintTable(ctx, table, x, cy - NC_LINE_H + 5, w, color);

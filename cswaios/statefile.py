@@ -25,15 +25,29 @@ import re
 import shutil
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime
 
+from . import events
 from .config import HERE
+
+try:                                  # Windows
+    import msvcrt
+except ImportError:                   # pragma: no cover - a app corre no Windows
+    msvcrt = None
+try:                                  # o resto (o CI corre os testes nos dois)
+    import fcntl
+except ImportError:
+    fcntl = None
 
 BACKUP_DIR = os.path.join(HERE, "backups")
 
-# cópias guardadas por ficheiro (uma por dia): duas semanas chega para dar pela
-# falta de algo e ir buscá-lo, sem a pasta crescer sem fim
-BACKUP_KEEP = 14
+# cópias guardadas por ficheiro. Eram uma por dia, e duas coisas apagadas no
+# mesmo dia repunham-se as duas ao princípio do dia — a segunda perdia-se. Agora
+# é uma por HORA nos dias recentes (dá para voltar ao que estava há pouco) e uma
+# por dia nos antigos, que é para o que elas servem passada a tarde.
+BACKUP_KEEP = 40
+BACKUP_DIAS_FINOS = 2      # dias em que se guardam todas as horas
 
 # o estado que é do utilizador e não se reconstrói de outro sítio. Serve para o
 # botão "Guardar agora" e para a lista nas Definições saber o que mostrar; o
@@ -77,6 +91,70 @@ def lock_for(path):
 def post_lock():
     """Trinco do pedido inteiro, para o ciclo ler-mexer-gravar dos handlers."""
     return _post_lock
+
+
+def _os_trava(fh, prazo=5.0):
+    """Prende o ficheiro de trinco para este PROCESSO. True se conseguiu.
+
+    Espera até `prazo` segundos e desiste: mais vale gravar sem o trinco (e
+    arriscar perder uma alteração da outra instância, que é o que já acontecia)
+    do que ficar aqui pendurado e o clique do utilizador nunca responder.
+    """
+    fim = time.time() + prazo
+    while True:
+        try:
+            if msvcrt is not None:
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            elif fcntl is not None:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            else:
+                return False
+            return True
+        except OSError:
+            if time.time() >= fim:
+                return False
+            time.sleep(0.05)
+
+
+def _os_solta(fh):
+    try:
+        if msvcrt is not None:
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        elif fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
+@contextmanager
+def state_lock(path):
+    """Trinco deste ficheiro de estado entre fios E entre processos.
+
+    O `lock_for` só vale dentro de um processo: duas instâncias da app na mesma
+    pasta (a DEV e a estável, ou a app aberta duas vezes por engano) faziam o
+    ciclo ler-mexer-gravar uma por cima da outra — sem partir o ficheiro, que a
+    gravação é atómica, mas perdendo a alteração de uma delas. Aqui prende-se
+    também um ficheiro `.lock` ao lado, que o sistema operativo só deixa uma
+    instância ter de cada vez.
+    """
+    with lock_for(path):
+        fh = None
+        preso = False
+        try:
+            try:
+                fh = open(path + ".lock", "a+b")
+                preso = _os_trava(fh)
+            except OSError:
+                fh = None       # sem escrita na pasta: fica só o trinco de fios
+            yield preso
+        finally:
+            if fh is not None:
+                if preso:
+                    _os_solta(fh)
+                try:
+                    fh.close()
+                except OSError:
+                    pass
 
 
 def read_json(path, default=None):
@@ -124,6 +202,9 @@ def write_json(path, data, backup=True):
                 f.flush()
                 os.fsync(f.fileno())
             _replace_retry(tmp, path)
+            # a partir daqui o ficheiro novo é o que vale: as outras janelas
+            # (e as outras instâncias, quando ouvirem esta) podem recarregar
+            events.publish("state", file=os.path.basename(path))
         except (OSError, ValueError, TypeError):
             # a troca é que é o compromisso: falhando, o ficheiro antigo fica
             # exatamente como estava em vez de ficar cortado
@@ -148,17 +229,28 @@ def backup_file(path, force=False):
     # redirecionam os ficheiros de estado para uma pasta temporária, e uma cópia
     # de teste a aterrar na pasta a sério ficava lá a poder ser reposta
     pasta = os.path.join(os.path.dirname(os.path.abspath(path)), "backups")
-    dia = datetime.now().strftime("%Y%m%d")
-    destino = os.path.join(pasta, f"{stem}.{dia}.json")
+    agora = datetime.now()
+    dia = agora.strftime("%Y%m%d")
+    destino = os.path.join(pasta, f"{stem}.{dia}-{agora:%H}.json")
     try:
         os.makedirs(pasta, exist_ok=True)
         if os.path.exists(destino):
             if not force:
                 return None
-            n = 2
-            while os.path.exists(os.path.join(pasta, f"{stem}.{dia}-{n}.json")):
-                n += 1
-            destino = os.path.join(pasta, f"{stem}.{dia}-{n}.json")
+            # "Guardar agora" e o antes-de-repor: desce ao minuto, e ao segundo
+            # se for preciso, para nunca escrever por cima de outra cópia
+            destino = ""
+            for sufixo in (f"{agora:%H%M}", f"{agora:%H%M%S}"):
+                tenta = os.path.join(pasta, f"{stem}.{dia}-{sufixo}.json")
+                if not os.path.exists(tenta):
+                    destino = tenta
+                    break
+            if not destino:
+                n = 2
+                while os.path.exists(os.path.join(
+                        pasta, f"{stem}.{dia}-{agora:%H%M%S}{n}.json")):
+                    n += 1
+                destino = os.path.join(pasta, f"{stem}.{dia}-{agora:%H%M%S}{n}.json")
         shutil.copy2(path, destino)
     except OSError:
         return None   # sem espaço ou sem escrita: a gravação em si não se perde
@@ -167,13 +259,33 @@ def backup_file(path, force=False):
 
 
 def _prune(pasta, stem):
-    """Deixa só as `BACKUP_KEEP` cópias mais recentes deste ficheiro."""
+    """Arruma as cópias deste ficheiro: todas as horas dos dias recentes, uma
+    por dia nos antigos, e no fim nunca mais de `BACKUP_KEEP`.
+
+    A ordem alfabética dos nomes é a ordem do tempo (o dia vem primeiro e as
+    horas vêm com zeros à frente), por isso a primeira de cada dia é a mais
+    antiga desse dia — a que interessa guardar, porque é o retrato de antes do
+    trabalho daquele dia.
+    """
     try:
         nomes = sorted(n for n in os.listdir(pasta)
                        if n.startswith(stem + ".") and _BACKUP_RE.match(n))
     except OSError:
         return
-    for nome in nomes[:-BACKUP_KEEP] if len(nomes) > BACKUP_KEEP else []:
+    por_dia = {}
+    for nome in nomes:
+        por_dia.setdefault(_BACKUP_RE.match(nome).group("day"), []).append(nome)
+    finos = set(sorted(por_dia)[-BACKUP_DIAS_FINOS:])   # os dias recentes
+    fica, sai = [], []
+    for dia in sorted(por_dia):
+        if dia in finos:
+            fica.extend(por_dia[dia])
+        else:
+            fica.append(por_dia[dia][0])
+            sai.extend(por_dia[dia][1:])
+    if len(fica) > BACKUP_KEEP:
+        sai.extend(fica[:len(fica) - BACKUP_KEEP])
+    for nome in sai:
         try:
             os.remove(os.path.join(pasta, nome))
         except OSError:
@@ -245,4 +357,7 @@ def restore_backup(nome):
     with lock_for(destino):
         backup_file(destino, force=True)
         shutil.copy2(origem, destino)
+    # repor não passa pelo write_json (é uma cópia de ficheiro), por isso o aviso
+    # sai daqui — é o que poupa o F5 à mão depois de um restauro
+    events.publish("state", file=alvo, restored=True)
     return {"file": nome, "target": alvo}

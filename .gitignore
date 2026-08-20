@@ -16,8 +16,12 @@ announcement.json
 feedback_pending/
 waiting.json
 exports/
-# copias do estado local (uma por dia, ver cswaios/statefile.py)
+# copias do estado local (uma por hora nos dias recentes, ver cswaios/statefile.py)
 backups/
+# arquivo do historico, um ficheiro por mes (ver cswaios/history.py)
+history/
+# trincos entre processos (ficheiros vazios, ver statefile.state_lock)
+*.lock
 # temporarios da gravacao atomica (existem por milissegundos)
 *.tmp
 

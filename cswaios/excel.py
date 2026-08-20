@@ -9,11 +9,13 @@ import subprocess
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime
 
 import openpyxl
 
 from . import config
+from . import events
 from .config import CANDIDATE_DIRS, FILE_PATTERN, HERE
 from .graph import (graph_ids_from_path, graph_load_rows, graph_write_status,
                     is_graph_path)
@@ -29,6 +31,32 @@ _RAW_CACHE = {}
 # COM ocupado, ou pior, gravam um por cima do outro. Aqui as escritas ficam em
 # fila, que é o que o Excel consegue servir.
 _com_lock = threading.Lock()
+
+
+@contextmanager
+def com_wait(what=""):
+    """A fila das escritas COM, mas dizendo a quem espera que está à espera.
+
+    Uma escrita pode levar um minuto (o Excel a abrir, a folha a gravar, o
+    OneDrive a subir). A segunda ficava calada nesse tempo e a interface só
+    mostrava o mesmo rodar de sempre — indistinguível de estar pendurada. O
+    aviso leva a janela que pediu (ver `events.set_origin`), por isso só ela
+    mostra o "à espera de outra escrita".
+    """
+    if _com_lock.acquire(blocking=False):
+        esperou = False
+    else:
+        esperou = True
+        events.publish("excel", state="waiting", what=what)
+        _com_lock.acquire()
+    if esperou:
+        events.publish("excel", state="writing", what=what)
+    try:
+        yield
+    finally:
+        _com_lock.release()
+        if esperou:
+            events.publish("excel", state="free", what=what)
 
 
 # lista oficial de estados, lida da coluna "Status" da aba Admin do próprio
@@ -147,7 +175,7 @@ def write_status_to_excel(path, sheet, xlrow, xlcol, fncol, fn, value):
     params = {"path": path, "basename": os.path.basename(path), "sheet": sheet,
               "xlrow": int(xlrow), "xlcol": int(xlcol), "fncol": int(fncol),
               "fn": fn, "value": value}
-    with _com_lock, tempfile.TemporaryDirectory() as td:
+    with com_wait(os.path.basename(path)), tempfile.TemporaryDirectory() as td:
         params_path = os.path.join(td, "params.json")
         ps1_path = os.path.join(td, "write.ps1")
         with open(params_path, "w", encoding="utf-8") as f:
@@ -249,7 +277,7 @@ def _run_set_validation(path, target_sheet, target_cell, formula):
     set_data_validation_list e set_data_validation_fixed_list."""
     params = {"path": path, "basename": os.path.basename(path), "targetSheet": target_sheet,
               "targetCell": target_cell, "formula": formula}
-    with _com_lock, tempfile.TemporaryDirectory() as td:
+    with com_wait(os.path.basename(path)), tempfile.TemporaryDirectory() as td:
         params_path = os.path.join(td, "params.json")
         ps1_path = os.path.join(td, "validation.ps1")
         with open(params_path, "w", encoding="utf-8") as f:
@@ -375,7 +403,7 @@ def close_excel_workbook(basename):
         "$wb | ForEach-Object { $_.Close($true) }; exit 0"
     )
     try:
-        with _com_lock:
+        with com_wait(basename):
             rc = subprocess.run(["powershell", "-NoProfile", "-Command", script],
                                 capture_output=True, timeout=40).returncode
         return rc == 0

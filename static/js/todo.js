@@ -488,6 +488,24 @@ function repeatLabel(rep) {
 // passaram sem o item ser fechado (o servidor conta-as em `missed`, ver
 // catch_up_repeats): a data já é a de agora, e isto é o que diz que a
 // repetição não está em dia.
+// as últimas ocorrências desta corrente, das mais recentes para as antigas:
+// "8 de 10" mais os dias, para o chip poder dizer como tem corrido em vez de só
+// quantas falharam (ver occurrences em cswaios/todos.py)
+function todoStreak(it) {
+  const occs = Array.isArray(it.occurrences) ? it.occurrences.slice(-10) : [];
+  if (!occs.length) return null;
+  const feitas = occs.filter(o => o && o.state === "done").length;
+  return { feitas, total: occs.length, occs };
+}
+
+function todoStreakTip(it) {
+  const st = todoStreak(it);
+  if (!st) return "";
+  const dias = st.occs.slice().reverse().slice(0, 6)
+    .map(o => `${o.state === "done" ? "✔" : "✕"} ${fmtDueShort(o.day)}`).join(" · ");
+  return `\n${tf("todo_streak_tip", st.feitas, st.total)}\n${dias}`;
+}
+
 function todoDueHtml(it) {
   const due = String(it.due || "");
   const rep = String(it.repeat || "");
@@ -495,7 +513,7 @@ function todoDueHtml(it) {
   const estado = due ? dueState(due) : "";
   const tip = due
     ? `${t("todo_due_click")}\n${fmtDueShort(due)}${rep ? ` · ${repeatLabel(rep)}` : ""}` +
-      (falhadas ? `\n${tf("todo_missed_tip", falhadas)}` : "")
+      (falhadas ? `\n${tf("todo_missed_tip", falhadas)}` : "") + todoStreakTip(it)
     : t("todo_due_add");
   return `<button type="button" class="todoDueBtn${estado ? ` due-${estado}` : ""}${due ? "" : " empty"}${falhadas ? " has-missed" : ""}" data-tdue="${esc(it.id)}" title="${esc(tip)}">` +
     `<span class="todoDueGlyph">📅</span>${due ? esc(todoDueLabel(it)) : ""}` +

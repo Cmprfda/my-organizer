@@ -65,6 +65,9 @@ DUE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # dias guardados no registo do cronómetro. 400 é mais do que qualquer período
 # que as Métricas saibam mostrar (92 dias) e chega para um ano de trabalho.
 TIMER_SEGMENTS_MAX = 400
+# ocorrências guardadas por item que se repete: dois meses de um item diário, e
+# é isso que dá para dizer "fechado 8 das últimas 10 vezes"
+OCCURRENCES_KEEP = 60
 # origens que um item pode ter ligadas além da sua (só as que sabem apontar
 # para uma linha: escrever à mão não tem para onde ir)
 TODO_LINK_KINDS = ("task", "ccr")
@@ -157,6 +160,32 @@ def normalize_segment(seg):
     if not day or ms <= 0:
         return None
     return {"d": day, "ms": ms}
+
+
+def normalize_occurrence(occ):
+    """Uma ocorrência de um item que se repete: {day: AAAA-MM-DD, state: …}."""
+    if not isinstance(occ, dict):
+        return None
+    day = normalize_due(occ.get("day"))
+    estado = str(occ.get("state") or "").strip().lower()
+    if not day or estado not in ("done", "missed"):
+        return None
+    return {"day": day, "state": estado}
+
+
+def merge_occurrences(occs):
+    """Uma entrada por dia (a última manda), por ordem de data.
+
+    O `missed` dizia QUANTAS ocorrências passaram sem o item ser fechado, mas
+    não QUAIS: um item diário com 4 falhas podia ser um mês irregular ou uma
+    semana de férias, e ninguém sabia dizer. Aqui fica o registo, dia a dia.
+    """
+    por_dia = {}
+    for occ in occs or []:
+        limpa = normalize_occurrence(occ)
+        if limpa:
+            por_dia[limpa["day"]] = limpa
+    return [por_dia[d] for d in sorted(por_dia)][-OCCURRENCES_KEEP:]
 
 
 def merge_segments(segments):
@@ -254,6 +283,14 @@ def normalize_todo_item(item):
         out["missed"] = missed
     else:
         out.pop("missed", None)
+    # e o registo de QUAIS foram: as ocorrências fechadas e as que passaram em
+    # claro, dia a dia. Só existe em itens que se repetem (ou que se repetiam).
+    occs = merge_occurrences(out.get("occurrences")
+                             if isinstance(out.get("occurrences"), list) else [])
+    if occs:
+        out["occurrences"] = occs
+    else:
+        out.pop("occurrences", None)
     # quando o tempo contado deste item foi posto a zero: o registo diário
     # anterior fica (é a folha de horas) e isto é o que explica a diferença
     restarted = str(out.get("restarted_at") or "").strip()[:32]
@@ -428,16 +465,22 @@ def catch_up_repeats(todos, today=None):
         base = _due_date(due, today)
         if base >= today:
             continue
-        atual, saltadas = base, 0
+        atual, saltadas, dias = base, 0, []
         for _ in range(400):
             seguinte = _next_slot(atual, repeat, base.day)
             if seguinte > today:
                 break
+            # a ocorrência que fica atrás é a `atual`: a data que a substitui é
+            # a `seguinte`, e é essa que passa a ser a de agora
+            dias.append(atual.isoformat())
             atual, saltadas = seguinte, saltadas + 1
         if not saltadas:
             continue
         item["due"] = atual.isoformat()
         item["missed"] = _int_or_zero(item.get("missed")) + saltadas
+        item["occurrences"] = merge_occurrences(
+            (item.get("occurrences") if isinstance(item.get("occurrences"), list) else [])
+            + [{"day": d, "state": "missed"} for d in dias])
         mexidos += 1
     return mexidos
 
@@ -493,6 +536,16 @@ def spawn_repeat(todos, item):
             "created": datetime.now().strftime("%d/%m %H:%M")}
     if nova_data:
         novo["due"] = nova_data
+    # o registo das ocorrências é da CORRENTE e não de um item: passa para a
+    # nova, com a que se acabou de fechar já dentro. O item fechado guarda o seu
+    # (é o que ele fez), mas quem conta a corrente é o que está por fazer.
+    feita = normalize_due(item.get("due")) or date.today().isoformat()
+    historia = merge_occurrences(
+        (item.get("occurrences") if isinstance(item.get("occurrences"), list) else [])
+        + [{"day": feita, "state": "done"}])
+    if historia:
+        novo["occurrences"] = historia
+        item["occurrences"] = historia
     # as ocorrências que o anterior deixou passar são história dele: a nova
     # nasce em dia (e o anterior, já fechado, deixa de as mostrar)
     item.pop("missed", None)

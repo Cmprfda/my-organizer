@@ -134,9 +134,9 @@ function showView(name) {
   if (codeOnScreen) renderCodePage();
   if (name === "metrics" || sideView === "metrics") {
     // a atividade de todos os livros só se vai buscar quando esta vista abre
-    // (não vale a pena pedi-la a quem nunca cá vem)
-    loadMetricsActivity();
-    renderMetrics();
+    // (não vale a pena pedi-la a quem nunca cá vem) — e o próprio metrics.js
+    // também só vem agora, que são 40 KB para quem nunca abre esta página
+    lazyThen("metrics", () => { loadMetricsActivity(); renderMetrics(); });
   }
 }
 

@@ -58,6 +58,25 @@ def save_waiting(data):
     write_json(WAITING_FILE, data)
 
 
+# o que está a segurar uma linha, quando é uma COISA e não só uma pessoa: outra
+# linha da folha, uma CCR ou um item da lista Por fazer. O "à espera de <quem>"
+# respondia a "quem é que tenho de cobrar"; isto responde à outra metade — o que
+# é que se desbloqueia quando aquilo acabar (ver waiting.js)
+BLOCKER_KINDS = ("row", "ccr", "todo")
+
+
+def normalize_blocker(raw):
+    """{kind, ref, label} aceitável, ou None."""
+    if not isinstance(raw, dict):
+        return None
+    kind = str(raw.get("kind") or "").strip().lower()
+    ref = str(raw.get("ref") or "").strip()[:300]
+    label = str(raw.get("label") or "").strip()[:200]
+    if kind not in BLOCKER_KINDS or not (ref or label):
+        return None
+    return {"kind": kind, "ref": ref or label, "label": label or ref}
+
+
 # CCRs acompanhadas na vista "CCRs": por ID, com os passos de fecho.
 # Partilhadas entre dispositivos porque vivem aqui no servidor.
 CCRS_FILE = os.path.join(HERE, "ccrs.json")

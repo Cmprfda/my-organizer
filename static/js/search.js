@@ -105,7 +105,7 @@ function searchJiraHits(termos) {
 // Ações: o que se faria com o rato, ao alcance do teclado
 function searchActionHits(termos) {
   const acoes = [
-    { title: t("cmd_report"), go: () => openWeekReport() },
+    { title: t("cmd_report"), go: () => lazyThen("metrics", () => openWeekReport()) },
     { title: t("cmd_metrics"), go: () => showView("metrics") },
     { title: t("cmd_tasks"), go: () => showView(workbookView()) },
     { title: t("cmd_todo"), go: () => showView("todo") },

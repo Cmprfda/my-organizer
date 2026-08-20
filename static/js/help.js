@@ -323,3 +323,8 @@ document.addEventListener("keydown", e => {
     e.stopPropagation();
     setChangelogOpen(false);
 }, true);
+
+// Este ficheiro chega no clique do "?" (ver lazy.js), depois de o applyLang() do
+// arranque já ter passado: os textos são postos aqui, senão o primeiro que
+// abrisse a ajuda encontrava-a vazia.
+renderHelp();

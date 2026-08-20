@@ -200,3 +200,60 @@
   notas, nas CCRs, nas esperas ou nas alterações locais passam a esperar uns
   pelos outros, e a gravação é atómica — o item acabado de criar no telemóvel já
   não desaparece porque o browser gravou no mesmo instante.
+
+## v155
+
+- **O que muda numa janela aparece nas outras**: a app deixou de esperar pelo
+  ciclo de 20 segundos para dar por uma alteração. Uma nota escrita no
+  telemóvel, um item arrastado na segunda janela, uma cópia do estado reposta
+  nas Definições — aparece nas outras janelas em menos de um segundo, sem F5. O
+  ciclo de perguntar continua lá, mais espaçado, para quando a ligação morrer
+  calada (proxy, portátil a adormecer).
+- **A app abre mais depressa**: a interface passa a ser guardada pelo browser
+  (só se volta a descarregar quando muda mesmo) e vai comprimida — eram ~800 KB
+  a cada arranque. A ajuda e a página das Métricas só chegam quando se clica
+  nelas.
+- **Quem mudou ESTA célula**: o `☁` de uma alteração no histórico passa a ser
+  clicável. Em vez de mostrar quem gravou o livro àquela hora, vai ver às
+  versões do livro no OneDrive qual é a gravação que trouxe aquele valor àquela
+  célula — e diz quando é que tem a certeza (a versão anterior ainda tinha o
+  valor antigo) e quando é só a mais antiga que já o tem.
+- **O histórico não desaparece mais**: o que passa dos 5000 eventos guardados
+  vai para um arquivo por mês, em vez de se perder. As Métricas de um período
+  mais atrás voltam a ter dados e o desfazer de um Push antigo volta a funcionar.
+- **Registar a semana no Jira de uma vez** (Métricas → *Folha de horas*): uma
+  linha por item e por dia com o que falta registar, o tempo editável, e um
+  Registar que as manda todas. Uma linha que falhe não leva as outras atrás.
+- **Como tem corrido um item que se repete**: além de dizer quantas ocorrências
+  passaram sem ele ser fechado, o chip 📅 passa a dizer QUAIS — "fechado 8 das
+  últimas 10 vezes", com os dias.
+- **Bloqueada por**: a marca "à espera de alguém" pode agora apontar ao que está
+  a segurar a tarefa — outra tarefa, uma CCR ou um item por fazer. O chip leva-te
+  lá, e a coisa que bloqueia passa a dizer o que se desbloqueia quando ela
+  acabar.
+- **Levar os filtros a toda a equipa** (janela dos filtros personalizados):
+  *Publicar* deixa o conjunto na pasta partilhada com o teu nome e *Da equipa…*
+  traz o de um colega. O que chega passa pela mesma caixa de colar de sempre —
+  vê-se antes de aceitar.
+- **Blocos de código nas notas**: uma caixa pode ter um bloco de código
+  (`` ``` `` a abrir e a fechar, ou o botão `</>` da barra da caixa). Lá dentro
+  nada é interpretado — nem negrito, nem tabelas — e a letra é de largura fixa.
+  Copiar leva o código tal e qual: em texto simples sem as cercas, em texto
+  formatado com o bloco desenhado, e na imagem da caixa.
+- **Os menus das notas funcionam no telemóvel**: os grupos da barra
+  (Ferramentas, Formas, Editar, Ver) abrem ao toque — não abriam nenhum — e o
+  painel de cada um dobra em linhas em vez de sair do ecrã.
+- **O assistente pode perguntar mais**: com o motor LLM ligado, passa a poder
+  percorrer TODAS as linhas de TODAS as folhas que o servidor já leu (não só as
+  primeiras da janela de quem pergunta) e a consultar o histórico das
+  alterações. Continua a não escrever nada e a não ler a folha.
+- **Cópias do estado de hora a hora**: nos dias recentes guarda-se uma cópia por
+  hora (era uma por dia), por isso duas coisas apagadas no mesmo dia deixam de
+  se repor as duas ao princípio do dia. Nos dias antigos fica uma por dia, como
+  antes.
+- **Duas instâncias na mesma pasta já não se pisam**: a DEV e a estável (ou a
+  app aberta duas vezes) passam a esperar uma pela outra a gravar o estado —
+  antes podia perder-se uma alteração.
+- **Uma escrita no Excel de cada vez, e agora diz-se**: quando um Push espera
+  que outro acabe, a janela que está à espera passa a dizê-lo em vez de mostrar
+  o mesmo rodar de sempre.

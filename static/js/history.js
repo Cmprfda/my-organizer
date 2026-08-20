@@ -54,7 +54,11 @@ async function loadTaskHistory(tab) {
     // existem com ele, por isso desenha-se outra vez (nunca por cima de um
     // editor aberto — o render() já se protege disso sozinho). O cartão
     // "Paradas" das Métricas depende do mesmo histórico.
-    if (tab.id === activeTabId) { render(); refreshMetricsIfOpen(); }
+    if (tab.id === activeTabId) {
+      render();
+      // o metrics.js só existe depois de a vista dele abrir (ver lazy.js)
+      if (typeof refreshMetricsIfOpen === "function") refreshMetricsIfOpen();
+    }
     // quem gravou cada versão do livro: pedido à parte, porque é o OneDrive
     // que responde e pode demorar (ou não responder de todo)
     loadHistoryAuthors(tab);
@@ -304,8 +308,13 @@ function taskHistoryNode(meta) {
       `<span class="histVals"><span class="histFrom">${esc(histValue(e.from))}</span>` +
       `<span class="histArrow">→</span>` +
       `<span class="histTo">${esc(histValue(e.to))}</span></span>` +
-      `<span class="histVia" title="${esc(marca)}">${e.via === "app" ? "✎" : "☁"}` +
-      (quem ? ` <span class="histWho">${esc(quem)}</span>` : "") + `</span>` +
+      (e.via === "app"
+        ? `<span class="histVia" title="${esc(marca)}">✎</span>`
+        // o ☁ é um botão: clicar vai VER à versão do livro de quem foi esta
+        // alteração, em vez de ficar pelo nome de quem gravou àquela hora
+        : `<button type="button" class="histVia histAsk" data-histwho="${i}"` +
+          ` title="${esc(marca + "\n" + t("t_hist_who"))}">☁` +
+          (quem ? ` <span class="histWho">${esc(quem)}</span>` : "") + `</button>`) +
       undo + undoLote +
       `</li>`;
   }).join("");
@@ -329,6 +338,12 @@ function taskHistoryNode(meta) {
       undoHistoryBatch(lote.dataset.histbatch);
       return;
     }
+    const ask = ev.target.closest("[data-histwho]");
+    if (ask) {
+      ev.stopPropagation();
+      askHistoryWho(ask, eventos[+ask.dataset.histwho]);
+      return;
+    }
     const btn = ev.target.closest("[data-histundo]");
     if (!btn) return;
     ev.stopPropagation();
@@ -336,4 +351,40 @@ function taskHistoryNode(meta) {
     if (e) undoHistoryChange(meta, e.col, String(e.from || ""));
   });
   return wrap;
+}
+
+// Quem mudou esta célula, a sério: o servidor vai buscar a versão do livro
+// àquela hora e LÊ a célula lá (ver cswaios/authors.py). Custa uma descarga do
+// livro, por isso só acontece a pedido — e o resultado fica no botão.
+async function askHistoryWho(btn, ev) {
+  if (!ev || btn.dataset.asked === "1") return;
+  const tab = workbookTabs.find(x => x.id === activeTabId);
+  const ficheiro = (tab && tab.lastData && tab.lastData.file) || "";
+  if (!ficheiro.startsWith("onedrive:")) { toast(t("hist_who_local"), ""); return; }
+  btn.dataset.asked = "1";
+  btn.classList.add("asking");
+  const q = new URLSearchParams({
+    file: ficheiro, sheet: (tab.lastData && tab.lastData.sheet) || "",
+    xlrow: String(ev.xlrow || ""), col: String(ev.col || ""),
+    ts: String(ev.ts || ""), from: String(ev.from || ""), to: String(ev.to || ""),
+  });
+  try {
+    const res = await fetch(`/api/history/who?${q}`);
+    const out = await res.json();
+    btn.classList.remove("asking");
+    if (!out.ok) {
+      btn.dataset.asked = "";
+      toast(tf("hist_who_unknown", out.error || "?"), "");
+      return;
+    }
+    btn.classList.add("asked");
+    btn.innerHTML = `☁ <span class="histWho">${esc(out.who || t("hist_who_nobody"))}</span>`;
+    btn.title = (out.confirmed ? tf("hist_who_sure", out.who || "?")
+      : tf("hist_who_maybe", out.who || "?")) +
+      (out.when ? `\n${histWhen(out.when)}` : "");
+  } catch (err) {
+    btn.classList.remove("asking");
+    btn.dataset.asked = "";
+    toast(tf("hist_who_unknown", String(err)), "");
+  }
 }

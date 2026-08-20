@@ -1321,8 +1321,12 @@ _versions_cache = {}        # (drive, item) -> (instante, [versões])
 
 def graph_versions(drive_id="", item_id="", force=False):
     """Versões do livro, das mais recentes para as mais antigas:
-    [{when: ISO UTC, who: nome}]. Lista vazia quando o OneDrive não as dá
-    (ficheiro local, sem sessão, sem permissão)."""
+    [{when: ISO UTC, who: nome, id: versão}]. Lista vazia quando o OneDrive não
+    as dá (ficheiro local, sem sessão, sem permissão).
+
+    O `id` é o que permite ir buscar o livro TAL COMO ESTAVA naquela gravação
+    (ver cswaios/authors.py): é assim que se sabe de quem foi uma alteração a
+    uma célula, e não só quem gravou àquela hora."""
     if not (drive_id and item_id):
         drive_id, item_id = graph_item()
     if not (drive_id and item_id):
@@ -1344,7 +1348,7 @@ def graph_versions(drive_id="", item_id="", force=False):
         quando = str(v.get("lastModifiedDateTime") or "")
         quem = ((v.get("lastModifiedBy") or {}).get("user") or {}).get("displayName") or ""
         if quando:
-            out.append({"when": quando, "who": quem})
+            out.append({"when": quando, "who": quem, "id": str(v.get("id") or "")})
     out.sort(key=lambda x: x["when"], reverse=True)
     _versions_cache[chave] = (agora, out)
     return out

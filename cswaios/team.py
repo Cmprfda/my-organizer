@@ -108,11 +108,19 @@ def publish_waiting(person, waiting):
     for key, entrada in (waiting or {}).items():
         if not isinstance(entrada, dict) or not entrada.get("who"):
             continue
-        limpo[_shared_key(key)] = {
+        publicada = {
             "who": str(entrada.get("who") or "")[:80],
             "since": str(entrada.get("since") or "")[:10],
             "until": str(entrada.get("until") or "")[:10],
         }
+        # do bloqueio vai só o NOME dele: o `ref` de um item da lista Por fazer
+        # (ou de uma CCR) é um id desta instalação e não quer dizer nada no
+        # computador de outra pessoa — saltar para lá daria a nada
+        bloqueio = entrada.get("blocker")
+        if isinstance(bloqueio, dict) and bloqueio.get("label"):
+            publicada["blocker"] = {"kind": str(bloqueio.get("kind") or "")[:10],
+                                    "label": str(bloqueio.get("label") or "")[:200]}
+        limpo[_shared_key(key)] = publicada
     destino = os.path.join(pasta, f"waiting-{_slug(person)}.json")
     try:
         write_json(destino, {"person": person,
@@ -133,6 +141,108 @@ def unpublish_waiting(person):
         return True
     except OSError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Conjuntos de filtros da equipa
+#
+# Os filtros personalizados (os botões que cada um monta sobre as colunas reais
+# da folha) vivem no localStorage do browser de cada pessoa. Passavam-se por
+# copiar/colar num chat — o que dá para uma vez, não para uma equipa: quem entra
+# no projeto tem de pedir a alguém que lhe passe "os do costume".
+#
+# Aqui um conjunto pode ser PUBLICADO na mesma pasta partilhada das esperas, com
+# nome, e quem quiser vai buscá-lo. Publicar é um clique explícito (não há nada
+# a sair daqui sozinho, ao contrário das esperas, que têm um interruptor), e
+# importar continua a passar pela mesma caixa de colar de sempre: quem recebe vê
+# o que está a receber antes de aceitar.
+
+# um conjunto de filtros não fica velho como uma espera: são as regras da folha,
+# e essas duram meses
+FILTERS_TTL_DAYS = 180
+MAX_SETS = 12                  # conjuntos publicados por pessoa
+MAX_SET_CHARS = 200_000        # um conjunto não é um ficheiro de dados
+
+
+def _clean_set(bruto):
+    """Um conjunto publicável: {name, sheet, filters, lists}. None se não presta."""
+    if not isinstance(bruto, dict):
+        return None
+    nome = str(bruto.get("name") or "").strip()[:80]
+    filtros = bruto.get("filters")
+    if not nome or not isinstance(filtros, list) or not filtros:
+        return None
+    limpo = {
+        "name": nome,
+        "sheet": str(bruto.get("sheet") or "").strip()[:120],
+        "filters": filtros,
+        "lists": bruto.get("lists") if isinstance(bruto.get("lists"), list) else [],
+    }
+    import json as _json
+    if len(_json.dumps(limpo, ensure_ascii=False)) > MAX_SET_CHARS:
+        return None
+    return limpo
+
+
+def publish_filters(person, sets):
+    """Publica os conjuntos desta pessoa. Devolve quantos ficaram, ou None.
+
+    Substitui o que ela tinha publicado: o ficheiro é dela, e o que ela mandar
+    agora é o que passa a valer.
+    """
+    person = str(person or "").strip()[:80]
+    if not person:
+        return None
+    pasta = team_dir(create=True)
+    if not pasta:
+        return None
+    limpos = [c for c in (_clean_set(s) for s in (sets or [])) if c][:MAX_SETS]
+    destino = os.path.join(pasta, f"filters-{_slug(person)}.json")
+    if not limpos:
+        try:
+            os.remove(destino)
+        except OSError:
+            pass
+        return 0
+    try:
+        write_json(destino, {"person": person,
+                             "updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                             "sets": limpos}, backup=False)
+    except OSError:
+        return None      # partilha só de leitura: não é um erro da app
+    return len(limpos)
+
+
+def load_team_filters(exclude_person=""):
+    """Os conjuntos publicados, um por entrada: {person, updated, name, sheet,
+    filters, lists}. Os meus ficam de fora quando `exclude_person` é dado."""
+    pasta = team_dir()
+    if not pasta:
+        return []
+    try:
+        nomes = sorted(n for n in os.listdir(pasta)
+                       if n.startswith("filters-") and n.endswith(".json"))
+    except OSError:
+        return []
+    fora = normalize(exclude_person)
+    corte = (datetime.now() - timedelta(days=FILTERS_TTL_DAYS)).strftime("%Y-%m-%d")
+    out = []
+    for nome in nomes:
+        data = read_json(os.path.join(pasta, nome))
+        if not isinstance(data, dict):
+            continue
+        quem = str(data.get("person") or "").strip()
+        atualizado = str(data.get("updated") or "")
+        if not quem or atualizado[:10] < corte:
+            continue
+        if fora and normalize(quem) == fora:
+            continue
+        for bruto in (data.get("sets") or [])[:MAX_SETS]:
+            limpo = _clean_set(bruto)
+            if limpo:
+                out.append({"person": quem, "updated": atualizado, **limpo})
+    out.sort(key=lambda s: (s["person"], s["name"]))
+    return out
 
 
 def load_team_waiting(exclude_person=""):
@@ -175,5 +285,10 @@ def load_team_waiting(exclude_person=""):
                         "since": str(entrada.get("since") or "")[:10],
                         "until": str(entrada.get("until") or "")[:10],
                         "by": quem}
+            bloqueio = entrada.get("blocker")
+            if isinstance(bloqueio, dict) and bloqueio.get("label"):
+                out[key]["blocker"] = {
+                    "kind": str(bloqueio.get("kind") or "")[:10],
+                    "label": str(bloqueio.get("label") or "")[:200]}
             quando[key] = atualizado
     return out

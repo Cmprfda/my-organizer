@@ -86,6 +86,56 @@ def _short(value, limit=80):
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
+def timesheet_lines(todos, dia_de, dia_ate):
+    """As linhas que se podem registar no Jira: um item, um dia, um tempo.
+
+    A folha de horas dizia o total por dia e mais nada, e registar a semana no
+    Jira era abrir o diálogo do esforço uma vez por item — N viagens para
+    escrever o que a app já sabia. Aqui sai a lista pronta: que item, que dia,
+    que issue e quanto falta registar.
+
+    O que já foi registado a partir do cronómetro é UM total por item
+    (`jiraLoggedFromTimerMs`), não um total por dia — o Jira é que guarda os
+    dias, e a app não os volta a ler. Por isso o que está registado desconta-se
+    dos dias MAIS ANTIGOS primeiro, que é a ordem por que se registam: quem
+    registou 2h de um item com 1h na segunda e 3h na terça, registou a segunda
+    e uma hora da terça. Nunca se oferece o que já foi.
+    """
+    linhas = []
+    for item in todos:
+        if not isinstance(item, dict):
+            continue
+        issues = [i for i in (item.get("jiraIssues") or [])
+                  if isinstance(i, dict) and i.get("key")]
+        if not issues:
+            continue                      # sem issue ligada não há onde registar
+        segs = sorted(
+            (s for s in (item.get("segments") or [])
+             if isinstance(s, dict) and s.get("d")),
+            key=lambda s: str(s.get("d")))
+        ja = max(0, int(item.get("jiraLoggedFromTimerMs") or 0))
+        for seg in segs:
+            ms = max(0, int(seg.get("ms") or 0))
+            if not ms:
+                continue
+            comido = min(ja, ms)
+            ja -= comido
+            resto = ms - comido
+            dia = str(seg.get("d"))
+            if resto <= 0 or dia < dia_de or dia > dia_ate:
+                continue
+            linhas.append({
+                "id": str(item.get("id") or ""),
+                "title": str(item.get("title") or ""),
+                "issue": issues[0]["key"],
+                "summary": str(issues[0].get("summary") or ""),
+                "day": dia,
+                "ms": resto,
+            })
+    linhas.sort(key=lambda l: (l["day"], l["title"]))
+    return linhas
+
+
 def build_report(days=7, lang="pt", since="", until=""):
     """Dados + markdown do relatório do período.
 
@@ -186,6 +236,8 @@ def build_report(days=7, lang="pt", since="", until=""):
         "timesheet": [{"day": d, "ms": por_dia[d]} for d in sorted(por_dia)],
         "timesheet_ms": sum(por_dia.values()),
         "timesheet_untracked_ms": sem_registo,
+        # o que dá para registar no Jira de uma vez (ver timesheet_lines)
+        "timesheet_lines": timesheet_lines(todos, dia_de, dia_ate),
     }
     data["markdown"] = _markdown(data, lang)
     data["empty"] = not (app_changes or done or doing or jira or team_changes

@@ -125,6 +125,31 @@
   color: var(--muted);
 }
 
+/* o ☁ é um botão (perguntar quem mudou a célula), mas não se anuncia como tal:
+   parece o mesmo símbolo de sempre e só o cursor diz que responde */
+button.histVia {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--muted);
+  cursor: help;
+}
+
+button.histVia:hover {
+  color: var(--text);
+}
+
+button.histVia.asking {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* já respondido: o nome fica lá, e o ☁ deixa de convidar a clicar */
+button.histVia.asked {
+  cursor: default;
+}
+
 .histEmpty {
   font-size: 12.5px;
 }
@@ -746,4 +771,84 @@ button.metricDayBack:hover {
 .histWho {
   font-size: 11px;
   color: var(--muted);
+}
+
+/* ---------- registar a semana no Jira ---------- */
+/* O diálogo é montado pelo metrics.js (a página das Métricas só chega quando o
+   separador dela abre): as peças são as dos outros diálogos — .helpOverlay,
+   .helpCard, .helpHead — e aqui fica só o que é desta tabela. */
+.weekLogCard {
+  width: min(760px, 96vw);
+}
+
+.weekLogScroll {
+  max-height: min(52vh, 420px);
+  overflow: auto;
+}
+
+.weekLogTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.weekLogTable th,
+.weekLogTable td {
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.weekLogTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* o título do item é o que pode ser comprido: é ele que encolhe */
+.weekLogTable .wlTitle {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekLogTable .wlDay,
+.weekLogTable .wlIssue {
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.weekLogTable .wlTime {
+  width: 72px;
+  padding: 3px 5px;
+}
+
+.weekLogTable .wlState {
+  width: 22px;
+  text-align: center;
+}
+
+/* o que ficou registado sai do caminho sem desaparecer (é o recibo); o que
+   falhou fica à vista, com o motivo no title */
+.weekLogTable tr.wlDone {
+  opacity: 0.55;
+}
+
+.weekLogTable tr.wlFail .wlState {
+  color: var(--danger, #d33);
+  cursor: help;
+}
+
+.weekLogFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
 }

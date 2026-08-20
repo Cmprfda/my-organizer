@@ -1,5 +1,142 @@
 ## Backlog
 
+### [DONE] Avisos do servidor, arquivo do histórico, autoria por célula, ocorrências, ferramentas do assistente, folha de horas no Jira, filtros da equipa, bloqueios, tabela de rotas, testes da interface, blocos de código e menus no telemóvel
+- **Source:** ronda pedida pelo Carlos Andrade (2026-08-20) a partir da lista de
+  melhorias que ele pediu para levantar, mais dois pedidos do feedback
+  (`20260819_230821` — os menus das notas não funcionam no telemóvel — e
+  `20260820_091531` — poder pôr blocos de código nas caixas).
+- **What landed:**
+  - `cswaios/events.py` (novo) + `GET /api/events` + `static/js/events.js`
+    (novo): ligação pendurada (SSE) por janela, com fila própria, teto de
+    ouvintes e `ping` de 15s. O `statefile.write_json` publica `state`, o
+    `push_overrides` publica `sheet`, o `excel.com_wait` publica `excel`, e o
+    `restore_backup` publica `state` com `restored`. Cada evento leva a janela
+    que o causou (cabeçalho `X-Csw-Client` -> `events.set_origin`); o
+    `static/js/main.js` passa a espaçar os ciclos (60s/6min) enquanto os avisos
+    chegarem, e a voltar aos 20s/2min quando pararem.
+  - `history.ARCHIVE_DIRNAME`, `_archive()`, `archived_events()`,
+    `_batch_month()`: o que passa dos `MAX_EVENTS` vai para
+    `history\history-<AAAA-MM>.json` e o `sheet_history`, o `recent_events` e o
+    `batch_events` leem-no (o `batch_events` só o mês que o nome do lote indica).
+  - `cswaios/authors.py` (novo) + `GET /api/history/who` + o `☁` clicável em
+    `static/js/history.js`: quem mudou aquela célula, lido nas versões do livro.
+  - `todos.normalize_occurrence`/`merge_occurrences` + `occurrences` nos itens
+    (escritas em `catch_up_repeats` e `spawn_repeat`) e `todoStreak()` em
+    `static/js/todo.js`: "fechado 8 das últimas 10 vezes", com os dias.
+  - `cswaios/chatllm.py` (novo, sai do `chat.py`) com as ferramentas
+    `sheet_rows` (sobre `tasks.cached_rows`, todas as folhas que o servidor leu)
+    e `history` (sobre `recent_events`); `chat.engine_fn()` importa-o só quando
+    o motor é o `llm`.
+  - `report.timesheet_lines()` + `POST /api/jira/worklog/bulk` +
+    `Handler._worklog_one()` (partilhado com o registo de uma issue) + o diálogo
+    em `static/js/metrics.js`: registar a semana no Jira de uma vez.
+  - `team.publish_filters()`/`load_team_filters()` + `GET`/`POST
+    /api/team/filters` + os botões *Publicar* / *Da equipa…* em
+    `static/js/customfilters.js`.
+  - `store.normalize_blocker()` + `blocker` na marca da espera + o chip que
+    salta e o "acabar isto desbloqueia N" em `static/js/waiting.js`.
+  - `Handler.GET_ROUTES`/`POST_ROUTES` e 53 métodos (`get_api_tasks`,
+    `post_api_todo`, …): as duas cadeias de if/elif (de 200 e 1250 linhas)
+    passam a uma tabela; ficam na cadeia só os caminhos que não são igualdades.
+    `Handler.STATE_POST_PATTERNS` fecha um buraco antigo — o registo de esforço
+    (`/api/jira/issue/<key>/worklog`) mexia no `todo.json` sem trinco.
+  - `Handler.send_static`: `ETag` + `Cache-Control: no-cache` + gzip (o
+    `i18n.js` passa de 93 KB a 31 KB, e um F5 leva 304 sem corpo em vez de
+    ~800 KB). `static/js/lazy.js` (novo): o `help.js` e o `metrics.js` chegam a
+    pedido.
+  - `statefile`: cópias por HORA nos dias recentes com `_prune` por camadas, e
+    `state_lock()` — trinco também entre PROCESSOS (`msvcrt`/`fcntl` num
+    ficheiro `.lock`), usado pelo `do_POST`.
+  - Notas: `noteCodeBlock`/`noteCodeHtml`/`noteCodeText`/`noteCodePlain` em
+    `static/js/notes.js`, `ncCodeHtml`/`ncPaintCode` em `static/js/noteclip.js`,
+    o botão `</>` na barra da caixa e o `.noteBoxCode` no CSS: blocos de código
+    nos quatro pintores (vista, leitura de volta, texto simples, HTML e tela).
+  - Notas no telemóvel: o `preventDefault` do `mousedown` passa a ser só do
+    rato (no toque cancelava o `click` que abria o menu) e há um caminho pelo
+    `pointerup` para o dedo; o painel do grupo dobra em linhas
+    (`flex-wrap`/`max-width`) em vez de sair do ecrã.
+  - Testes: `tests/js/harness.js` (novo) corre os ficheiros de `static/js/` num
+    contexto do `vm` com um DOM de mentira, e `tests/js/test_notes_text.js` +
+    `test_ui_pure.js` provam os blocos de código (incluindo o mapa da vista),
+    os estados, as colunas e as ocorrências — 13 testes, `node --test`, no CI.
+    Do lado do servidor: `tests/test_events.py`, `test_arquivo_e_copias.py` e
+    `test_ocorrencias.py` (191 testes de Python, offline).
+- **Design:**
+  - **Os avisos não substituem o ciclo de perguntar.** Uma ligação pendurada
+    morre calada e a janela só descobre quando tenta ouvir outra vez; o ciclo é
+    a rede de segurança, e por isso espaça-se em vez de desaparecer.
+  - **O aviso leva quem o causou.** Sem isso, a janela que clicou recarregava-se
+    por causa do próprio clique (e perdia o que estava a escrever). Com o `from`,
+    quem mandou o pedido ignora o eco.
+  - **A autoria por célula vai VER, não adivinha.** Cruzar horas dava o mesmo
+    nome a duas pessoas que gravaram no mesmo minuto. Descarregar a versão e ler
+    a célula custa megabytes — por isso é a pedido, perto da hora da alteração,
+    com o resultado guardado, e diz quando tem a certeza e quando não tem.
+  - **O arquivo do histórico é vizinho do `history.json`** (e não da pasta da
+    app), como as cópias do estado: os testes apontam o ficheiro para uma pasta
+    temporária e um arquivo de teste na pasta a sério ficava lá a contar
+    história que não aconteceu.
+  - **O registo em lote no Jira não é um caminho novo:** é o mesmo
+    `_worklog_one` do diálogo de uma issue, corrido N vezes, com cada linha a
+    responder por si.
+  - **O que já foi registado desconta-se dos dias mais antigos primeiro:** o
+    Jira é que guarda os dias, a app só sabe um total por item, e essa é a ordem
+    por que se registam. Nunca se oferece o que já foi.
+  - **Publicar filtros é um clique, não um interruptor** (ao contrário das
+    esperas, que saem sozinhas quando ligadas), e o que chega passa pela caixa
+    de colar de sempre: ninguém recebe filtros sem os ver.
+  - **Do bloqueio só viaja o nome.** O `ref` de um item por fazer é um id desta
+    instalação; saltar para ele no computador de outra pessoa não levava a nada.
+  - **A tabela de rotas ganha à cadeia**, e a cadeia fica com o que não é uma
+    igualdade. Um caminho fixo é sempre mais específico do que um prefixo ou uma
+    expressão regular, por isso a ordem não muda de comportamento.
+  - **`no-cache` não é `no-store`:** o browser guarda mas pergunta sempre, e a
+    resposta é um 304. Uma versão nova muda a data dos ficheiros, logo o ETag —
+    era esse o medo que mantinha o `no-store`.
+  - **Um bloco de código não interpreta nada por dentro.** Um asterisco no meio
+    de um comando é um asterisco. As cercas ficam guardadas nos `data-` do
+    `<pre>` para o texto voltar a ser exatamente o mesmo.
+  - **O `mousedown` só se cancela com o rato.** No modelo de compatibilidade do
+    toque, o `mousedown` é inventado depois de o dedo levantar e cancelá-lo
+    cancela o `click` a seguir — era isso que deixava os menus sem abrir no
+    telemóvel.
+- **Released in:** v155.
+- **Known limits (worth revisiting):**
+  - Os avisos são desta INSTÂNCIA: duas instalações diferentes (dois PCs) não se
+    avisam uma à outra — o que as liga continua a ser a pasta partilhada e o
+    ciclo de leitura. E a ligação prende um fio do servidor, por isso há um teto
+    de 24 janelas penduradas; passando dele, quem chega fica só a perguntar.
+  - A recarga por aviso é a mesma recarga de sempre (`load()`): com um editor
+    aberto o desenho espera, como já esperava. E o painel "Hoje" não se refaz
+    com um aviso de `state` que não seja do histórico.
+  - A autoria por célula responde a UMA célula de cada vez e só enquanto o
+    OneDrive tiver a versão (ele guarda um número limitado). Duas alterações à
+    mesma célula na mesma gravação continuam a ser uma só, e uma célula que
+    mudou outra vez desde então dá "nenhuma das gravações tem este valor".
+  - O arquivo do histórico só é lido para o período pedido e nunca é apagado:
+    numa folha com muito movimento cresce ~1 MB por mês. Não há botão para o
+    limpar (é o registo, e apagá-lo é o contrário do que isto serve).
+  - As ocorrências guardam-se por dia e ficam as 60 últimas: um item que se
+    repete de hora a hora (não há repetição dessas) ou dois fechos no mesmo dia
+    contam uma vez só.
+  - O registo em lote propõe o dia às 9h (o registo do cronómetro é por dia, não
+    por hora) e um dia parcialmente registado à mão no Jira pode voltar a ser
+    oferecido: a app só sabe o total que ELA registou.
+  - Os filtros publicados não têm versão nem "quem já os trouxe": publicar outra
+    vez substitui o meu ficheiro, e quem já importou fica com a cópia que
+    trouxe.
+  - O bloqueio é uma marca nossa e não uma regra: nada impede fechar uma tarefa
+    bloqueada, e apagar o que bloqueia deixa a marca a apontar a nada (o chip
+    fica lá, sem salto).
+  - O `metrics.js` a pedido não poupa nada a quem abre no Início — o separador
+    Início É a vista das Métricas. Poupa a quem abre num livro.
+  - Os testes da interface só chegam às funções puras: o que precisa de um DOM a
+    sério (escrever na caixa, arrastar, os menus ao toque) continua a ser
+    Playwright à mão.
+  - O trinco entre processos é por ficheiro e espera 5 segundos: passado esse
+    tempo grava sem ele (mais vale gravar do que pendurar o clique), e aí volta
+    a ser possível perder uma alteração de outra instância.
+
 ### [DONE] Cópias do estado, repetição pelo calendário, escolha linha a linha, desfazer um envio, histórico pela identidade da linha, esperas da equipa, assistente com ferramentas e app no telemóvel
 - **Source:** ronda de melhorias pedida pelo Carlos Andrade (2026-08-19), a partir das
   próprias notas de "known limits" deste ficheiro.

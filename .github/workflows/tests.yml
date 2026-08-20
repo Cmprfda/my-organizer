@@ -35,3 +35,13 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: python -m unittest discover -s tests -t . -v
+
+      # a interface também tem testes desde a v155: as funções puras dos
+      # ficheiros de static/js/ corridas no node, sem browser (ver
+      # tests/js/harness.js). Não precisam de instalar nada.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Suite da interface
+        run: node --test "tests/js/*.js"

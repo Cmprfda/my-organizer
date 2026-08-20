@@ -12,6 +12,7 @@ import openpyxl
 from openpyxl.utils import column_index_from_string, get_column_letter
 
 from . import config
+from . import events
 from .config import (APP_VERSION, BASE_STATUSES, CANDIDATE_DIRS, DEFAULT_PERSON,
                      DEFAULT_SHEET, lan_ip)
 from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbook,
@@ -905,6 +906,10 @@ def push_overrides(target):
         # na data do ficheiro para dar por isso — o Excel pode ainda não a ter
         # atualizado quando o pedido a seguir chegar.
         forget_cache(target)
+        # as outras janelas (e os outros dispositivos) estão a mostrar as linhas
+        # de antes desta escrita: o aviso põe-nas a reler sem esperar pelo ciclo
+        events.publish("sheet", file=os.path.basename(target), pushed=pushed,
+                       failed=len(failed))
     return target, pushed, failed
 
 
@@ -1265,3 +1270,77 @@ def current_stamp(query):
     except Exception as exc:
         return {"modified": "", "stamp": "", "error": str(exc)}
     return {"modified": "", "stamp": ""}
+
+
+# ---------------------------------------------------------------------------
+# O que o SERVIDOR já leu, para o assistente poder perguntar mais
+#
+# O motor LLM recebia no pedido as primeiras 120 linhas do retrato que o cliente
+# mandou e não tinha maneira de pedir mais: numa folha grande respondia sobre
+# essa parte, sem saber que havia outra. Isto dá-lhe uma janela para o que o
+# servidor tem em memória — TODAS as linhas de TODAS as folhas já lidas, de
+# todos os livros abertos, e não só as do separador de quem está a perguntar.
+#
+# Não lê nada: só o _RAW_CACHE, que é o resultado da última leitura de cada
+# folha. A regra de o assistente nunca ir à folha (nem ao disco, nem à nuvem)
+# para responder a uma pergunta fica de pé.
+
+
+def cached_books():
+    """As folhas que o servidor tem em memória: (livro, aba, linhas, quando)."""
+    out = []
+    for (path, _chave), entry in list(_RAW_CACHE.items()):
+        try:
+            quando, real_sheet, _all_sheets, rows = entry
+        except (TypeError, ValueError):
+            continue
+        out.append({"book": os.path.basename(path), "sheet": real_sheet or "",
+                    "rows": max(0, len(rows or []) - 1),
+                    "read": quando.strftime("%Y-%m-%d %H:%M") if quando else ""})
+    out.sort(key=lambda b: (b["book"], b["sheet"]))
+    return out
+
+
+def cached_rows(book="", sheet="", query="", limit=20, offset=0, col_chars=80):
+    """Linhas das folhas em memória, em texto. Devolve {rows, total, books}.
+
+    `query` são palavras que têm todas de aparecer na linha (sem acentos, como
+    o resto da app procura). `total` é quantas correspondem — o assistente sabe
+    assim que há mais para pedir com o `offset`, em vez de achar que viu tudo.
+    """
+    termos = [normalize(t) for t in str(query or "").split() if t]
+    quer_livro, quer_aba = normalize(book or ""), normalize(sheet or "")
+    limite = max(1, min(60, int(limit or 20)))
+    salto = max(0, int(offset or 0))
+    achadas, total = [], 0
+    for (path, _chave), entry in sorted(_RAW_CACHE.items(), key=lambda kv: str(kv[0])):
+        try:
+            _quando, real_sheet, _all_sheets, rows = entry
+        except (TypeError, ValueError):
+            continue
+        nome = os.path.basename(path)
+        if quer_livro and quer_livro not in normalize(nome):
+            continue
+        if quer_aba and quer_aba not in normalize(real_sheet or ""):
+            continue
+        idx = detect_header_row(rows or [])
+        if idx is None:
+            continue
+        cabecalhos = [cell_to_text(c) for c in rows[idx]]
+        for n, raw in enumerate(rows[idx + 1:], start=idx + 2):
+            partes = []
+            for cab, valor in zip(cabecalhos, list(raw or [])):
+                texto = cell_to_text(valor)
+                if cab and texto:
+                    partes.append(f"{cab}: {texto[:col_chars]}")
+            if not partes:
+                continue
+            linha = " | ".join(partes)[:600]
+            if termos and not all(t in normalize(linha) for t in termos):
+                continue
+            total += 1
+            if total <= salto or len(achadas) >= limite:
+                continue
+            achadas.append({"book": nome, "sheet": real_sheet or "",
+                            "xlrow": n, "text": linha})
+    return {"rows": achadas, "total": total, "books": cached_books()}

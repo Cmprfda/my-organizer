@@ -2,7 +2,40 @@
 
 - **`app.py`:** Thin entry point only (console encoding, `app_payload.zip` bootstrap — legacy `bsp_payload.zip` still accepted, CLI/server dispatch). **No business logic here.**
 - **`cswaios/` package (backend layers, formerly `bsp/`):** `config` (constants; mutable globals `FORCED_FILE`/`SERVER_PORT`/`DEV_MODE` must always be read as `config.X`), `i18n`, `logs`, `text`, `store` (overrides/notes/CCRs), `todos` (personal TODO list; each item has one main source in `kind`/`ref` and may link others in `links` — same work coming from Excel, a CCR or typed by hand — plus linked Jira issues in `jiraIssues`), `notepad` (Notes board: folders, notes, boxes and pasted images), `feedback`, `updates`, `excel` (openpyxl read + COM write), `graph` (Microsoft Graph: auth, folder browsing `graph_browse`, workbook pick `graph_pick`, recents in `workbooks.json`), `jira` (Jira REST calls via a Personal Access Token in `jira_config.json`: fetch an issue, log work, sum worklogs — used only by the TODO list, not Excel Tasks/CCRs), `tasks` (service layer, `build_payload`/`read_sheet`/`push_overrides`/`forget_web_cache`), `chat` (assistant: turns a typed question plus the client's own in-memory snapshot into an answer — never reads the sheet — and returns write requests as proposals the client confirms and executes through the existing endpoints; engine chosen in `chat_config.json`, `local` by default, `llm` seam documented in `_llm_reply`), `server` (HTTP routes, `Handler`, `main()`), `cli` (`python app.py <cmd>`). Python stdlib `ThreadingHTTPServer` + `openpyxl` are hard requirements; `pywebview` is an optional dependency (see UI launch below). Default port 8765, bound to `0.0.0.0` (LAN access).
+- **Server push (`cswaios/events.py`, `static/js/events.js`):** the server keeps a
+  hung `GET /api/events` (Server-Sent Events) per open window and publishes on it
+  whenever state changes — `statefile.write_json` emits `state`, `push_overrides`
+  emits `sheet`, `excel.com_wait` emits `excel` while a write waits its turn. Each
+  event carries the `X-Csw-Client` id of the window whose request caused it
+  (`events.set_origin`), so a window never reloads because of its own click. The
+  polling cycles stay as the safety net (a hung connection dies silently) but slow
+  down to 60 s / 6 min while events are flowing. Subscribers are capped
+  (`events.MAX_OUVINTES`) because each one holds a `ThreadingHTTPServer` thread;
+  over the cap the client is told 503 and stays on polling.
+- **Routes are a table, not a chain (`Handler.GET_ROUTES` / `POST_ROUTES`):** a
+  fixed path maps to a method of `Handler` (`get_api_tasks`, `post_api_todo`, …),
+  which can be called from a test without opening a socket. Only the paths that
+  are *not* an equality (the page, `/static/…`, note images, `/api/jira/issue/<key>/…`)
+  remain in an if/elif chain, checked **after** the table.
+- **Per-cell authorship (`cswaios/authors.py`):** clicking the `☁` of a history row
+  asks `GET /api/history/who`, which downloads the candidate **workbook versions**
+  from OneDrive and reads that one cell in them — the first version that already
+  has the new value is the save that brought the change, and `confirmed` says the
+  previous version still had the old one. Costs one workbook download per version
+  consulted, so it is on demand only, near the change's timestamp, and cached.
 - **`index.html`:** Markup only (plus the inline theme script, which must stay inline to avoid a flash).
+- **Static assets are cached and compressed (`Handler.send_static`):** every
+  response carries a weak `ETag` (mtime+size) with `Cache-Control: no-cache`, so a
+  reload gets a 304 with no body instead of ~800 KB again, and text files go out
+  gzipped. A new app version changes the files' mtime, therefore the ETag —
+  nobody gets stuck on an old UI.
+- **Two UI files arrive on demand (`static/js/lazy.js`):** `help.js` (the `?` and
+  *What's new*) and `metrics.js` (the Metrics page) are not in `index.html`; they
+  are fetched on the click / when the view opens. Their functions do not exist
+  before that, so anything calling into them from outside must go through
+  `lazyThen(...)` or guard with `typeof f === "function"`. Note the Home tab *is*
+  the Metrics view, so `metrics.js` still loads at startup for whoever lands on
+  Home.
 - **`static/css/*.css` and `static/js/*.js`:** UI styles and logic, served by `/static/...`. Classic `<script src>` files loaded **in the original order** (not ES modules) — they share one global scope, so order matters: `i18n, state, bugs, utils, tasks, ccrs, views, todo, itembox, split, notes, feedback, settings, picker, jira, help, notify, metrics, search, chat, main`. Note that `split.js` registers a global Escape handler (`exitSplit`), so any overlay loaded after it must register its own Escape handler in the **capture** phase with `stopImmediatePropagation()`.
 - **Theme:** the UI follows the **Critical Software Design System** (Critical Red `#C00000`, deep maroon `#63090D`, warm sand `#ECA682`, ink neutral ramp, **Aptos** typeface, crisp corners, flat surfaces, no glass/blur). All tokens live in `static/css/theme.css`, brand fonts in `static/fonts/`. **Never hardcode colours in CSS** — use the tokens / `--status-*` pairs. Full rules in `THEME.md` (the older iOS/HIG skill is superseded).
 - **How-to knowledge lives in `static/js/help.js`** (the `?` button in the top bar, right of the connection badge). Do not add usage hints back into the views.
@@ -15,6 +48,6 @@
 - **Feedback delivery:** feedback and bug reports are always staged first in `feedback_pending\<nome>` (`cswaios.feedback.stage_feedback_folder`) and then delivered by `deliver()`, which tries in order: (1) **Microsoft Graph upload** into the shared SharePoint folder `config.FEEDBACK_SHARE_URL` (a link with write access for any Critical Software user; override with the `BSP_FEEDBACK_SHARE` env var, empty string disables it), (2) the locally synced `feedback\` folder next to the releases, (3) leave it pending — `flush_pending()` retries on the next report. Repeated bugs reuse the same remote folder and add a `repeticao_NN.txt`.
 - **Data freshness:** the UI polls `/api/modified` every 20 s (cheap `lastModifiedDateTime`/mtime call) and reloads as soon as the `stamp` changes; the 2-minute `load()` cycle stays as a fallback. The **Refresh** button sends `fresh=1`, which drops `_RAW_CACHE`/`_LAST_GOOD`/`_ADMIN_CACHE` and re-resolves the OneDrive item — a cold read, like opening the file for the first time. The same 20 s tick also drives the **per-task notifications** (`static/js/notify.js`): after each reload it compares a snapshot of the **person-scoped** rows (always `all=0`, reusing the payload already loaded when *Show all* is off) keyed by `xlrow`, and stacks one card per changed row in `#notifyStack` (bottom-right, `notify.css`). The snapshot holds `row_meta[].orig` (the sheet's real values), so local overrides (✎) never raise notifications; the first read of a session/book/sheet only seeds it, never notifies.
 - **Release payload:** the release zip carries `cswaios/`, `static/` **and** `app_payload.zip` (a copy of both folders). Older clients only copy top-level files when auto-updating, so the new `app.py` unpacks the payload on first start. Never drop `app_payload.zip` from `make_release.py`.
-- **Local JSON State (NEVER include in releases):** `status_overrides.json`, `notes.json`, `ccrs.json`, `todo.json`, `notepad.json`, `notepad_images\`, `history.json` (per-sheet change history: row snapshot + recent events, see `cswaios/history.py`), `bug_reports.json`, `tracker.log`, `graph_config.json`, `graph_token.json`, `workbooks.json`, `jira_config.json` (Jira base URL + Personal Access Token; `POST /api/jira/config` is localhost-only, like `/api/graph`), `chat_config.json` (assistant engine, absent = `local`), `feedback_pending\` (feedback staged locally until delivered to the shared folder via Graph or synced copy; `cswaios.feedback.flush_pending()` delivers it).
+- **Local JSON State (NEVER include in releases):** `status_overrides.json`, `notes.json`, `ccrs.json`, `todo.json`, `notepad.json`, `notepad_images\`, `history.json` (per-sheet change history: row snapshot + the last `MAX_EVENTS`, see `cswaios/history.py`), `history\history-<YYYY-MM>.json` (what falls out of that window, one file per month — this is what keeps "undo a whole Push" and the metrics of an older period working), `backups\` (one copy per hour on recent days, one per day on older ones), `bug_reports.json`, `tracker.log`, `graph_config.json`, `graph_token.json`, `workbooks.json`, `jira_config.json` (Jira base URL + Personal Access Token; `POST /api/jira/config` is localhost-only, like `/api/graph`), `chat_config.json` (assistant engine, absent = `local`), `feedback_pending\` (feedback staged locally until delivered to the shared folder via Graph or synced copy; `cswaios.feedback.flush_pending()` delivers it).
 
 ---

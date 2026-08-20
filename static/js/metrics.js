@@ -144,6 +144,8 @@ async function loadMetricsActivity(force = false) {
       byDay: Array.isArray(out.timesheet) ? out.timesheet : [],
       ms: +out.timesheet_ms || 0,
       untracked: +out.timesheet_untracked_ms || 0,
+      // o que dá para registar no Jira de uma vez (ver report.timesheet_lines)
+      lines: Array.isArray(out.timesheet_lines) ? out.timesheet_lines : [],
     };
   } catch (e) {
     metricsTimesheet = null;
@@ -567,12 +569,166 @@ function metricsTimesheetHtml() {
   const nota = orfao
     ? `<p class="metricNote">${esc(tf("metric_hours_untracked", formatTodoElapsed(orfao)))}</p>`
     : "";
-  if (!itens.length) return metricEmpty(t("metric_hours_none")) + nota;
+  const registar = metricsTimesheetLines();
+  // o que a folha de horas já sabe e o Jira ainda não: um botão em vez de N
+  // viagens ao diálogo do esforço, uma por item
+  const botao = registar.length
+    ? `<p class="metricNote"><button type="button" class="mini" id="metricsLogWeekBtn"` +
+      ` title="${esc(t("t_week_log"))}">${esc(tf("week_log_btn", registar.length,
+        formatTodoElapsed(registar.reduce((s, l) => s + (+l.ms || 0), 0))))}</button></p>`
+    : "";
+  if (!itens.length) return metricEmpty(t("metric_hours_none")) + nota + botao;
   const total = itens.reduce((s, i) => s + i.value, 0);
-  if (!total) return metricEmpty(t("metric_hours_none")) + nota;
+  if (!total) return metricEmpty(t("metric_hours_none")) + nota + botao;
   return metricColumns(itens) +
     `<p class="metricNote">${esc(tf("metric_hours_total", formatTodoElapsed(total * 60000)))}</p>` +
-    nota;
+    nota + botao;
+}
+
+// ---------- registar a semana no Jira ----------
+// A folha de horas sabe o que se contou, em que dia e por que item; o item sabe
+// a que issue está ligado e quanto já foi registado. Faltava juntar as três
+// coisas num sítio: aqui está a lista pronta, cada linha com o tempo já escrito
+// como o Jira o quer, e um Registar que as manda todas de uma vez.
+//
+// O que se manda é o que estiver marcado: uma linha desmarcada não vai, e uma
+// que falhe (issue fechada, sem permissão) não leva as outras atrás.
+
+function metricsTimesheetLines() {
+  const r = metricsRange();
+  return ((metricsTimesheet && metricsTimesheet.lines) || [])
+    .filter(l => l && l.day >= r.from && l.day <= r.to && (+l.ms || 0) >= 60000);
+}
+
+let weekLogBusy = false;
+
+function openWeekLogModal() {
+  const linhas = metricsTimesheetLines();
+  if (!linhas.length) { toast(t("week_log_none"), ""); return; }
+  const overlay = weekLogOverlay();
+  overlay.querySelector(".weekLogBody").innerHTML = linhas.map((l, i) => `
+    <tr data-wl="${i}">
+      <td><input type="checkbox" class="wlOn" checked></td>
+      <td class="wlDay">${esc(metricsDayLabel(l.day))}</td>
+      <td class="wlTitle" title="${esc(l.title)}">${esc(l.title)}</td>
+      <td class="wlIssue">${esc(l.issue)}</td>
+      <td><input type="text" class="wlTime" value="${esc(msToJiraTime(+l.ms || 0))}"
+          size="7" spellcheck="false"></td>
+      <td class="wlState"></td>
+    </tr>`).join("");
+  overlay.querySelector(".weekLogNote").textContent = t("week_log_hint");
+  overlay.dataset.lines = JSON.stringify(linhas);
+  overlay.classList.remove("hidden");
+}
+
+function closeWeekLogModal() {
+  const overlay = $("weekLogOverlay");
+  if (overlay && !weekLogBusy) overlay.classList.add("hidden");
+}
+
+// o diálogo nasce aqui e não no index.html: esta página só chega quando o
+// separador das Métricas abre (ver lazy.js), e o HTML dela vem com ela
+function weekLogOverlay() {
+  let overlay = $("weekLogOverlay");
+  if (overlay) return overlay;
+  overlay = document.createElement("div");
+  overlay.id = "weekLogOverlay";
+  // as mesmas peças dos outros diálogos da app (ver #jiraLogOverlay no
+  // index.html): a folha de estilos já sabe desenhá-las
+  overlay.className = "helpOverlay hidden";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.innerHTML = `
+    <div class="helpCard weekLogCard">
+      <div class="helpHead">
+        <strong>${esc(t("week_log_title"))}</strong>
+        <button type="button" class="ccr-x weekLogClose" title="${esc(t("btn_cancel"))}">✕</button>
+      </div>
+      <p class="weekLogNote metricNote"></p>
+      <div class="weekLogScroll">
+        <table class="weekLogTable">
+          <thead><tr>
+            <th></th><th>${esc(t("week_log_day"))}</th><th>${esc(t("week_log_item"))}</th>
+            <th>${esc(t("week_log_issue"))}</th><th>${esc(t("week_log_time"))}</th><th></th>
+          </tr></thead>
+          <tbody class="weekLogBody"></tbody>
+        </table>
+      </div>
+      <div class="weekLogFoot">
+        <button type="button" class="mini weekLogAll">${esc(t("week_log_toggle_all"))}</button>
+        <button type="button" class="weekLogGo">${esc(t("week_log_submit"))}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) closeWeekLogModal();
+    if (e.target.closest(".weekLogClose")) closeWeekLogModal();
+    if (e.target.closest(".weekLogGo")) submitWeekLog();
+    if (e.target.closest(".weekLogAll")) {
+      const caixas = [...overlay.querySelectorAll(".wlOn")];
+      const ligar = caixas.some(c => !c.checked);
+      caixas.forEach(c => { c.checked = ligar; });
+    }
+  });
+  return overlay;
+}
+
+async function submitWeekLog() {
+  if (weekLogBusy) return;
+  const overlay = $("weekLogOverlay");
+  const linhas = JSON.parse(overlay.dataset.lines || "[]");
+  const entradas = [];
+  const alvos = [];
+  overlay.querySelectorAll("tr[data-wl]").forEach(tr => {
+    const l = linhas[+tr.dataset.wl];
+    if (!l || !tr.querySelector(".wlOn").checked) return;
+    const texto = tr.querySelector(".wlTime").value.trim();
+    const ms = jiraTimeToMs(texto);
+    if (!ms) { tr.querySelector(".wlState").textContent = "?"; return; }
+    entradas.push({
+      key: l.issue, timeSpent: texto, item_id: l.id, day: l.day,
+      // o dia é o do registo diário do cronómetro, às 9h: o Jira quer um
+      // instante, e a hora exata não se sabe (o registo é por dia)
+      started: toJiraStarted(`${l.day}T09:00`),
+      comment: l.title,
+      timer_ms: Math.min(+l.ms || 0, ms),
+    });
+    alvos.push(tr);
+  });
+  if (!entradas.length) { toast(t("week_log_none_checked"), ""); return; }
+  weekLogBusy = true;
+  const botao = overlay.querySelector(".weekLogGo");
+  botao.disabled = true;
+  botao.textContent = t("jira_log_submitting");
+  try {
+    const res = await fetch("/api/jira/worklog/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries: entradas }),
+    });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || "?");
+    (out.results || []).forEach((r, i) => {
+      const tr = alvos[i];
+      if (!tr) return;
+      tr.querySelector(".wlState").textContent = r.ok ? "✓" : "✕";
+      tr.querySelector(".wlState").title = r.ok ? "" : String(r.error || "");
+      tr.classList.toggle("wlDone", !!r.ok);
+      tr.classList.toggle("wlFail", !r.ok);
+    });
+    if (out.todo) { todos = out.todo; renderTodo(); render(); }
+    toast(tf("week_log_done", out.logged || 0, entradas.length),
+      (out.logged || 0) === entradas.length ? "ok" : "");
+    // a folha de horas muda com isto: o que foi registado deixa de ser oferecido
+    metricsActivityAsked = "";
+    loadMetricsActivity();
+  } catch (err) {
+    toast(tf("week_log_failed", err.message || t("err_server")), "");
+  } finally {
+    weekLogBusy = false;
+    botao.disabled = false;
+    botao.textContent = t("week_log_submit");
+  }
 }
 
 function metricsTodoItems() {
@@ -866,6 +1022,7 @@ $("metricsToInput").addEventListener("change", () => metricsSetRange("to"));
 
 // clicar numa coluna do gráfico abre esse dia; o "voltar" repõe o período
 $("metricsBody").addEventListener("click", e => {
+  if (e.target.closest("#metricsLogWeekBtn")) { openWeekLogModal(); return; }
   const col = e.target.closest(".metricColBtn");
   if (col) { metricsShowDay(col.dataset.day); return; }
   if (e.target.closest(".metricDayBack")) { metricsBackToPeriod(); return; }
@@ -901,3 +1058,7 @@ document.addEventListener("keydown", e => {
     closeWeekReport();
   }
 }, true);
+
+// idem: a página das Métricas chega quando o separador dela abre, e os textos
+// dela não passaram pelo applyLang() do arranque
+applyInsightsLang();

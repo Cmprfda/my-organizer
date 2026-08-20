@@ -275,6 +275,31 @@ function noteTextLines(text) {
   return out;
 }
 
+// bloco de código: uma linha de três acentos graves abre (com o nome da
+// linguagem, se lá estiver), outra fecha. Dentro não se interpreta nada — nem
+// **negrito**, nem tabelas, nem árvores: é código, e um asterisco no meio de
+// um comando é um asterisco. Foi o pedido do feedback de 20/08/2026: uma caixa
+// de nota é onde se cola um excerto de vipConfigure.sh ou de um log, e ali o
+// texto era reescrito por baixo dos pés de quem o colava.
+const NOTE_FENCE = "```";
+const NOTE_FENCE_RE = /^\s*```(.*)$/;
+
+// o bloco que começa na linha `i`, ou null. Um bloco sem fecho vale até ao fim
+// do texto — é o que faz a coisa parecer viva enquanto se escreve.
+function noteCodeBlock(lines, i) {
+    const m = NOTE_FENCE_RE.exec(lines[i].text);
+    if (!m) return null;
+    let end = i + 1;
+    while (end < lines.length && !NOTE_FENCE_RE.test(lines[end].text)) end++;
+    return {
+        open: lines[i],
+        lang: m[1].trim(),
+        body: lines.slice(i + 1, end),
+        close: end < lines.length ? lines[end] : null,
+        count: (end < lines.length ? end + 1 : end) - i,
+    };
+}
+
 const NOTE_ROW_RE = /^\s*\|.*\|\s*$/;                    // "| a | b |"
 const NOTE_SEP_RE = /^\s*\|[\s|:-]*-[\s|:-]*\|\s*$/;     // "| --- | --- |"
 
@@ -390,6 +415,28 @@ function noteTableRowHtml(row, tag, cols, aligns, out) {
   out.html += `</tr>`;
 }
 
+// o bloco na vista: um <pre> com o código lá dentro, tal e qual. O mapa leva
+// um índice por caractere visível (é o que põe o cursor no sítio certo quando
+// se clica no meio do código); as linhas das cercas não são visíveis e por isso
+// não entram nele — ficam guardadas nos data- para o texto voltar a ser o mesmo.
+function noteCodeHtml(block, out) {
+    const linhas = block.body.map(l => l.text);
+    out.html += `<pre class="noteBoxCode" data-open="${esc(block.open.text)}"` +
+        ` data-close="${block.close ? esc(block.close.text) : ""}"` +
+        `${block.lang ? ` data-lang="${esc(block.lang)}"` : ""}>`;
+    block.body.forEach((linha, n) => {
+        if (n) {
+            out.map.push(linha.at - 1);
+            out.html += "\n";
+        }
+        for (let k = 0; k < linha.text.length; k++) out.map.push(linha.at + k);
+        out.html += esc(linha.text);
+    });
+    // um bloco ainda vazio precisa de um sítio onde pôr o cursor
+    if (!linhas.length) out.map.push(block.open.at + block.open.text.length);
+    out.html += `</pre>`;
+}
+
 function noteTableHtml(table, out) {
   const cols = noteTableCells(table.head).length;
   // a linha de separação não se mostra (é a grelha), mas guarda-se como estava
@@ -413,6 +460,14 @@ function noteRichRender(text) {
   let prevText = false;    // a linha anterior é texto normal: precisa do \n
   let prevTable = false;   // a linha anterior fechou uma tabela
   while (i < lines.length) {
+    const code = noteCodeBlock(lines, i);
+    if (code) {
+      noteCodeHtml(code, out);
+      i += code.count;
+      prevText = false;    // o <pre> é um bloco, como a tabela
+      prevTable = true;
+      continue;
+    }
     const table = noteTableBlock(lines, i);
     if (table) {
       noteTableHtml(table, out);
@@ -467,6 +522,12 @@ function noteMarkPlain(text) {
   return out;
 }
 
+// o bloco na cópia em texto simples: o código como está, sem as cercas (quem
+// cola quer o comando, não os acentos graves)
+function noteCodePlain(block) {
+    return block.body.map(l => l.text).join("\n");
+}
+
 function noteTableRowPlain(line) {
   return noteTableCells(line).map(cell => noteMarkPlain(cell.text)).join("\t");
 }
@@ -476,6 +537,12 @@ function noteBoxPlainText(text) {
   const out = [];
   let i = 0;
   while (i < lines.length) {
+    const code = noteCodeBlock(lines, i);
+    if (code) {
+      out.push(noteCodePlain(code));
+      i += code.count;
+      continue;
+    }
     const table = noteTableBlock(lines, i);
     if (table) {
       // a linha de separação ("| --- |") é só grelha: não se copia
@@ -773,6 +840,12 @@ function noteNodesText(nodes, inCell) {
       if (noteHasNextContent(node)) out += "\n";
       continue;
     }
+    if (tag === "PRE" && node.classList.contains("noteBoxCode")) {
+      if (out && !out.endsWith("\n")) out += "\n";
+      out += noteCodeText(node);
+      if (noteHasNextContent(node)) out += "\n";
+      continue;
+    }
     if (NOTE_BLOCK_TAGS.has(tag) && out && !out.endsWith("\n")) out += "\n";
     out += noteNodesText(node.childNodes, inCell);
   }
@@ -807,6 +880,27 @@ function noteTrText(tr) {
   return (tr.dataset.pre || "|") + cells.join("|") + (tr.dataset.post || "|");
 }
 
+// o bloco de código de volta a texto: as cercas como estavam (data-open/
+// data-close) e o que está lá dentro tal e qual. `innerText` não serve — mete e
+// tira linhas conforme o CSS; aqui anda-se pelos nós, que é o que o browser
+// deixou escrito.
+function noteCodeText(pre) {
+    let corpo = "";
+    for (const node of pre.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) { corpo += node.nodeValue; continue; }
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        if (node.tagName === "BR") { corpo += "\n"; continue; }
+        corpo += node.textContent;
+        if (NOTE_BLOCK_TAGS.has(node.tagName) && node.nextSibling) corpo += "\n";
+    }
+    corpo = corpo.replace(/\u00a0/g, " ").replace(/\n$/, "");
+    const abre = pre.dataset.open || NOTE_FENCE;
+    // uma cerca de fecho que se perdeu (apagada a escrever) volta a nascer: sem
+    // ela o bloco engolia o resto do texto da caixa
+    const fecha = pre.dataset.close || NOTE_FENCE;
+    return `${abre}\n${corpo}\n${fecha}`;
+}
+
 function noteTableText(table) {
   const rows = [];
   for (const tr of table.querySelectorAll("tr")) {
@@ -832,6 +926,7 @@ function noteBoxHtml(b) {
       <span class="noteBoxGrip">⠿</span>
       <button type="button" class="noteBoxFmt" data-bfmt="bold" title="${esc(t("t_box_bold"))}"><b>B</b></button>
       <button type="button" class="noteBoxFmt" data-bfmt="strike" title="${esc(t("t_box_strike"))}"><s>S</s></button>
+      <button type="button" class="noteBoxFmt" data-bfmt="code" title="${esc(t("t_box_code"))}">&lt;/&gt;</button>
       <button type="button" class="noteBoxCopy" data-bcopy="${esc(b.id)}" title="${esc(t("t_box_copy"))}">⧉</button>
       <button type="button" class="noteBoxColor" data-bcolor="${esc(b.id)}" title="${esc(t("t_box_color"))}"></button>
       <button type="button" data-bdel="${esc(b.id)}" title="${esc(t("t_box_del"))}">✕</button>
@@ -2553,7 +2648,9 @@ $("noteCanvas").addEventListener("click", e => {
     const area = noteEditBox === boxEl.dataset.bid
       ? boxEl.querySelector("[data-btext]")
       : startNoteEdit(boxEl.dataset.bid);
-    if (area) toggleNoteMark(area, fmt.dataset.bfmt === "strike" ? NOTE_STRIKE : NOTE_BOLD);
+    if (!area) return;
+    if (fmt.dataset.bfmt === "code") toggleNoteCode(area);
+    else toggleNoteMark(area, fmt.dataset.bfmt === "strike" ? NOTE_STRIKE : NOTE_BOLD);
     return;
   }
   // ⧉ : todo o texto da caixa para a área de transferência
@@ -2868,7 +2965,13 @@ function paintNoteToolGroups() {
 
 // o botão da tabela escreve dentro da caixa que está a ser escrita: não lhe
 // pode tirar o foco (o mesmo que se faz com o B / S da caixa)
-$("noteToolbar").addEventListener("mousedown", e => {
+//
+// SÓ com o rato. Num telemóvel isto era o que deixava os menus da barra sem
+// abrir: no modelo de compatibilidade do toque, o `mousedown` é um evento
+// inventado depois do dedo levantar, e cancelá-lo cancela com ele o `click`
+// que vinha a seguir — o clique que abre o menu nunca chegava a existir.
+$("noteToolbar").addEventListener("pointerdown", e => {
+  if (e.pointerType && e.pointerType !== "mouse") return;
   // o Copiar lê o texto da caixa que está a ser escrita: tirar-lhe o foco
   // levava o cursor daquela caixa sem necessidade nenhuma. O nome do grupo
   // entra na mesma lista: abrir o menu para chegar ao Tabela/Copiar não pode
@@ -2876,9 +2979,31 @@ $("noteToolbar").addEventListener("mousedown", e => {
   if (e.target.closest("#noteTableBtn, #noteCopyBtn, .noteToolGroupBtn")) e.preventDefault();
 });
 
+// Dedo: o menu abre no levantar do dedo e não se espera pelo `click`, que em
+// alguns browsers de telemóvel não chega (ou chega 300 ms depois). O `hold`
+// diz ao `click` que possa vir a seguir para não voltar a fechar o que este
+// acabou de abrir.
+let noteToolTapped = false;
+$("noteToolbar").addEventListener("pointerup", e => {
+  if (!e.pointerType || e.pointerType === "mouse") return;
+  const grpBtn = e.target.closest(".noteToolGroupBtn");
+  if (!grpBtn) return;
+  const group = grpBtn.closest(".noteToolGroup");
+  const aberto = noteToolMenu === group;
+  closeNoteToolMenu();
+  if (!aberto) openNoteToolMenu(group);
+  noteToolTapped = true;
+  setTimeout(() => { noteToolTapped = false; }, 500);
+});
+
 $("noteToolbar").addEventListener("click", e => {
   const grpBtn = e.target.closest(".noteToolGroupBtn");
-  if (grpBtn) { openNoteToolMenu(grpBtn.closest(".noteToolGroup")); return; }
+  if (grpBtn) {
+    // o dedo já tratou disto no pointerup: este `click` é o eco dele
+    if (!noteToolTapped) openNoteToolMenu(grpBtn.closest(".noteToolGroup"));
+    noteToolTapped = false;
+    return;
+  }
   const toolBtn = e.target.closest("[data-tool]");
   if (toolBtn) { setNoteTool(toolBtn.dataset.tool); return; }
   if (e.target.closest("#noteTableBtn")) { insertNoteTable(); return; }
@@ -2907,6 +3032,12 @@ $("noteToolbar").addEventListener("click", e => {
 // clicar fora fecha; no próprio nome fecha e não deixa reabrir no mesmo clique
 document.addEventListener("pointerdown", e => {
   if (!noteToolMenu || e.target.closest(".noteToolGroupRow, .noteColorPop")) return;
+  // no toque quem manda é o pointerup (ver acima): fechar aqui deixava o menu
+  // a abrir e a fechar no mesmo toque
+  if (e.pointerType && e.pointerType !== "mouse") {
+    if (!noteToolMenu.contains(e.target)) closeNoteToolMenu();
+    return;
+  }
   noteToolMenuHold = noteToolMenu.contains(e.target);
   closeNoteToolMenu();
 }, true);
@@ -3049,6 +3180,44 @@ function toggleNoteMark(area, mark) {
     return;
   }
   replaceNoteRange(area, from, to, mark + inner + mark, from + len, to + len);
+}
+
+// põe (ou tira) o bloco de código ao que estiver escolhido — e, sem nada
+// escolhido, à linha onde está o cursor. As cercas ficam em linhas só delas
+// (é o que o detetor procura), e o que já era um bloco volta a ser texto.
+function toggleNoteCode(area) {
+  const value = area.value;
+  // as fronteiras crescem até ao princípio e ao fim das linhas que se tocam:
+  // meia linha dentro de um bloco de código não quer dizer nada
+  let from = value.lastIndexOf("\n", Math.max(0, area.selectionStart - 1)) + 1;
+  let to = value.indexOf("\n", area.selectionEnd);
+  if (to < 0) to = value.length;
+  const linhas = noteTextLines(value);
+  const dentro = (() => {
+    for (let i = 0; i < linhas.length; i++) {
+      const bloco = noteCodeBlock(linhas, i);
+      if (!bloco) continue;
+      const ini = bloco.open.at;
+      const fim = (bloco.close || linhas[i + bloco.count - 1] || bloco.open).at +
+        (bloco.close || linhas[i + bloco.count - 1] || bloco.open).text.length;
+      if (from >= ini && to <= fim) return bloco;
+      i += bloco.count - 1;
+    }
+    return null;
+  })();
+  if (dentro) {
+    // tirar o bloco: fica só o que estava lá dentro
+    const corpo = dentro.body.map(l => l.text).join("\n");
+    const ini = dentro.open.at;
+    const ultimo = dentro.close || dentro.body[dentro.body.length - 1] || dentro.open;
+    const fim = ultimo.at + ultimo.text.length;
+    replaceNoteRange(area, ini, fim, corpo, ini, ini + corpo.length);
+    return;
+  }
+  const inner = value.slice(from, to);
+  const bloco = `${NOTE_FENCE}\n${inner}\n${NOTE_FENCE}`;
+  replaceNoteRange(area, from, to, bloco,
+    from + NOTE_FENCE.length + 1, from + NOTE_FENCE.length + 1 + inner.length);
 }
 
 // ---------- árvores de texto (Tab / Shift+Tab / Enter) ----------

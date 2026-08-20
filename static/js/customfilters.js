@@ -133,6 +133,10 @@ function setCustomFilterOpen(open) {
     $("customFilterCopy").title = t("cf_share_copy_hint");
     $("customFilterPasteBtn").textContent = t("cf_share_paste");
     $("customFilterPasteBtn").title = t("cf_share_paste_hint");
+    $("customFilterPublish").textContent = t("cf_team_publish");
+    $("customFilterPublish").title = t("cf_team_publish_hint");
+    $("customFilterTeam").textContent = t("cf_team_get");
+    $("customFilterTeam").title = t("cf_team_get_hint");
     closeCustomFilterPaste();
     // interruptor desta aba, comum a todos os filtros (ver
     // loadCustomFilterHideCols/customFilterHiddenCols, tasks.js)
@@ -359,6 +363,70 @@ function importCustomFilters() {
   renderCustomFilterRows();
   toast(tf("cf_share_imported", novos.length), "ok");
 }
+
+/* ---------- os mesmos conjuntos, mas pela pasta da equipa ----------
+   O copiar/colar resolve uma vez ("passa-me os teus"); isto resolve o resto do
+   tempo. O conjunto fica na pasta partilhada — a mesma por onde já chegam as
+   atualizações e as esperas — com o nome de quem o publicou, e quem quiser
+   traz-lho. O que chega passa pela MESMA caixa de colar de sempre: ninguém
+   recebe filtros sem os ver primeiro. */
+
+async function publishCustomFilters() {
+  if (!customFilterDraft || !customFilterDraft.length) { toast(t("cf_share_empty"), ""); return; }
+  const nome = prompt(t("cf_team_name_ask"),
+    (lastData && lastData.sheet) || t("cf_team_name_default"));
+  if (nome === null) return;
+  const pacote = JSON.parse(customFilterShareText());
+  try {
+    const res = await fetch("/api/team/filters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        person: PERSON,
+        // um conjunto por publicação: o que se publica é o que está à frente
+        sets: [{
+          name: String(nome).trim() || t("cf_team_name_default"),
+          sheet: pacote.sheet, filters: pacote.filters, lists: pacote.lists,
+        }],
+      }),
+    });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || "?");
+    toast(tf("cf_team_published", customFilterDraft.length), "ok");
+  } catch (err) {
+    toast(tf("cf_team_failed", err.message || t("err_server")), "bad");
+  }
+}
+
+async function openTeamFilters(btn) {
+  let out;
+  try {
+    const res = await fetch("/api/team/filters?person=" +
+      encodeURIComponent(PERSON || ""));
+    out = await res.json();
+  } catch (err) {
+    toast(tf("cf_team_failed", String(err)), "bad");
+    return;
+  }
+  const sets = Array.isArray(out.sets) ? out.sets : [];
+  if (!sets.length) {
+    toast(out.shared ? t("cf_team_none") : t("cf_team_no_share"), "");
+    return;
+  }
+  // o mesmo menu do clique direito da app (copymenu.js): escolher um enche a
+  // caixa de colar, e é lá que se confirma
+  const r = btn.getBoundingClientRect();
+  openCopyMenu(r.left, r.bottom + 4, sets.map(s => ({
+    label: `${s.name} — ${s.person}${s.sheet ? ` · ${s.sheet}` : ""}`,
+    run: () => openCustomFilterPaste(JSON.stringify({
+      kind: CUSTOMFILTER_SHARE_KIND, sheet: s.sheet,
+      filters: s.filters, lists: s.lists,
+    }, null, 1)),
+  })));
+}
+
+$("customFilterPublish").addEventListener("click", publishCustomFilters);
+$("customFilterTeam").addEventListener("click", e => openTeamFilters(e.currentTarget));
 
 $("customFilterCopy").addEventListener("click", copyCustomFilters);
 $("customFilterPasteBtn").addEventListener("click", () => openCustomFilterPaste(""));

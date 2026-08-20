@@ -304,6 +304,13 @@
     align-items: center;
     gap: 4px;
     padding: 5px;
+    /* num telemóvel a fila de oito botões de 44px é mais larga do que o ecrã e
+       metade dela ficava de fora (o painel é fixed: não rola com nada). Aqui
+       ela dobra em linhas e nunca passa da largura da janela. */
+    flex-wrap: wrap;
+    max-width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+    overflow-y: auto;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--ios-radius-btn);
@@ -1197,6 +1204,42 @@ body.notes-full .noteTree {
 /* negrito dentro de riscado continua riscado (não volta ao tom normal) */
 .noteBoxTextView s strong {
     color: inherit;
+}
+
+/* bloco de código escrito entre ``` : a vista mostra-o com fundo, moldura e
+   letra de largura fixa. É onde se cola um excerto de um script ou de um log —
+   e ali dentro nada é interpretado (nem **negrito**, nem tabelas), porque um
+   asterisco no meio de um comando é um asterisco. */
+.noteBoxCode {
+    margin: 5px 0;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--ios-radius-btn);
+    /* a cor do texto com pouca opacidade: serve nos dois temas sem saber em
+       qual deles estamos (o mesmo que o pintor da imagem faz, ver ncMix) */
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-size: clamp(11px, calc(7px + 0.62cqw), 22px);
+    line-height: 1.4;
+    /* o código não se dobra a meio de um comando: quem não cabe rola */
+    white-space: pre;
+    overflow-x: auto;
+    /* é aqui que se escreve (a vista é a caixa): o texto tem de poder ser
+       escolhido e o cursor tem de caber no fim de uma linha vazia */
+    min-height: 1.4em;
+    tab-size: 4;
+}
+
+/* o nome da linguagem (```python) fica na moldura, sem ocupar uma linha */
+.noteBoxCode[data-lang]::before {
+    content: attr(data-lang);
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--font-ui, inherit);
+    font-size: 0.8em;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--muted);
 }
 
 /* tabelas escritas em "| coluna |": a vista da caixa desenha-lhes a grelha.
