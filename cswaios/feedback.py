@@ -289,6 +289,84 @@ def flush_pending():
     return entregues
 
 
+IMAGE_EXT = (".png", ".jpg", ".jpeg")
+
+
+def _pending_folder(nome):
+    """A pasta de UM feedback pendente, ou "" se o nome não for de uma.
+
+    O nome vem do cliente: só serve o de uma pasta que esteja mesmo em
+    feedback_pending — nada com barras nem com ".." chega ao disco.
+    """
+    nome = str(nome or "").strip()
+    if not nome or nome != os.path.basename(nome) or nome in (".", ".."):
+        return ""
+    destino = os.path.join(PENDING_DIR, nome)
+    return destino if os.path.isdir(destino) else ""
+
+
+def pending_list():
+    r"""O feedback que ficou no PC deste utilizador, por entregar.
+
+    Ficava invisível: montado em feedback_pending\ e entregue mais tarde, sem
+    nada na app que o mostrasse. Quem não alcança a partilha só via a issue
+    pública do reporte que acabou de escrever — os anteriores ficavam esquecidos
+    numa pasta (reporte do Nuno). Aqui saem todos, com o link da issue já
+    preenchida e os nomes das imagens que ficaram por anexar.
+    """
+    if not os.path.isdir(PENDING_DIR):
+        return []
+    out = []
+    for nome in sorted(os.listdir(PENDING_DIR), reverse=True):
+        pasta = os.path.join(PENDING_DIR, nome)
+        if not os.path.isdir(pasta):
+            continue
+        try:
+            ficheiros = sorted(os.listdir(pasta))
+        except OSError:
+            continue
+        texto = ""
+        caminho = os.path.join(pasta, "feedback.txt")
+        if os.path.isfile(caminho):
+            try:
+                with open(caminho, encoding="utf-8", errors="replace") as f:
+                    texto = f.read(4000)
+            except OSError:
+                texto = ""
+        out.append({
+            "name": nome,
+            "text": texto,
+            "images": [n for n in ficheiros if n.lower().endswith(IMAGE_EXT)],
+            "files": len(ficheiros),
+            "issue_url": github_issue_url(pasta),
+        })
+    return out
+
+
+def drop_pending(nome):
+    """Apaga um feedback pendente: a issue já foi aberta à mão, e deixá-lo aqui
+    fazia-o seguir outra vez pela partilha quando a ligação voltasse."""
+    pasta = _pending_folder(nome)
+    if not pasta:
+        raise ValueError("feedback pendente não encontrado")
+    shutil.rmtree(pasta, ignore_errors=True)
+    log_event(f"feedback: {nome} descartado do pendente (issue aberta à mão)")
+    return True
+
+
+def reveal_pending(nome):
+    r"""Abre no Explorador a pasta de um feedback pendente.
+
+    O formulário de issues do GitHub não recebe ficheiros por URL: as imagens
+    têm de ser arrastadas para lá à mão. Abrir a pasta é o que transforma "vai
+    procurar feedback_pending\<nome>" num arrastar (reporte do Nuno)."""
+    pasta = _pending_folder(nome)
+    if not pasta:
+        raise ValueError("feedback pendente não encontrado")
+    os.startfile(pasta)
+    return True
+
+
 def attach_server_log(folder):
     """Junta as últimas linhas do log — costumam ter o contexto do erro."""
     try:

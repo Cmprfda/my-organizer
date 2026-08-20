@@ -261,11 +261,6 @@ def normalize_todo_item(item):
     except (TypeError, ValueError):
         logged = 0
     out["jiraLoggedSeconds"] = max(0, logged)
-    # tempo dos cronómetros que já foi para o Jira: o que ainda não foi é a
-    # diferença para o elapsed_ms, e é isso que o registo de esforço propõe
-    # (ver todoUnloggedMs em static/js/todo.js)
-    out["jiraLoggedFromTimerMs"] = min(out["elapsed_ms"],
-                                       max(0, _int_or_zero(out.get("jiraLoggedFromTimerMs"))))
     # data-limite (YYYY-MM-DD) e repetição: os itens gravados antes desta
     # versão não as têm — ficam sem data e sem repetir, que é o neutro
     due = normalize_due(out.get("due"))
@@ -308,6 +303,21 @@ def normalize_todo_item(item):
         out["segments"] = segs
     else:
         out.pop("segments", None)
+    # tempo dos cronómetros que já foi para o Jira: o que ainda não foi é a
+    # diferença para o elapsed_ms, e é isso que o registo de esforço propõe
+    # (ver todoUnloggedMs em static/js/todo.js).
+    #
+    # O tecto não é o elapsed_ms sozinho: a folha de horas oferece o que vem
+    # do registo DIÁRIO (ver report.timesheet_lines), e esse pode ser maior do que
+    # o total do item — é o que acontece a quem recomeçou o cronómetro
+    # (restart_todo_timer põe o elapsed_ms a zero e os dias ficam). Com o tecto
+    # no elapsed_ms, registar a semana ia ao Jira e a conta era logo cortada
+    # aqui: o mesmo tempo voltava a ser oferecido na vez seguinte, e outra vez,
+    # cada uma delas um worklog repetido no Jira. O tecto é o mais que este
+    # cronómetro pode ter contado — o maior dos dois.
+    tecto = max(out["elapsed_ms"], sum(s["ms"] for s in segs))
+    out["jiraLoggedFromTimerMs"] = min(
+        tecto, max(0, _int_or_zero(out.get("jiraLoggedFromTimerMs"))))
     # quando o item foi fechado (ISO): é o que permite dizer o que se fechou
     # nesta semana. Os itens fechados antes desta versão não o têm.
     done_at = str(out.get("done_at") or "").strip()[:32]

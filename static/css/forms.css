@@ -161,6 +161,82 @@ button.searchMode:active {
   padding-top: 9px;
 }
 
+/* ---------- feedback guardado neste PC ---------- */
+/* Esta lista é uma pendência, não um resultado: fica encostada ao fim da
+   página do feedback, com uma barra de aviso à esquerda em vez de uma caixa a
+   pedir atenção (ver renderFbPending, static/js/feedback.js). */
+.fbPending {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--ios-radius-card) var(--ios-radius-card) 0;
+  background: var(--surface);
+}
+
+.fbPendingHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.fbPendingList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.fbPendingItem {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.fbPendingWho {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fbPendingName {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* o que a pessoa escreveu: uma linha, que o resto está na issue */
+.fbPendingText {
+  margin: 2px 0 6px;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fbPendingActs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Abrir a issue é a ação principal desta linha; abrir a pasta e apagar são
+   apoios dela — e o apagar não volta atrás, não pode ser o botão mais visível
+   da página. Ficam desenhados, não pintados. */
+.fbPendingActs [data-fbreveal],
+.fbPendingActs [data-fbdrop] {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.fbPendingActs [data-fbreveal]:hover,
+.fbPendingActs [data-fbdrop]:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 .fileinfo code {
   font-size: 12px;
   word-break: break-all;

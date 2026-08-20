@@ -781,6 +781,28 @@ button.metricDayBack:hover {
 
 .exportOpt:hover { background: var(--accent-soft); }
 
+/* ---------- o passo do Jira escolhido, a espera do Confirmar ---------- */
+/* o menu dos passos abre debaixo do rato, na lista dos itens: o passo escolhido
+   fica escrito aqui e so vai ao Jira no clique seguinte (ver openJiraStatePop) */
+.jiraMoveStaged {
+  margin: 2px 0 6px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.jiraMoveGo {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.jiraMoveGo:hover { background: var(--accent); filter: brightness(1.08); }
+
 /* ---------- desfazer uma alteracao a partir do historico ---------- */
 /* discreto (o historico e sobretudo para ler) mas ao alcance do dedo: acende
    quando o rato passa pela linha */

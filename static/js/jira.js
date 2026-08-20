@@ -808,6 +808,30 @@ function closeJiraStatePop() {
   jiraStatePop = null;
 }
 
+// o passo é escolhido num clique e dado noutro: o menu abre debaixo do rato,
+// na lista dos itens, e um clique a mais movia uma issue de verdade sem nada a
+// perguntar — e mover para trás no Jira nem sempre é um passo que exista
+// (reporte do Nuno). O passo escolhido fica aqui à espera do Confirmar; sair do
+// menu deixa-o cair, porque nada foi enviado.
+function jiraStatePopHtml(key, staged) {
+  const estado = jiraStates.get(key) || {};
+  const cabeca = `<div class="todoColsPopHead">${esc(key)} · ${esc(estado.status || "")}</div>`;
+  if (staged) {
+    const alvo = staged.to && staged.to !== staged.name
+      ? `${staged.name} → ${staged.to}` : staged.name;
+    return cabeca +
+      `<div class="jiraMoveStaged">${esc(alvo)}</div>` +
+      `<p class="todoColsPopHint">${esc(t("jira_move_staged"))}</p>` +
+      `<button type="button" class="exportOpt jiraMoveGo" data-jiramovego="1">` +
+      `${esc(t("jira_move_go"))}</button>` +
+      `<button type="button" class="exportOpt" data-jiramoveback="1">` +
+      `${esc(t("jira_move_back"))}</button>`;
+  }
+  return cabeca + (estado.transitions || []).map(tr =>
+    `<button type="button" class="exportOpt" data-jiramove="${esc(tr.id)}">` +
+    `${esc(tr.name)}${tr.to && tr.to !== tr.name ? ` → ${esc(tr.to)}` : ""}</button>`).join("");
+}
+
 function openJiraStatePop(anchor, key) {
   closeJiraStatePop();
   const estado = jiraStates.get(key);
@@ -817,22 +841,40 @@ function openJiraStatePop(anchor, key) {
   }
   const el = document.createElement("div");
   el.className = "todoColsPop exportPop jiraStatePop";
-  el.innerHTML = `<div class="todoColsPopHead">${esc(key)} · ${esc(estado.status || "")}</div>` +
-    estado.transitions.map(tr =>
-      `<button type="button" class="exportOpt" data-jiramove="${esc(tr.id)}">` +
-      `${esc(tr.name)}${tr.to && tr.to !== tr.name ? ` → ${esc(tr.to)}` : ""}</button>`).join("");
+  let staged = null;                 // passo escolhido, ainda não dado
+  el.innerHTML = jiraStatePopHtml(key, staged);
   document.body.appendChild(el);
   jiraStatePop = el;
-  const r = anchor.getBoundingClientRect();
-  el.style.left = `${Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.left))}px`;
-  const abaixo = r.bottom + 6;
-  el.style.top = `${abaixo + el.offsetHeight > window.innerHeight
-    ? Math.max(6, r.top - el.offsetHeight - 6) : abaixo}px`;
+  // o menu muda de altura entre a lista e a confirmação: a posição é acertada
+  // sempre a partir da âncora, para não sair do ecrã na segunda vista
+  const coloca = () => {
+    const r = anchor.getBoundingClientRect();
+    el.style.left = `${Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, r.left))}px`;
+    const abaixo = r.bottom + 6;
+    el.style.top = `${abaixo + el.offsetHeight > window.innerHeight
+      ? Math.max(6, r.top - el.offsetHeight - 6) : abaixo}px`;
+  };
+  coloca();
   el.addEventListener("click", async ev => {
     const opt = ev.target.closest("[data-jiramove]");
-    if (!opt) return;
-    closeJiraStatePop();
-    await moveJiraIssue(key, opt.dataset.jiramove);
+    if (opt) {
+      staged = (estado.transitions || []).find(tr => String(tr.id) === opt.dataset.jiramove);
+      if (!staged) return;
+      el.innerHTML = jiraStatePopHtml(key, staged);
+      coloca();
+      return;
+    }
+    if (ev.target.closest("[data-jiramoveback]")) {
+      staged = null;
+      el.innerHTML = jiraStatePopHtml(key, staged);
+      coloca();
+      return;
+    }
+    if (ev.target.closest("[data-jiramovego]") && staged) {
+      const id = staged.id;
+      closeJiraStatePop();
+      await moveJiraIssue(key, id);
+    }
   });
 }
 

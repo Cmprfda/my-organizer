@@ -25,8 +25,9 @@ from .authors import AuthorError, who_changed
 from .chat import answer as chat_answer
 from .config import APP_VERSION, DOWNLOAD_URL, HERE, SHARE_URL, lan_ip
 from .excel import browse_local_file
-from .feedback import (attach_server_log, deliver, flush_pending,
-                       github_issue_url, report_bug, stage_feedback_folder)
+from .feedback import (attach_server_log, deliver, drop_pending, flush_pending,
+                       github_issue_url, pending_list, report_bug,
+                       reveal_pending, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_ids_from_path,
                     graph_login_start, graph_logout, graph_pick, graph_state,
                     graph_state_public, graph_versions, is_graph_path,
@@ -311,6 +312,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/montra": "get_api_montra",
         "/api/waiting/stats": "get_api_waiting_stats",
         "/api/jira/projects": "get_api_jira_projects",
+        "/api/feedback/pending": "get_api_feedback_pending",
         "/logs": "get_logs",
     }
 
@@ -344,6 +346,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/overrides/clear": "post_api_overrides_clear",
         "/api/push": "post_api_push",
         "/api/feedback": "post_api_feedback",
+        "/api/feedback/pending": "post_api_feedback_pending",
         "/api/ccrs": "post_api_ccrs",
         "/api/notes/clear": "post_api_notes_clear",
         "/api/note": "post_api_note",
@@ -2016,6 +2019,57 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             log_event(f"{ip} feedback FALHOU: {exc}")
             self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+        return
+
+    def get_api_feedback_pending(self, parsed, ip):
+        # o feedback que ficou neste PC por entregar: sem isto só se via o
+        # reporte que acabou de ser escrito, e os anteriores ficavam esquecidos
+        # numa pasta que ninguém abre (ver feedback.pending_list)
+        try:
+            itens = pending_list()
+            self._send(200, json.dumps({"ok": True, "items": itens,
+                                        # abrir a pasta das imagens só faz
+                                        # sentido para quem está a este teclado
+                                        "canReveal": _is_local(ip)}),
+                       "application/json")
+        except Exception as exc:
+            log_event(f"{ip} /api/feedback/pending FALHOU: {exc!r}")
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+        return
+
+    def post_api_feedback_pending(self, path, ip):
+        # o que se faz a um feedback pendente: tentar entregá-lo outra vez,
+        # abrir a pasta das imagens (que a issue do GitHub não recebe por URL)
+        # ou descartá-lo, quando a issue já foi aberta à mão
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            action = str(payload.get("action") or "").strip()
+            nome = str(payload.get("name") or "").strip()
+            if action == "flush":
+                entregues = flush_pending()
+                log_event(f"{ip} tentou entregar o feedback pendente: {entregues}")
+                self._send(200, json.dumps({"ok": True, "delivered": entregues,
+                                            "items": pending_list()}),
+                           "application/json")
+                return
+            if action == "reveal":
+                if not _is_local(ip):
+                    raise ValueError("a pasta só se abre no computador da app")
+                reveal_pending(nome)
+                self._send(200, json.dumps({"ok": True}), "application/json")
+                return
+            if action == "drop":
+                drop_pending(nome)
+                self._send(200, json.dumps({"ok": True, "items": pending_list()}),
+                           "application/json")
+                return
+            raise ValueError(f"ação desconhecida: {action[:30]!r}")
+        except Exception as exc:
+            log_event(f"{ip} /api/feedback/pending FALHOU: {exc!r}")
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
         return
 
     def post_api_ccrs(self, path, ip):

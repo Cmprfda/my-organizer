@@ -506,6 +506,16 @@
             <div class="btns hidden" id="fbIssueRow">
               <button id="fbIssue">Abrir issue no GitHub</button>
             </div>
+            <!-- o feedback que ficou por entregar neste PC: montado em
+                 feedback_pending\ e invisível até aqui (ver renderFbPending) -->
+            <div class="fbPending hidden" id="fbPendingBox">
+              <div class="fbPendingHead">
+                <strong id="fbPendingTitle">Feedback guardado neste PC</strong>
+                <button type="button" class="mini" id="fbPendingRetry">Tentar entregar agora</button>
+              </div>
+              <p class="fileinfo" id="fbPendingHint" style="border-top:none;padding-top:0"></p>
+              <ul class="fbPendingList" id="fbPendingList"></ul>
+            </div>
           </div>
         </div>
 

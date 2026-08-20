@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cswaios import todos
+from cswaios import report, todos
 
 
 def item(**kw):
@@ -123,6 +123,35 @@ class TestRecomecarOCronometro(unittest.TestCase):
         alvo = item(col="todo", elapsed_ms=1000)
         todos.restart_todo_timer(alvo)
         self.assertIsNone(alvo["timer_started"])
+
+    def test_registar_a_semana_conta_mesmo_depois_do_recomeco(self):
+        """O que o recomeço não pode fazer é pôr a folha de horas a oferecer
+        para sempre o mesmo tempo.
+
+        Depois de recomeçar, o registo diário guarda horas que o `elapsed_ms`
+        já não tem. A folha de horas registra por esse registo diário; se a
+        conta do que já foi para o Jira fosse cortada pelo `elapsed_ms`, o
+        mesmo tempo era proposto na vez seguinte — e cada "Registar" era um
+        worklog repetido no Jira (reporte do Nuno, v159).
+        """
+        alvo = item(col="inprogress", elapsed_ms=120000, jiraLoggedFromTimerMs=0,
+                    segments=[{"d": "2026-08-20", "ms": 73 * 60000}],
+                    jiraIssues=[{"key": "ABC-1", "summary": "x"}])
+        linhas = report.timesheet_lines([alvo], "2026-08-20", "2026-08-20")
+        self.assertEqual([l["ms"] for l in linhas], [73 * 60000])
+        # é o que o servidor soma ao item depois de o Jira aceitar
+        alvo["jiraLoggedFromTimerMs"] += linhas[0]["ms"]
+        limpo = todos.normalize_todo_item(alvo)
+        self.assertEqual(limpo["jiraLoggedFromTimerMs"], 73 * 60000)
+        self.assertEqual(report.timesheet_lines([limpo], "2026-08-20", "2026-08-20"), [])
+
+    def test_o_tecto_continua_a_apanhar_uma_conta_impossivel(self):
+        """O tecto subiu, não desapareceu: mais do que o cronómetro pode ter
+        contado continua a ser cortado."""
+        limpo = todos.normalize_todo_item(
+            item(elapsed_ms=60000, jiraLoggedFromTimerMs=99 * 3600000,
+                 segments=[{"d": "2026-08-20", "ms": 120000}]))
+        self.assertEqual(limpo["jiraLoggedFromTimerMs"], 120000)
 
     def test_o_relatorio_continua_a_ver_os_dias(self):
         """O que este recomeço não pode fazer é passar horas trabalhadas para
