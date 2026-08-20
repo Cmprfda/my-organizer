@@ -351,12 +351,52 @@ function todoCanLogTime(it) {
   return !!todoJiraIssue(it) && todoUnloggedMs(it) >= TODO_LOG_MIN_MS;
 }
 
+// ---------- o oráculo do repetido e a palavra dada ----------
+// As duas contas vêm do servidor (/api/todo/stats): quanto costuma levar UMA
+// volta de um item que se repete (as `occurrences` cruzadas com os `segments`,
+// que viviam no mesmo item e nunca tinham sido juntas) e a calibração das datas
+// que a pessoa se dá a si mesma. Chegam depois do primeiro desenho e a lista
+// volta a desenhar-se — nenhuma delas é um dado sem o qual o cartão não sirva.
+let todoStats = null;
+let todoStatsAsked = -1;      // tamanho da lista da última vez que se pediu
+
+async function loadTodoStats() {
+  try {
+    const res = await fetch("/api/todo/stats");
+    const out = await res.json();
+    todoStats = out.ok ? out : { repeats: {}, due: { n: 0 } };
+  } catch (e) {
+    todoStats = { repeats: {}, due: { n: 0 } };
+  }
+}
+
+// pedido uma vez por sessão, e outra vez sempre que a lista muda de tamanho (um
+// item fechado muda as voltas e a calibração)
+function todoStatsFor(it, stats = todoStats) {
+  const dados = stats && stats.repeats;
+  return (dados && dados[String(it && it.id)]) || null;
+}
+
+// "costuma dar 35 min; vais em 1h10": o âmbar é sobre a distância ao costume
+// DAQUELE item, não sobre um limite qualquer
+function todoTimerOracle(it, corridoMs, stats = todoStats) {
+  const dados = todoStatsFor(it, stats);
+  if (!dados || !dados.median_ms) return { cls: "", tip: "" };
+  const acima = corridoMs > dados.median_ms * 1.5;
+  const tip = "\n" + (dados.thin
+    ? tf("todo_oracle_thin", formatTodoElapsed(dados.median_ms), dados.n)
+    : tf("todo_oracle", formatTodoElapsed(dados.median_ms), dados.n));
+  return { cls: acima ? " overTypical" : "", tip };
+}
+
 function todoTimerHtml(it) {
   const col = todoColOf(it);
   const running = it.timer_started != null;
   const elapsed = formatTodoElapsed(todoLiveElapsed(it));
   if (col === "inprogress") {
-    return `<button type="button" class="todoTimer todoTimerBtn${running ? " running" : ""}" data-ttimer="${esc(it.id)}" title="${running ? t("todo_timer_pause") : t("todo_timer_start")}">${running ? '<span class="dot"></span>' : '<span>▶</span>'}${elapsed}</button>`;
+    // o costume deste item, quando ele se repete e já tem voltas contadas
+    const oraculo = todoTimerOracle(it, todoLiveElapsed(it));
+    return `<button type="button" class="todoTimer todoTimerBtn${running ? " running" : ""}${oraculo.cls}" data-ttimer="${esc(it.id)}" title="${esc((running ? t("todo_timer_pause") : t("todo_timer_start")) + oraculo.tip)}">${running ? '<span class="dot"></span>' : '<span>▶</span>'}${elapsed}</button>`;
   }
   if ((+it.elapsed_ms || 0) > 0) {
     return `<span class="todoTimer" title="${t("todo_timer_view")}">⏱ ${elapsed}</span>`;
@@ -536,6 +576,18 @@ function openTodoDue(el) {
     (it.due || it.repeat
       ? `<button type="button" class="ccr-x" data-tdueclear="${esc(id)}" title="${esc(t("todo_due_clear"))}">✕</button>`
       : "");
+  // o que costuma acontecer às datas que esta pessoa se dá a si mesma: aparece
+  // enquanto se escolhe a data, que é o momento em que serve de alguma coisa
+  const cal = todoStats && todoStats.due;
+  if (cal && cal.n) {
+    const nota = document.createElement("span");
+    nota.className = "todoDueCal";
+    nota.textContent = cal.thin
+      ? tf("todo_due_cal_thin", cal.kept_pct, cal.n)
+      : tf("todo_due_cal", cal.kept_pct, cal.n)
+        + (cal.median_late_days ? ` ${tf("todo_due_cal_late", cal.median_late_days)}` : "");
+    host.appendChild(nota);
+  }
   el.replaceWith(host);
   const input = host.querySelector(".todoDueInput");
   input.focus();
@@ -1053,6 +1105,14 @@ function openTodoNote(el) {
 
 function renderTodo() {
   renderJiraSuggestions();
+  // o que a lista sabe sobre si mesma chega a pedido, uma vez por lista: sem
+  // isto o oráculo do cronómetro e a calibração das datas nunca teriam números
+  if (todoStats === null || todoStatsAsked !== todos.length) {
+    todoStatsAsked = todos.length;
+    loadTodoStats().then(() => {
+      if (currentView === "todo" && !editorOpen) renderTodo();
+    });
+  }
   // uma coluna vinda de outra janela tem de existir antes de se agruparem os
   // cartões, senão o cartão dela caía na coluna de recurso sem razão
   adoptTodoCols();

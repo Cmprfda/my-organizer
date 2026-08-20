@@ -1405,3 +1405,20 @@ a.todoJiraKey:hover {
   background: var(--status-done-bg);
   color: var(--status-done-fg);
 }
+
+/* o cronómetro passou o costume DESTE item (ver todoTimerOracle, todo.js): um
+   aviso, nunca uma tranca — o tempo continua a contar */
+.todoTimerBtn.overTypical {
+  border-color: var(--status-doing-fg);
+  color: var(--status-doing-fg);
+}
+
+/* a calibração das datas, dentro do editor da data-limite: contexto para a
+   escolha que se está a fazer, e por isso em letra pequena e discreta */
+.todoDueCal {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: normal;
+  max-width: 220px;
+}

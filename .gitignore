@@ -15,6 +15,12 @@ repos.json
 announcement.json
 feedback_pending/
 waiting.json
+# registo das esperas resolvidas (ver store.WAITING_LOG_FILE): dados de quem usa
+waiting_log.json
+# retrato da ultima leitura boa da folha, para o arranque sem rede (tasks.py)
+last_read.json
+# a ancora do relatorio "antes da reuniao" (report.MEETING_FILE)
+meeting_anchor.json
 exports/
 # copias do estado local (uma por hora nos dias recentes, ver cswaios/statefile.py)
 backups/

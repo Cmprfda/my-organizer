@@ -5,6 +5,7 @@ function clearFilters() {
   customFilterActive.clear();
   staleOnly = false;
   chaseOnly = false;
+  bouncedOnly = false;
 }
 
 $("clearNotes").addEventListener("click", async () => {
@@ -49,6 +50,10 @@ async function doPush(btn) {
     if (!alvo) { toast(t("push_need_book"), "err"); return; }
     btn.disabled = true;
     btn.textContent = t("btn_pushing");
+    // as linhas que este Envio leva, lidas antes de as alterações locais
+    // desaparecerem: é com elas que se oferece passar a bola (ver team.js) e
+    // que se aceitam as bolas que me passaram
+    const levadas = typeof pendingStatusRows === "function" ? pendingStatusRows() : [];
     try {
       const res = await fetch("/api/push", {
         method: "POST",
@@ -70,6 +75,12 @@ async function doPush(btn) {
       alert("Push falhou: " + err);
     }
     btn.disabled = false;
+    if (levadas.length && typeof takeHandoffsFor === "function") {
+      // mexer na linha que me passaram é aceitar a bola, e não é preciso
+      // perguntar nada a ninguém
+      takeHandoffsFor(levadas);
+      offerHandoffs(levadas);
+    }
   }
   // o render() do load() volta a pôr a etiqueta certa nos dois botões
   load(true, true);
@@ -161,6 +172,8 @@ $("summary").addEventListener("click", e => {
     staleOnly = !staleOnly;
   } else if (pill.dataset.chase) {
     chaseOnly = !chaseOnly;
+  } else if (pill.dataset.bounced) {
+    bouncedOnly = !bouncedOnly;
   } else if (pill.dataset.customfilter) {
     // não exclusivo: vários filtros personalizados podem estar ligados ao
     // mesmo tempo, combinados em AND (ver render(), tasks.js)
@@ -367,6 +380,12 @@ function scheduleReload() {
 
 schedulePoll();
 scheduleReload();
+// os recados e as bolas passadas chegam da pasta partilhada: pedidos uma vez no
+// arranque (e outra vez sempre que se manda algo, ou o painel Hoje abre), para
+// os chips ✉/⚑ aparecerem nas linhas sem ser preciso abrir nada
+if (typeof loadTeamMessages === "function") {
+  loadTeamMessages().then(() => { if (teamMessages.length || teamHandoffs.length) render(); });
+}
 // numa janela dedicada também vale: são janelas da mesma app e é justamente
 // entre elas que os avisos servem para algo
 eventsStart();

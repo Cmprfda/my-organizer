@@ -201,6 +201,116 @@
   pelos outros, e a gravação é atómica — o item acabado de criar no telemóvel já
   não desaparece porque o browser gravou no mesmo instante.
 
+## v157
+
+- **Ricochete** (marca `↩` ao lado do nome da tarefa, e botão *Ricochete* na
+  linha dos filtros): uma linha que foi A→B e mais tarde voltou a A ricocheteou —
+  na prática, voltou da revisão. O histórico já guardava cada reversão, mas
+  ninguém contava as idas e voltas. A contagem vem da mesma janela de dias que o
+  histórico da folha traz, por isso um ricochete mais antigo do que isso não
+  aparece.
+- **Enviaste, a folha mudou por cima** (no painel *Hoje*): uma célula que a app
+  enviou e que alguém depois mudou na folha aparece numa secção só dela, com o
+  que foi enviado → o que a folha diz agora, e um `desfeito` quando o valor
+  voltou ao de antes do envio. Isto só se descobria por acaso, a reler o
+  histórico daquela linha.
+- **Quanto tempo em cada estado** (nas Métricas): a mediana do tempo que as
+  linhas passam em cada estado — "*In progress*: 2,1 dias (mediana de 14)". Sai
+  das alterações já gravadas: dois eventos seguidos da mesma linha delimitam o
+  tempo que ela passou no estado do meio. Com poucos casos, diz-o em vez de
+  apresentar a conta como uma mediana.
+- **Idade do que falta** (nas Métricas): as linhas não acabadas por idade da
+  última alteração (esta semana · até um mês · até três meses · mais). As
+  *paradas* respondiam a "quais passaram o meu limite?"; isto mostra a
+  distribuição toda, com a manchete de quantas nunca foram vistas a mudar.
+- **Comparado contigo** (nas Métricas): o período à vista ao lado da tua própria
+  mediana dos oito períodos anteriores do mesmo tamanho — "12 estados enviados
+  (▼40% do teu costume)". O relatório descrevia um período isolado e deixava ao
+  leitor a pergunta que importa: foi uma semana fora do normal, ou foi só uma
+  semana?
+- **Dia suspeito** (no diálogo de registar a semana no Jira): as linhas com cara
+  de erro levam um ⚠ antes de se carregar em *Registar* — um dia com mais de 12h
+  contadas, uma linha muito acima do costume daquele item, tempo contado num fim
+  de semana. A dica diz sempre o que foi visto. Continuam a poder ser
+  registadas: é um aviso, não uma tranca.
+- **Quanto costuma dar uma volta** (chip ⏱ dos itens que se repetem): com voltas
+  já fechadas e cronometradas, o botão do cronómetro diz o costume daquele item e
+  fica âmbar quando o passa em 50%. As ocorrências e o registo diário do
+  cronómetro viviam no mesmo item e nunca tinham sido cruzados.
+- **Cumpres as tuas próprias datas?** (no editor da data-limite): enquanto se
+  escolhe a data, a app diz a percentagem de datas que cumpriste e quantos dias
+  escorrega quando escorrega. A partir desta versão as datas dos itens fechados
+  ficam no arquivo — antes eram apagadas com o item e a conta não era possível.
+- **Livro de dívidas** (na caixa *À espera de*): quantas esperas aquela pessoa já
+  resolveu e em quantos dias, tipicamente — "Rui: 6 esperas resolvidas, mediana
+  de 3 dias. Esta vai no dia 5". As esperas resolvidas passaram a ficar
+  registadas (só nesta máquina: os tempos de resposta de cada pessoa nunca saem
+  daqui). Antes desta versão não há passado para contar.
+- **Antes da reunião** (botão nas Métricas): o relatório de "desde a última vez
+  que carregaste neste botão" — um período que nenhum seletor de datas sabe
+  pedir, porque as reuniões não caem em semanas de calendário. Traz o que mudou
+  mais as perguntas em aberto (esperas fora do prazo, envios pisados) e um
+  *Marcar esta reunião* que move a âncora só quando se quer.
+- **Porquê assim?** (na caixa de detalhe de uma tarefa): a biografia da linha em
+  texto corrido — a primeira alteração de que há registo, quantas foram e de que
+  lado vieram, o maior tempo que esteve sem se mexer, os ricochetes, quem a
+  segura e há quanto tempo está como está. Cada ingrediente já existia num painel
+  diferente; a história da linha nunca era montada.
+- **Quem já andou nestas linhas** (na caixa de detalhe): as pessoas que aparecem
+  como autor ou reviewer nas linhas vizinhas (as que partilham o começo do nome),
+  cada uma contada uma vez por linha. Serve de tabela de encaminhamento para quem
+  chega: "pergunta ao Pedro, ele mexeu em todas as FCU-3x". Sai da folha — não é
+  autoria por célula.
+- **A folha naquele dia** (botão ⏳ *Naquele dia*, na barra das Tarefas): escolhe-
+  se uma data e vê-se *o que mudou desde então* ou *a folha como estava*. Nada
+  disto foi guardado: reconstrói-se ao contrário, desfazendo as alterações que
+  aconteceram depois. Só as colunas que a app segue, e a janela diz quando a data
+  pedida é anterior ao início do histórico.
+- **O que perdi** (no painel *Hoje*): quem volta de três ou mais dias fora deixa
+  de receber uma parede de alterações e passa a receber um dia a dia — "seg 17:
+  12 alterações em 5 linhas" —, e cada dia salta para esse dia à lupa nas
+  Métricas.
+- **Recados numa linha** (na caixa de detalhe): uma mensagem curta dirigida a uma
+  pessoa sobre uma linha, com aviso de leitura ("lido por Rita, ter 09:14"). As
+  esperas dizem a quem se cobra e os anúncios falam para todos; faltava a
+  mensagem dirigida e confirmada. Vive na pasta partilhada e toda a equipa a pode
+  ler — a caixa di-lo. Abrir a caixa é o que manda o recibo.
+- **Passa a bola**: quando o Envio muda o estado de linhas que passam para o lado
+  de outra pessoa, a app oferece avisá-la (uma pergunta por pessoa, não uma por
+  linha). O painel *Hoje* de quem recebe abre com "passaram-te 3 linhas", e mexer
+  nessas linhas marca a bola como aceite, sem ninguém ter de confirmar nada.
+- **Kit de chegada** (Definições → *Equipa*): os teus filtros e preferências,
+  mais uma página com o estado do projeto escrita pela app, publicados na pasta
+  partilhada — a primeira hora de quem entra no projeto deixa de ser a pior
+  conversa que a app tem com alguém. Os filtros que chegam passam pela caixa de
+  colar de sempre. Não leva a lista Por fazer nem as notas.
+- **Arranque às escuras**: arrancar a app sem acesso ao livro (no trem, com o
+  OneDrive em baixo) dava uma vista de Tarefas vazia — e vazio parece "não tens
+  nada" em vez de "não consegui ler". Agora aparece o retrato da última leitura
+  que correu bem, com a hora a que foi tirado; as alterações locais (✎), a lista
+  Por fazer e as notas continuam a funcionar.
+- **Avisos do Windows com a app fechada** (Definições → *Avisos*): levantados por
+  esta app e não pelo browser, por isso aparecem mesmo sem nenhuma janela aberta
+  — um cronómetro esquecido a correr, ou alterações nas tuas linhas da folha. Têm
+  botões que abrem a app no sítio certo. Desligados por omissão.
+- **Farol** (ícone ao lado do relógio): verde quando não há nada à tua espera,
+  âmbar quando há trabalho do teu lado ou um cronómetro a contar, vermelho quando
+  há alterações por enviar. A dica diz os números; o botão direito abre a app, a
+  montra ou o comando. Só existe enquanto a app estiver a correr.
+- **Montra** (Definições → *Outras janelas*, ou `/montra`): uma página para ficar
+  aberta num segundo ecrã — quatro números grandes (a cobrar · paradas · por
+  enviar · por registar) e o que mexeu na folha, legível a dois metros. Não tem
+  botões: é para se olhar de passagem, não para se usar.
+- **Comando** (`/remote`, ou o mesmo sítio das Definições): o telemóvel como
+  comando e não como cópia pequena da app — três botões do tamanho de um dedo
+  para o item em curso (cronómetro, feito, próximo passo da checklist), e cada
+  toque faz a janela do computador saltar para lá.
+- **Ditar ao assistente** (🎤 na caixa do assistente): dizer em vez de escrever, o
+  que serve quem tem as mãos no equipamento. O que é ouvido fica na caixa para se
+  corrigir antes de enviar, e as ordens continuam a passar pelo Confirmar de
+  sempre. O botão só aparece onde o browser o sabe fazer (não funciona a partir
+  do telemóvel pela rede local).
+
 ## v155
 
 - **O que muda numa janela aparece nas outras**: a app deixou de esperar pelo

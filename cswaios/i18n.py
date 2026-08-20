@@ -15,6 +15,34 @@ MSGS = {
         "en": "Couldn't read the workbook from OneDrive right now. "
               "Showing data read at {t} (local edits included).",
     },
+    "warning_snapshot": {
+        "pt": "Sem acesso ao livro desde que a app arrancou. A mostrar o retrato "
+              "de {t}, guardado no fim da última leitura que correu bem — as tuas "
+              "alterações locais (✎), a lista Por fazer e as notas funcionam.",
+        "en": "No access to the workbook since the app started. Showing the "
+              "snapshot from {t}, saved at the end of the last successful read — "
+              "your local edits (✎), TODO list and notes still work.",
+    },
+    "toast_timer_title": {
+        "pt": "Cronómetro a correr",
+        "en": "Timer still running",
+    },
+    "toast_timer": {
+        "pt": "\"{t}\" vai em {h}h de cronómetro. Se te esqueceste dele, a folha "
+              "de horas vai ficar com um dia enorme.",
+        "en": "\"{t}\" has been timing for {h}h. If you forgot it, your timesheet "
+              "will end up with a huge day.",
+    },
+    "toast_timer_btn": {"pt": "Abrir a lista", "en": "Open the list"},
+    "toast_sheet_title": {
+        "pt": "A folha mexeu",
+        "en": "The sheet moved",
+    },
+    "toast_sheet": {
+        "pt": "{n} alterações em {r} linha(s) desde o último aviso.",
+        "en": "{n} changes across {r} row(s) since the last notice.",
+    },
+    "toast_sheet_btn": {"pt": "Abrir a app", "en": "Open the app"},
     "notice_cycled": {
         "pt": "O Excel foi fechado (com gravação) para atualizar e já foi reaberto.",
         "en": "Excel was closed (saving changes) to refresh, and has been reopened.",

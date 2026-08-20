@@ -399,6 +399,67 @@ $("chatClear").addEventListener("click", () => {
   setChatOpen(true);
 });
 
+// ---------- mãos ocupadas: ditar em vez de escrever ----------
+// Na bancada de testes as mãos estão no equipamento. O assistente já entende a
+// gramática toda ("estado de TC 41 para Done", "nota em BSP-12: ..."), e as
+// ordens já passam pelo cartão de Confirmar — só faltava poder DIZÊ-LAS.
+//
+// Sem nada novo do lado do servidor e sem dependências: o reconhecimento é o do
+// próprio browser (webkitSpeechRecognition), que corre em `localhost` porque é
+// contexto seguro. Do telemóvel pela rede local NÃO corre (http:// não é
+// contexto seguro) — por isso o botão só aparece onde funciona, em vez de estar
+// lá a falhar.
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let chatRec = null;
+
+function chatMicAvailable() {
+  return !!SpeechRec && window.isSecureContext;
+}
+
+function chatMicStop() {
+  if (!chatRec) return;
+  try { chatRec.stop(); } catch (e) { /* já parado */ }
+  chatRec = null;
+  $("chatMic").classList.remove("live");
+}
+
+function chatMicStart() {
+  if (chatRec) { chatMicStop(); return; }
+  const rec = new SpeechRec();
+  // a língua da app é a língua de quem fala: um "Done" dito em português é
+  // reconhecido melhor com o pt-PT do que com o en-GB
+  rec.lang = LANG === "en" ? "en-GB" : "pt-PT";
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.onresult = ev => {
+    let texto = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      texto += ev.results[i][0].transcript;
+    }
+    // escreve-se na caixa em vez de perguntar logo: o que foi ouvido tem de
+    // poder ser corrigido antes de seguir (e uma ordem ainda passa pelo
+    // Confirmar de sempre)
+    $("chatInput").value = texto.trim();
+    if (ev.results[ev.results.length - 1].isFinal) {
+      chatMicStop();
+      $("chatInput").focus();
+    }
+  };
+  rec.onerror = () => { chatMicStop(); };
+  rec.onend = () => { chatMicStop(); };
+  try {
+    rec.start();
+  } catch (e) {
+    chatMicStop();
+    return;
+  }
+  chatRec = rec;
+  $("chatMic").classList.add("live");
+}
+
+$("chatMic").classList.toggle("hidden", !chatMicAvailable());
+$("chatMic").addEventListener("click", chatMicStart);
+
 $("chatForm").addEventListener("submit", e => {
   e.preventDefault();
   const texto = $("chatInput").value;
@@ -462,6 +523,7 @@ function applyChatLang() {
   $("chatClear").textContent = t("chat_clear");
   $("chatClose").title = t("t_close");
   $("chatSend").title = t("btn_send");
+  $("chatMic").title = t("chat_mic");
   $("chatInput").placeholder = t("ph_chat");
   renderChatSuggestions();
   renderChatLog();

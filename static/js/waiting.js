@@ -68,6 +68,46 @@ function waitingChipHtml(meta) {
     blockerChipHtml(meta);
 }
 
+// ---------- livro de dívidas ----------
+// Quantas esperas cada pessoa já resolveu, e em quantos dias. Uma espera aberta
+// há 5 dias numa pessoa cuja mediana são 3 dias diz outra coisa do que a mesma
+// espera numa pessoa cuja mediana são 10 — sem isto, "há 5 dias" não se compara
+// com nada. As esperas resolvidas passaram a ficar gravadas (ver
+// store.log_waiting_closed): antes desta versão não há passado para contar.
+let waitingStats = null;
+
+async function loadWaitingStats() {
+  try {
+    const res = await fetch("/api/waiting/stats");
+    const out = await res.json();
+    waitingStats = out.ok ? (out.people || []) : [];
+  } catch (e) {
+    waitingStats = [];
+  }
+}
+
+// o que se sabe sobre a capacidade de resposta de quem tem esta linha na mão
+function waitingRecordOf(quem, lista = waitingStats) {
+  const nome = String(quem || "").trim().toLowerCase();
+  if (!nome || !lista) return null;
+  return lista.find(p => String(p.who || "").toLowerCase() === nome) || null;
+}
+
+// a linha de contexto por baixo do campo do nome, na caixa da espera
+function waitingRecordHtml(meta) {
+  const w = waitingOf(meta);
+  if (!w) return "";
+  const rec = waitingRecordOf(w.who);
+  if (!rec || !rec.n) return "";
+  const dias = waitingDays(meta);
+  const mediana = Math.round((+rec.median_days || 0) * 10) / 10;
+  // "vai no dia 5, e a mediana são 3" é a frase toda: o número sozinho não
+  // diz se está a demorar
+  const atraso = dias != null && mediana && dias > mediana
+    ? ` ${tf("debt_over", dias)}` : "";
+  return `<p class="waitNote waitDebt">${esc(tf("debt_line", rec.who, rec.n, mediana))}${esc(atraso)}</p>`;
+}
+
 // ---------- o que está a segurar a linha ----------
 // O "à espera de <quem>" diz a quem se cobra. Isto diz o QUÊ: outra linha da
 // folha, uma CCR ou um item da lista Por fazer. Serve as duas pontas — a linha
@@ -183,6 +223,12 @@ function blockedNoteHtml(meta) {
 // Gravar recarrega a folha, como qualquer alteração de linha.
 function waitingNode(meta) {
   const w = waitingOf(meta);
+  // os números do livro de dívidas chegam depois: a caixa desenha-se sem eles e
+  // volta a desenhar-se quando eles chegarem (é uma linha de contexto, não um
+  // dado sem o qual a caixa não sirva)
+  if (waitingStats === null) loadWaitingStats().then(() => {
+    if (typeof refreshItemBox === "function") refreshItemBox();
+  });
   const wrap = document.createElement("div");
   wrap.className = "waitBox";
   const b = blockerOf(meta) || {};
@@ -210,6 +256,7 @@ function waitingNode(meta) {
       ? tf("waiting_note_until", w.who, fmtDueShort(w.until))
       : tf("waiting_note_open", w.who))}</p>`
     : `<p class="waitNote">${esc(t("waiting_hint"))}</p>`) +
+    waitingRecordHtml(meta) +
     // o outro lado da cadeia: quem está à espera DESTA linha. É o que faz a
     // marca valer para quem tem o trabalho na mão, e não só para quem espera
     blockedNoteHtml(meta);

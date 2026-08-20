@@ -192,6 +192,9 @@ function withTaskHistory(tr, fields) {
   // "à espera de alguém": também não vem de nenhuma célula da folha — é uma
   // marca nossa sobre a linha (ver waiting.js)
   if (meta) fields.push({ label: t("ibox_waiting"), node: waitingNode(meta), wide: true });
+  // recados desta linha e bola passada: também não saem da folha — vêm da pasta
+  // partilhada (ver team.js). Abrir a caixa é o que manda o recibo de leitura.
+  if (meta) fields.push({ label: t("ibox_messages"), node: messageNode(meta), wide: true });
   return fields;
 }
 

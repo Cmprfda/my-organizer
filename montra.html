@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Montra — My Organizer</title>
+  <!--
+    A montra: uma página para FICAR ABERTA e ser olhada de passagem — um segundo
+    monitor, um tablet reformado apontado ao endereço da rede local. De propósito
+    sem botões e sem a interface da app: quatro números grandes e o que mexeu na
+    folha. Os números vêm do /api/montra (o servidor faz as contas) e a página
+    ouve os avisos do servidor (/api/events) para não andar a perguntar.
+  -->
+  <link rel="icon" href="/static/img/app-icon-192.png">
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/montra.css">
+</head>
+<body class="montraBody">
+  <main class="montra">
+    <header class="montraHead">
+      <h1>My Organizer</h1>
+      <span class="montraWhen" id="montraWhen"></span>
+    </header>
+
+    <section class="montraTiles">
+      <div class="montraTile" id="tileChase">
+        <span class="montraValue">–</span>
+        <span class="montraLabel">a cobrar</span>
+      </div>
+      <div class="montraTile" id="tileStale">
+        <span class="montraValue">–</span>
+        <span class="montraLabel">paradas</span>
+      </div>
+      <div class="montraTile" id="tilePending">
+        <span class="montraValue">–</span>
+        <span class="montraLabel">por enviar</span>
+      </div>
+      <div class="montraTile" id="tileUnlogged">
+        <span class="montraValue">–</span>
+        <span class="montraLabel">por registar</span>
+      </div>
+    </section>
+
+    <section class="montraTicker">
+      <h2 id="montraTickerTitle">A folha mexeu</h2>
+      <ul id="montraFeed"></ul>
+    </section>
+  </main>
+  <script src="/static/js/montra.js"></script>
+</body>
+</html>

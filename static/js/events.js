@@ -127,6 +127,17 @@ function evOnExcel(ev) {
 // ---------------------------------------------------------------------------
 // a ligação
 
+// O comando do telemóvel (ver remote.js e /api/remote): a janela do computador
+// salta para onde o dedo tocou. É o mesmo caminho dos outros avisos — e por isso
+// a janela que MANDOU o comando ignora-o (o `from` traz o id de quem pediu).
+function evOnCommand(ev) {
+  if (!ev || (ev.from && ev.from === CSW_CID)) return;
+  if (ev.action === "show_todo") {
+    if (typeof showView === "function") showView("todo");
+    if (typeof load === "function") load();
+  }
+}
+
 function eventsStart() {
   if (typeof EventSource === "undefined" || evSource) return;
   let src;
@@ -141,7 +152,7 @@ function eventsStart() {
     evFails = 0;
     clientLog("avisos do servidor ligados");
   });
-  ["state", "sheet", "excel", "hello"].forEach(kind => {
+  ["state", "sheet", "excel", "hello", "command"].forEach(kind => {
     src.addEventListener(kind, msg => {
       let ev = {};
       try { ev = JSON.parse(msg.data || "{}"); } catch (e) { return; }
@@ -149,6 +160,7 @@ function eventsStart() {
       if (kind === "state") evOnState(ev);
       else if (kind === "sheet") evOnSheet(ev);
       else if (kind === "excel") evOnExcel(ev);
+      else if (kind === "command") evOnCommand(ev);
       fireServerEvent(kind, ev);
     });
   });

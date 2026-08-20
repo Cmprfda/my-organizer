@@ -526,3 +526,104 @@ body.split #notesView {
 .waitChip.theirs {
   border-style: dashed;
 }
+
+/* o livro de dívidas, por baixo do nome de quem se espera (ver waiting.js):
+   contexto, não um veredicto — a mesma letra das outras notas da caixa */
+.waitNote.waitDebt {
+  color: var(--muted);
+  font-style: normal;
+}
+
+/* ---------- recados numa linha (ver team.js) ---------- */
+.msgChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--ios-radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: help;
+}
+
+/* um recado por ler pesa mais do que um já lido */
+.msgChip.unread {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+
+.msgChip.sent {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.msgBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.msgList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.msgRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 6px;
+  border-radius: var(--ios-radius-btn);
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.msgRow.mine {
+  border-left: 2px solid var(--accent-soft);
+}
+
+.msgRow.handoff {
+  border-left: 2px solid var(--status-info-fg);
+}
+
+.msgRow .msgWho {
+  font-weight: 600;
+}
+
+.msgRow .msgWhen,
+.msgRow .msgSeen {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.msgFields {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.msgFields .msgTo {
+  width: 130px;
+}
+
+.msgFields .msgText {
+  flex: 1 1 220px;
+  min-width: 140px;
+}
+
+.msgNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}

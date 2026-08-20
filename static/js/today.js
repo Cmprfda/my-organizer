@@ -161,6 +161,92 @@ async function loadTodayEvents() {
   }
 }
 
+// ---------- envios pisados ----------
+// Uma célula que a app enviou e a folha depois mudou por cima: o envio deu
+// certo, ninguém avisou de nada, e o valor já não é o que foi enviado. Isto só
+// se descobria por acaso, a reler o histórico daquela linha (ver
+// history.overwritten_pushes).
+let todayOverwritten = null;
+
+async function loadTodayOverwritten() {
+  try {
+    const res = await fetch("/api/history/overwritten?days=14");
+    const out = await res.json();
+    todayOverwritten = (out.items || []).filter(i => i && !todayIsMineSkip(i));
+  } catch (e) {
+    todayOverwritten = [];
+  }
+}
+
+// as linhas dos livros que não estão abertos não se mostram: não haveria para
+// onde saltar, e o painel fala do que está à mão
+function todayIsMineSkip(item) {
+  return !(workbookTabs || []).some(x => x.lastData && !x.lastData.error
+    && x.lastData.file === item.book && x.lastData.sheet === item.sheet);
+}
+
+function todayOverwrittenRow(item) {
+  const nome = String(item.fn || "").trim() || String(item.todo || "").trim()
+    || tf("metric_row", item.xlrow);
+  const tab = (workbookTabs || []).find(x => x.lastData && !x.lastData.error
+    && x.lastData.file === item.book && x.lastData.sheet === item.sheet);
+  const etiqueta = item.reverted ? t("today_reverted") : t("today_overwritten_tag");
+  return `<li class="todayRow"><button type="button" class="todayGo"
+      data-todaytask="${esc((tab && tab.id) || "")}|${esc(item.fn || "")}|${esc(item.todo || "")}"
+      title="${esc(tf("t_today_overwritten", item.col, histValue(item.mine),
+        histValue(item.now), histWhen(item.changed_at)))}">
+    <span class="todayDue late">${esc(etiqueta)}</span>
+    <span class="todayName">${esc(nome)}</span>
+    <span class="todayWhere">${esc(item.col)}: ${esc(histValue(item.mine))} → ${esc(histValue(item.now))}</span>
+  </button></li>`;
+}
+
+// ---------- o que perdi ----------
+// Voltar de três dias fora e receber uma parede de alterações não é o mesmo que
+// receber "segunda: 4 · terça: 12 · quarta: 3". A conta é a mesma lista de
+// eventos, agrupada pelo dia — e cada dia salta para as Métricas desse dia, que
+// já sabem mostrar todas as alterações de um dia à lupa (ver metricsShowDay).
+const TODAY_AWAY_DAYS = 3;
+
+// dias inteiros desde a última visita (0 quando é a primeira vez)
+function todayAwayDays() {
+  const marca = todayMark();
+  if (!marca) return 0;
+  const quando = new Date(marca);
+  if (isNaN(quando)) return 0;
+  return Math.floor((Date.now() - quando.getTime()) / 86400000);
+}
+
+function todayByDay(eventos) {
+  const porDia = new Map();
+  eventos.forEach(e => {
+    const dia = String(e.ts || "").slice(0, 10);
+    if (!dia) return;
+    const alvo = porDia.get(dia) || { day: dia, n: 0, rows: new Set() };
+    alvo.n++;
+    alvo.rows.add(`${e.book}|${e.sheet}|${e.xlrow}`);
+    porDia.set(dia, alvo);
+  });
+  return [...porDia.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
+}
+
+function todayDayRow(dia) {
+  return `<li class="todayRow"><button type="button" class="todayGo" data-todayday="${esc(dia.day)}"
+      title="${esc(t("t_today_day"))}">
+    <span class="todayWhen">${esc(todayDayLabel(dia.day))}</span>
+    <span class="todayName">${esc(tf("today_day_changes", dia.n, dia.rows.size))}</span>
+    <span class="todayWhere">→</span>
+  </button></li>`;
+}
+
+// o dia da semana escrito, que é como se fala de uma ausência ("na terça")
+function todayDayLabel(iso) {
+  const d = new Date(`${iso}T12:00:00`);
+  if (isNaN(d)) return iso;
+  const dias = t("today_weekdays").split(",");
+  return `${dias[d.getDay()] || ""} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`.trim();
+}
+
 // ---------- desenho ----------
 
 function todaySection(title, rows, count) {
@@ -207,6 +293,33 @@ function todayEventRow(e) {
   </li>`;
 }
 
+// recados que os outros me deixaram e ainda não li (o recibo é escrito quando a
+// caixa da linha é aberta, ver team.js)
+function todayMessageRows() {
+  return (typeof teamMessages === "undefined" ? [] : teamMessages)
+    .filter(m => !m.mine && !(m.seen || []).some(x => norm(x.who) === norm(PERSON)))
+    .slice(0, TODAY_MAX_ROWS)
+    .map(m => `<li class="todayRow"><button type="button" class="todayGo"
+        data-todaykey="${esc(m.key)}" title="${esc(m.text)}">
+      <span class="todayDue now">${esc(m.from)}</span>
+      <span class="todayName">${esc(m.label || m.key.split("||")[1] || "")}</span>
+      <span class="todayWhere">${esc(m.text)}</span>
+    </button></li>`);
+}
+
+// bolas que me passaram e em que ainda não mexi
+function todayHandoffRows() {
+  return (typeof teamHandoffs === "undefined" ? [] : teamHandoffs)
+    .filter(h => !h.mine && !(h.taken || []).length)
+    .slice(0, TODAY_MAX_ROWS)
+    .map(h => `<li class="todayRow"><button type="button" class="todayGo"
+        data-todaykey="${esc(h.key)}" title="${esc(tf("handoff_tip", h.from, h.col || "", h.value || ""))}">
+      <span class="todayDue now">${esc(h.from)}</span>
+      <span class="todayName">${esc(h.label || h.key.split("||")[1] || "")}</span>
+      <span class="todayWhere">${esc(h.col)}: ${esc(h.value)}</span>
+    </button></li>`);
+}
+
 function renderToday() {
   const box = $("todayBody");
   if (!box) return;
@@ -219,6 +332,7 @@ function renderToday() {
   // painel abrir: no momento da resposta do histórico ainda não há linhas com
   // que comparar (ver refreshTodayIfOpen)
   const eventos = (todayEvents || []).filter(todayEventIsMine);
+  const fora = todayAwayDays();
 
   const partes = [
     todaySection(t("today_due"), vencidos.slice(0, TODAY_MAX_ROWS).map(todayTodoRow), vencidos.length),
@@ -226,7 +340,19 @@ function renderToday() {
     todaySection(t("today_myside"), minhas.slice(0, TODAY_MAX_ROWS).map(e => todayTaskRow(e, "")), minhas.length),
     todaySection(t("today_stale"), paradas.slice(0, TODAY_MAX_ROWS)
       .map(e => todayTaskRow(e, ageLabel(e.age))), paradas.length),
-    todaySection(t("today_sheet"), eventos.slice(0, TODAY_MAX_ROWS).map(todayEventRow), eventos.length),
+    // recados e bola passada: o que outra pessoa deixou à minha espera (team.js)
+    todaySection(t("today_messages"), todayMessageRows(), todayMessageRows().length),
+    todaySection(t("today_handoffs"), todayHandoffRows(), todayHandoffRows().length),
+    todaySection(t("today_overwritten"),
+      (todayOverwritten || []).slice(0, TODAY_MAX_ROWS).map(todayOverwrittenRow),
+      (todayOverwritten || []).length),
+    // de volta de uns dias fora, a parede de alterações passa a ser um dia a
+    // dia; até aos TODAY_AWAY_DAYS é a lista de sempre
+    fora >= TODAY_AWAY_DAYS
+      ? todaySection(tf("today_away", fora), todayByDay(eventos).slice(0, TODAY_MAX_ROWS)
+        .map(todayDayRow), todayByDay(eventos).length)
+      : todaySection(t("today_sheet"), eventos.slice(0, TODAY_MAX_ROWS).map(todayEventRow),
+        eventos.length),
   ].filter(Boolean);
 
   if (porRegistar) {
@@ -251,7 +377,8 @@ async function openToday() {
   $("todayOverlay").classList.remove("hidden");
   $("todayTitle").textContent = t("today_title");
   $("todayBody").innerHTML = `<p class="todayEmpty">${esc(t("loading"))}</p>`;
-  await loadTodayEvents();
+  await Promise.all([loadTodayEvents(), loadTodayOverwritten(),
+    typeof loadTeamMessages === "function" ? loadTeamMessages(true) : null]);
   renderToday();
 }
 
@@ -305,6 +432,22 @@ $("todayBody").addEventListener("click", e => {
   if (todo) {
     closeToday();
     showView("todo");
+    return;
+  }
+  const chave = e.target.closest("[data-todaykey]");
+  if (chave) {
+    const [aba, fn, todoText] = chave.dataset.todaykey.split("||");
+    closeToday();
+    revealSource({ view: "excel", fn, todo: todoText, sheet: aba, workbook: "" });
+    return;
+  }
+  const dia = e.target.closest("[data-todayday]");
+  if (dia) {
+    closeToday();
+    showView("metrics");
+    // a página das Métricas chega a pedido: se ainda não estiver carregada, a
+    // vista abre no período de sempre em vez de abrir o dia
+    if (typeof metricsShowDay === "function") metricsShowDay(dia.dataset.todayday);
     return;
   }
   const task = e.target.closest("[data-todaytask]");

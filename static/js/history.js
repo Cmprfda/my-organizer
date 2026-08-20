@@ -49,6 +49,8 @@ async function loadTaskHistory(tab) {
       // vê os eventos DELA e sem isto não saberia dizer que o envio mexeu em
       // mais linhas (ver histBatchUndo)
       batches: out.batches || {},
+      // idas e voltas de cada linha (ver bounceChipHtml)
+      bounces: out.bounces || {},
     });
     // o histórico chegou depois do desenho: o botão "Paradas" e as idades só
     // existem com ele, por isso desenha-se outra vez (nunca por cima de um
@@ -139,6 +141,29 @@ function staleChipHtml(meta) {
   if (!taskIsStale(meta)) return "";
   const age = taskAge(meta);
   return `<span class="staleChip" title="${esc(tf("t_stale", staleDays()))}">⏳ ${esc(ageLabel(age))}</span>`;
+}
+
+// ---------- ricochete: idas e voltas de uma linha ----------
+// O histórico já guardava cada reversão, mas tratava cada evento como uma linha
+// isolada: "voltou da revisão duas vezes" não estava em sítio nenhum. A conta é
+// feita pelo servidor sobre os eventos que ele de qualquer maneira devolve (ver
+// history.bounce_counts) e só vê a janela de dias desse pedido.
+function taskBouncesInTab(tabId, meta) {
+  const hist = taskHistoryByTab.get(tabId) || null;
+  if (!hist || !hist.bounces || !meta || meta.xlrow == null) return null;
+  const entry = hist.bounces[String(meta.xlrow)];
+  return entry && entry.n ? entry : null;
+}
+
+const taskBounces = meta => taskBouncesInTab(activeTabId, meta);
+
+// a marca ao lado do nome. Uma linha acabada também a leva: ter ricocheteado
+// duas vezes é parte da história dela, e é isso que se vai ver depois
+function bounceChipHtml(meta) {
+  const b = taskBounces(meta);
+  if (!b) return "";
+  const onde = (b.cols || []).join(" · ");
+  return `<span class="bounceChip" title="${esc(tf("t_bounce", b.n, onde))}">↩${b.n > 1 ? `×${b.n}` : ""}</span>`;
 }
 
 // ---------- desfazer uma alteração ----------
@@ -326,7 +351,7 @@ function taskHistoryNode(meta) {
   // a tarefa nunca mudou desde que há histórico (idade estimada), ou mudou mas
   // as alterações já saíram da janela guardada
   const vazio = age && !age.estimated ? t("hist_pruned") : t("hist_none");
-  wrap.innerHTML = resumo + (linhas
+  wrap.innerHTML = resumo + taskKinHtml(meta) + taskDossierHtml(meta) + (linhas
     ? `<ul class="histList">${linhas}</ul>`
     : `<div class="histEmpty">${esc(vazio)}</div>`);
   // o índice no botão aponta para a lista MOSTRADA (a mesma fatia de 12), por
@@ -351,6 +376,133 @@ function taskHistoryNode(meta) {
     if (e) undoHistoryChange(meta, e.col, String(e.from || ""));
   });
   return wrap;
+}
+
+// ---------- porquê assim? a biografia de uma linha ----------
+// Cada ingrediente já existe num painel diferente: o histórico, as idades, os
+// ricochetes, a espera, o bloqueio, a nota, o pino do quadro. O que nunca era
+// montado era a HISTÓRIA de uma linha — e é essa que responde à pergunta que se
+// faz a olhar para ela pela primeira vez ("porque é que isto está assim?").
+//
+// Tudo isto é conta local: não há um pedido novo ao servidor.
+
+function taskDossier(meta) {
+  const eventos = taskEvents(meta).slice().sort((a, b) =>
+    String(a.ts || "") < String(b.ts || "") ? -1 : 1);
+  const age = taskAge(meta);
+  const hist = activeHistory();
+  const b = taskBounces(meta);
+  const w = typeof waitingOf === "function" ? waitingOf(meta) : null;
+  const partes = [];
+
+  // 1) desde quando se sabe dela
+  const nascimento = eventos.length ? eventos[0].ts : "";
+  if (nascimento) partes.push(tf("dossier_first", histWhen(nascimento)));
+  else if (hist && hist.seeded) partes.push(tf("dossier_seeded", histWhen(hist.seeded)));
+
+  // 2) quantas vezes mexeu, e por quem
+  if (eventos.length) {
+    const daApp = eventos.filter(e => e.via === "app").length;
+    partes.push(tf("dossier_changes", eventos.length, daApp, eventos.length - daApp));
+  }
+
+  // 3) o maior silêncio: é o que explica uma linha que parece abandonada
+  const pausa = taskLongestGap(eventos);
+  if (pausa && pausa.days >= 3) {
+    partes.push(tf("dossier_gap", pausa.days, histWhen(pausa.from), histWhen(pausa.to)));
+  }
+
+  // 4) idas e voltas
+  if (b) partes.push(tf("dossier_bounce", b.n, (b.cols || []).join(" · ")));
+
+  // 5) à espera de alguém, e o que a segura
+  if (w) {
+    const dias = typeof waitingDays === "function" ? waitingDays(meta) : null;
+    partes.push(tf("dossier_waiting", w.who, dias == null ? "?" : dias));
+    const bl = typeof blockerOf === "function" ? blockerOf(meta) : null;
+    if (bl) partes.push(tf("dossier_blocked", bl.label || bl.ref));
+  }
+
+  // 6) e há quanto tempo está como está
+  if (age) partes.push(tf("dossier_age", ageLabel(age)));
+  return partes;
+}
+
+// o maior intervalo entre duas alterações seguidas (o "esteve 12 dias sem se
+// mexer"), sobre eventos já ordenados no tempo
+function taskLongestGap(eventos) {
+  let maior = null;
+  for (let i = 1; i < eventos.length; i++) {
+    const a = new Date(eventos[i - 1].ts);
+    const b = new Date(eventos[i].ts);
+    if (isNaN(a) || isNaN(b)) continue;
+    const dias = Math.floor((b.getTime() - a.getTime()) / DAY_MS);
+    if (!maior || dias > maior.days) {
+      maior = { days: dias, from: eventos[i - 1].ts, to: eventos[i].ts };
+    }
+  }
+  return maior;
+}
+
+function taskDossierHtml(meta) {
+  const linhas = taskDossier(meta);
+  if (!linhas.length) return "";
+  return `<ul class="histStory">` +
+    linhas.map(l => `<li>${esc(l)}</li>`).join("") + `</ul>`;
+}
+
+// ---------- quem já andou nisto ----------
+// A folha diz quem é autor e quem é reviewer de cada linha. Cruzar isso com as
+// linhas VIZINHAS (as que partilham o prefixo da função) dá uma tabela de
+// encaminhamento que ninguém escreveu: "pergunta ao Pedro, ele mexeu em todas as
+// FCU-3x". Não é autoria por célula (essa custa uma descarga do livro e responde
+// a uma célula de cada vez, ver authors.py) — é o que a folha já diz de graça.
+
+// o prefixo de uma função, sem o número do caso no fim
+function taskFnPrefix(fn) {
+  const limpo = String(fn || "").trim();
+  if (!limpo) return "";
+  const semNumero = limpo.replace(/[\s_\-.]*\d+[a-z]?$/i, "");
+  return (semNumero.length >= 3 ? semNumero : limpo).toLowerCase();
+}
+
+const ROLE_KEYS = ["author_tc", "reviewer_tc", "author_tp", "reviewer_tp"];
+
+// as pessoas que aparecem nas linhas vizinhas desta, das que aparecem mais
+// vezes para as que aparecem menos
+function taskKinPeople(meta) {
+  const prefixo = taskFnPrefix(meta && meta.fn);
+  const data = (workbookTabs || []).find(x => x.id === activeTabId);
+  const metas = (data && data.lastData && data.lastData.row_meta) || [];
+  if (!prefixo || metas.length < 2) return null;
+  const contagem = new Map();
+  let linhas = 0;
+  metas.forEach(m => {
+    if (!m || taskFnPrefix(m.fn) !== prefixo) return;
+    linhas++;
+    const gente = (m.people || {});
+    // uma pessoa conta UMA vez por linha, mesmo que seja autora e reviewer:
+    // senão quem faz os dois papéis parecia saber o dobro
+    const nesta = new Set();
+    ROLE_KEYS.forEach(k => {
+      const nome = String(gente[k] || "").trim();
+      if (nome) nesta.add(nome);
+    });
+    nesta.forEach(nome => contagem.set(nome, (contagem.get(nome) || 0) + 1));
+  });
+  if (linhas < 2 || !contagem.size) return null;
+  const gente = [...contagem.entries()]
+    .map(([who, n]) => ({ who, n }))
+    .sort((a, b) => b.n - a.n || a.who.localeCompare(b.who));
+  return { prefix: prefixo, rows: linhas, people: gente.slice(0, 3) };
+}
+
+function taskKinHtml(meta) {
+  const kin = taskKinPeople(meta);
+  if (!kin) return "";
+  const gente = kin.people.map(p => `${p.who} (${p.n})`).join(" · ");
+  return `<p class="histKin" title="${esc(tf("t_hist_kin", kin.rows, kin.prefix))}">` +
+    `${esc(t("hist_kin"))}: ${esc(gente)}</p>`;
 }
 
 // Quem mudou esta célula, a sério: o servidor vai buscar a versão do livro
@@ -388,3 +540,127 @@ async function askHistoryWho(btn, ev) {
     toast(tf("hist_who_unknown", String(err)), "");
   }
 }
+
+// ---------- a folha naquele dia ----------
+// O retrato guardado é o de AGORA e cada alteração guarda o antes: com isso, a
+// folha de uma data passada reconstrói-se ao contrário, sem nunca ter sido
+// guardada (ver history.reconstruct_at).
+//
+// É uma vista SÓ DE LEITURA, e à parte da tabela: a tabela das Tarefas escreve
+// na folha, e uma tabela que às vezes mostra o passado e às vezes o presente é a
+// maneira mais fácil de alguém enviar um valor de há duas semanas sem querer.
+
+function asOfDefaultDate() {
+  const d = new Date(Date.now() - 14 * DAY_MS);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function openAsOf() {
+  const tab = activeTab();
+  if (!tab || !tab.lastData || tab.lastData.error) { toast(t("asof_no_book"), ""); return; }
+  $("asOfOverlay").classList.remove("hidden");
+  if (!$("asOfDate").value) $("asOfDate").value = asOfDefaultDate();
+  loadAsOf();
+}
+
+function closeAsOf() {
+  $("asOfOverlay").classList.add("hidden");
+}
+
+async function loadAsOf() {
+  const tab = activeTab();
+  const data = tab && tab.lastData;
+  if (!data || !data.file || !data.sheet) return;
+  const dia = $("asOfDate").value;
+  const modo = $("asOfMode").value;
+  const corpo = $("asOfBodyRows");
+  const nota = $("asOfNote");
+  if (!dia) { corpo.innerHTML = ""; nota.textContent = t("asof_pick"); return; }
+  nota.textContent = t("loading");
+  corpo.innerHTML = "";
+  try {
+    const res = await fetch(`/api/history/asof?file=${encodeURIComponent(data.file)}` +
+      `&sheet=${encodeURIComponent(data.sheet)}&at=${encodeURIComponent(dia)}` +
+      (modo === "diff" ? "&diff=1" : ""));
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || "?");
+    if (modo === "diff") asOfRenderDiff(out, dia);
+    else asOfRenderRows(out, dia);
+  } catch (err) {
+    nota.textContent = t("err_server");
+  }
+}
+
+// o aviso que TEM de estar à vista: isto só sabe o que o histórico viu
+function asOfLimits(out) {
+  const partes = [t("asof_cols_only")];
+  if (out.partial) {
+    partes.push(out.seeded
+      ? tf("asof_partial", histWhen(out.seeded))
+      : t("asof_no_history"));
+  }
+  return partes.join(" ");
+}
+
+function asOfRenderDiff(out, dia) {
+  const mudancas = out.changes || [];
+  $("asOfNote").textContent =
+    `${tf("asof_diff_note", fmtDueShort(dia), mudancas.length)} ${asOfLimits(out)}`;
+  $("asOfBodyRows").innerHTML = mudancas.length
+    ? mudancas.map(m => `<tr>
+        <td class="asOfName" title="${esc([m.fn, m.todo].filter(Boolean).join(" · "))}">${esc(m.fn || m.todo || m.xlrow)}</td>
+        <td class="asOfCol">${esc(m.col)}</td>
+        <td class="asOfBefore">${esc(m.before || "—")}</td>
+        <td class="asOfArrow">→</td>
+        <td class="asOfAfter">${esc(m.after || "—")}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="asOfEmpty">${esc(t("asof_no_changes"))}</td></tr>`;
+}
+
+function asOfRenderRows(out, dia) {
+  const linhas = out.rows || [];
+  $("asOfNote").textContent =
+    `${tf("asof_rows_note", fmtDueShort(dia), linhas.length, out.undone || 0)} ${asOfLimits(out)}`;
+  $("asOfBodyRows").innerHTML = linhas.length
+    ? linhas.map(l => {
+      // o que já não é assim hoje fica marcado: é o que faz esta vista valer a
+      // pena em vez de ser uma segunda tabela igual
+      const mudou = ["Status TC", "Status TP"].some(c =>
+        String((l.cols || {})[c] || "") !== String((l.now || {})[c] || ""));
+      return `<tr class="${mudou ? "asOfChanged" : ""}">
+        <td class="asOfName">${esc(l.fn || l.todo || l.xlrow)}</td>
+        <td class="asOfCol">${esc(String((l.cols || {})["To Do"] || "").slice(0, 40))}</td>
+        <td class="asOfBefore">${esc((l.cols || {})["Status TC"] || "—")}</td>
+        <td class="asOfArrow">${mudou ? "≠" : "="}</td>
+        <td class="asOfAfter">${esc((l.now || {})["Status TC"] || "—")}</td>
+      </tr>`;
+    }).join("")
+    : `<tr><td colspan="5" class="asOfEmpty">${esc(t("asof_no_rows"))}</td></tr>`;
+}
+
+// etiquetas desta janela, chamadas pelo applyLang (settings.js) como as outras
+function applyAsOfLang() {
+  $("asOfBtn").textContent = `⏳ ${t("asof_btn")}`;
+  $("asOfBtn").title = t("t_asof");
+  $("asOfTitle").textContent = t("asof_title");
+  $("asOfOverlay").setAttribute("aria-label", t("asof_title"));
+  $("asOfClose").title = t("t_close");
+  const modo = $("asOfMode");
+  modo.options[0].textContent = t("asof_mode_diff");
+  modo.options[1].textContent = t("asof_mode_rows");
+  if (!$("asOfOverlay").classList.contains("hidden")) loadAsOf();
+}
+
+$("asOfBtn").addEventListener("click", openAsOf);
+$("asOfClose").addEventListener("click", closeAsOf);
+$("asOfOverlay").addEventListener("click", e => {
+  if (e.target === $("asOfOverlay")) closeAsOf();
+});
+$("asOfDate").addEventListener("change", loadAsOf);
+$("asOfMode").addEventListener("change", loadAsOf);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("asOfOverlay").classList.contains("hidden")) {
+    e.stopPropagation();
+    closeAsOf();
+  }
+}, true);

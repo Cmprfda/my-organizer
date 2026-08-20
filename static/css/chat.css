@@ -314,3 +314,20 @@
     max-height: min(70vh, calc(100vh - 90px));
   }
 }
+
+/* ditar ao assistente (ver chat.js): o botão só existe onde o browser sabe ouvir
+   — no telemóvel pela rede local não aparece, em vez de aparecer e falhar */
+.chatMic {
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-btn);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 15px;
+}
+
+.chatMic.live {
+  border-color: var(--accent);
+  color: var(--accent);
+}

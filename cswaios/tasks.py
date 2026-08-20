@@ -14,7 +14,8 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 from . import config
 from . import events
 from .config import (APP_VERSION, BASE_STATUSES, CANDIDATE_DIRS, DEFAULT_PERSON,
-                     DEFAULT_SHEET, lan_ip)
+                     DEFAULT_SHEET, HERE, lan_ip)
+from .statefile import read_json, write_json
 from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbook,
                     detect_header_row, find_named_file, find_tracker_files,
                     forget_files_cache, locate_row, pick_sheet,
@@ -35,6 +36,86 @@ from .todos import load_todo, save_todo
 # última leitura bem-sucedida por (ficheiro, aba, pessoa, todas) — serve de
 # fallback quando o Excel tem o ficheiro bloqueado em exclusivo
 _LAST_GOOD = {}
+
+# --------------------------------------------------------------------------
+# O retrato da última leitura que correu bem, gravado no disco
+#
+# O `_LAST_GOOD` acima vive só em MEMÓRIA: servia o livro bloqueado pelo Excel
+# durante a sessão, mas arrancar a app sem rede (no trem, com o OneDrive em
+# baixo, com o VPN fora) dava uma vista de Tarefas vazia — e vazio parece "não
+# tens nada", não "não consegui ler". Toda a história de trabalhar offline já
+# existia (as alterações ✎ ficam locais, a lista Por fazer e as notas são
+# locais); o que faltava era sobreviver ao reinício do processo.
+#
+# Não é uma cache: é um retrato de leitura, e a app di-lo em cima da vista com a
+# hora a que foi tirado. Nunca é escrito no Excel nem conta como valor da folha.
+# --------------------------------------------------------------------------
+
+LAST_READ_FILE = os.path.join(HERE, "last_read.json")
+# retratos guardados (livro+aba+pessoa+vista): mais do que isto é peso no disco
+# sem valor — ninguém arranca às escuras para ver a sexta combinação
+LAST_READ_KEEP = 6
+# um retrato maior do que isto não se guarda: uma folha enorme faria o arranque
+# (que é quando isto é lido) esperar pelo disco em vez de mostrar a app
+LAST_READ_MAX_BYTES = 3 * 1024 * 1024
+# campos que não fazem sentido num retrato: são sobre o estado desta sessão e
+# são recalculados a cada leitura
+LAST_READ_SKIP = ("files", "graph", "cell_view", "notice", "warning", "error",
+                  "hint", "filter_lists")
+
+
+def _snapshot_key(cache_key):
+    """A chave do _LAST_GOOD como texto, para poder ir para um JSON."""
+    return "||".join(str(p) for p in cache_key)
+
+
+def save_last_read(cache_key, result):
+    """Grava o retrato desta leitura (só se ele mudou desde o último)."""
+    if not isinstance(result, dict) or result.get("error") or not result.get("rows"):
+        return
+    chave = _snapshot_key(cache_key)
+    guardados = _read_snapshots()
+    anterior = guardados.get(chave)
+    # a impressão digital do conteúdo já é calculada para a vista: com ela, uma
+    # leitura igual à anterior (o caso normal, a cada 2 minutos) não escreve nada
+    if isinstance(anterior, dict) and anterior.get("digest") \
+            and anterior.get("digest") == result.get("digest"):
+        return
+    retrato = {k: v for k, v in result.items() if k not in LAST_READ_SKIP}
+    retrato["at"] = datetime.now().replace(microsecond=0).isoformat()
+    try:
+        tamanho = len(json.dumps(retrato, ensure_ascii=False).encode("utf-8"))
+    except (TypeError, ValueError):
+        return
+    if tamanho > LAST_READ_MAX_BYTES:
+        log_event(f"retrato de {chave[:60]} grande demais ({tamanho // 1024} KB) - não guardado")
+        return
+    guardados[chave] = retrato
+    # os mais recentes ficam: a ordem é a da hora a que cada um foi tirado
+    if len(guardados) > LAST_READ_KEEP:
+        ordem = sorted(guardados, key=lambda k: str(guardados[k].get("at") or ""))
+        for velho in ordem[:len(guardados) - LAST_READ_KEEP]:
+            guardados.pop(velho, None)
+    write_json(LAST_READ_FILE, guardados)
+
+
+def _read_snapshots():
+    data = read_json(LAST_READ_FILE, {})
+    return data if isinstance(data, dict) else {}
+
+
+def load_last_read(cache_key):
+    """O retrato guardado desta combinação, ou None."""
+    retrato = _read_snapshots().get(_snapshot_key(cache_key))
+    if not isinstance(retrato, dict) or not retrato.get("rows"):
+        return None
+    return retrato
+
+
+def forget_last_read():
+    """Esquece os retratos gravados (linha de comandos e testes)."""
+    write_json(LAST_READ_FILE, {})
+
 
 # marca de versão da fonte na altura em que cada entrada do _RAW_CACHE foi
 # enchida, pela mesma chave (ficheiro, aba). Enquanto a marca não mudar, as
@@ -58,6 +139,7 @@ def forget_cache(path=None):
         _SYNC_CHECK.pop(key, None)
     if path is None:
         _ADMIN_CACHE.clear()
+        forget_last_read()
         # "Atualizar" relê tudo de raiz: também as pastas onde os livros são
         # procurados, senão um ficheiro acabado de lá pôr só aparecia a seguir
         forget_files_cache()
@@ -1164,6 +1246,16 @@ def build_payload(query):
                 "warning_web" if is_graph_path(path) else "warning_locked",
                 lang, t=f"{ts:%H:%M}")
             log_event(f"leitura falhou ({exc!r}) - a servir cache das {ts:%H:%M}")
+        elif (retrato := load_last_read(cache_key)):
+            # a app acabou de arrancar e nunca conseguiu ler: o retrato da última
+            # leitura que correu bem é melhor do que uma vista vazia, que parece
+            # "não tens nada" em vez de "não consegui ler" (ver save_last_read)
+            quando = str(retrato.get("at") or "")
+            result = {k: v for k, v in retrato.items() if k != "at"}
+            result["snapshot"] = quando
+            result["warning"] = msg("warning_snapshot", lang,
+                                    t=quando.replace("T", " ")[:16])
+            log_event(f"leitura falhou ({exc!r}) - a servir o retrato de {quando}")
         else:
             result = {"error": msg("err_read", lang, e=exc),
                       "hint": msg("hint_web_read" if is_graph_path(path) else "hint_excel", lang)}
@@ -1250,6 +1342,14 @@ def build_payload(query):
                         path, list_sheet, list_cell, entry.get("orientation"), entry.get("size"))
                 if resolved:
                     result["filter_lists"] = resolved
+
+    # o retrato para o próximo arranque às escuras (ver save_last_read): grava-se
+    # no fim, com a leitura já completa, e só quando o conteúdo mudou
+    if not result.get("error") and not result.get("snapshot"):
+        try:
+            save_last_read(cache_key, result)
+        except OSError as exc:
+            log_event(f"não consegui guardar o retrato da leitura ({exc})")
 
     return result
 

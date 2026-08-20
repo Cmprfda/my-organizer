@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 
 from .config import HERE
 from .statefile import read_json, write_json
+from .stats import MIN_SAMPLE, dias_entre, mediana
 from .text import normalize
 
 # TODO list pessoal (itens próprios + tarefas/CCRs arrastadas para lá)
@@ -751,8 +752,108 @@ def archive_done_todo(item):
                "segments": [s for s in (item.get("segments") or []) if isinstance(s, dict)],
                "done_at": str(item.get("done_at") or ""),
                "done": True,
+               # a data-limite que o item tinha ao ser fechado, e se ele se
+               # repetia: sem isto o arquivo não sabe se a data foi cumprida, e
+               # essa conta não se recupera depois (o item já saiu do quadro).
+               # Ver due_accuracy() — a calibração das datas que a pessoa se dá
+               # a si mesma só pode ser feita sobre o que foi gravado na hora.
+               "due": normalize_due(item.get("due")),
+               "repeat": normalize_repeat(item.get("repeat")),
+               "created": str(item.get("created") or "")[:32],
                "jiraLoggedSeconds": _int_or_zero(item.get("jiraLoggedSeconds")),
                "jiraIssues": [j for j in (item.get("jiraIssues") or []) if isinstance(j, dict)]}
     arquivo = [x for x in load_done_archive() if x.get("id") != entrada["id"]]
     arquivo.append(entrada)
     write_json(DONE_ARCHIVE_FILE, arquivo[-DONE_ARCHIVE_MAX:])
+
+
+def occurrence_durations(item):
+    """Quanto tempo costuma levar UMA volta de um item que se repete.
+
+    As `occurrences` (que dias foi fechado) e os `segments` (quanto tempo foi
+    contado em cada dia) vivem no mesmo item desde a v155 e nunca foram
+    cruzados. Juntos dão a série de durações por volta, que é o que permite
+    dizer "costuma dar 35–50 min; vais em 1h10" enquanto o cronómetro corre.
+
+    Devolve {"n", "median_ms", "max_ms", "days": [...]} ou None quando o item
+    não se repete (aí o total do item já É a duração) ou não tem voltas
+    fechadas com tempo contado.
+    """
+    if not isinstance(item, dict) or not normalize_repeat(item.get("repeat")):
+        return None
+    fechadas = [o["day"] for o in merge_occurrences(item.get("occurrences"))
+                if o.get("state") == "done"]
+    if not fechadas:
+        return None
+    por_dia = {}
+    for seg in item.get("segments") or []:
+        limpo = normalize_segment(seg)
+        if limpo:
+            por_dia[limpo["d"]] = por_dia.get(limpo["d"], 0) + limpo["ms"]
+    # só as voltas que foram fechadas E tiveram tempo contado: uma volta fechada
+    # sem cronómetro não diz que durou zero, diz que ninguém contou
+    duracoes = [por_dia[dia] for dia in fechadas if por_dia.get(dia)]
+    if not duracoes:
+        return None
+    return {"n": len(duracoes),
+            "median_ms": int(mediana(duracoes)),
+            "max_ms": max(duracoes),
+            "thin": len(duracoes) < MIN_SAMPLE,
+            "days": fechadas[-OCCURRENCES_KEEP:]}
+
+
+def due_accuracy(items=None):
+    """A tua calibração: das datas que te deste a ti mesmo, quantas cumpriste.
+
+    As data-limite são tratadas como recados e nunca como PREVISÕES a acertar.
+    Pontuá-las transforma o arquivo numa curva de calibração — e é por isso que
+    o `archive_done_todo` passou a guardar o `due` (ver docs/backlog.md): antes
+    a data era apagada com o item e a conta não se podia fazer.
+
+    Só conta itens que tinham data e foram fechados. Os que se repetem contam
+    à parte: uma tarefa que volta todas as semanas não mede a mesma coisa que um
+    trabalho prometido para uma data.
+    """
+    if items is None:
+        items = load_done_archive()
+    total, a_horas, atraso_dias, por_dia_semana = 0, 0, [], {}
+    repetidos = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        due = normalize_due(item.get("due"))
+        feito = str(item.get("done_at") or "")[:10]
+        if not due or not feito:
+            continue
+        if normalize_repeat(item.get("repeat")):
+            repetidos += 1
+            continue
+        dias = dias_entre(due, feito)
+        if dias is None:
+            # fechado ANTES da data: cumprido, e a folga não interessa à conta
+            dias = 0
+        total += 1
+        if dias <= 0:
+            a_horas += 1
+        else:
+            atraso_dias.append(dias)
+        try:
+            semana = datetime.strptime(due, "%Y-%m-%d").weekday()
+        except ValueError:
+            semana = None
+        if semana is not None:
+            alvo = por_dia_semana.setdefault(semana, {"n": 0, "late": 0})
+            alvo["n"] += 1
+            if dias > 0:
+                alvo["late"] += 1
+    if not total:
+        return {"n": 0, "repeats": repetidos}
+    return {"n": total,
+            "kept": a_horas,
+            "kept_pct": round(100.0 * a_horas / total),
+            "median_late_days": mediana(atraso_dias) if atraso_dias else 0,
+            "thin": total < MIN_SAMPLE,
+            "repeats": repetidos,
+            # que dias da semana escorregam mais: uma data de sexta que escorrega
+            # sempre é um hábito, não um azar
+            "weekdays": {str(d): v for d, v in sorted(por_dia_semana.items())}}

@@ -1,5 +1,153 @@
 ## Backlog
 
+### [DONE] A ronda das ideias fora da caixa: o que a app já sabe, novas superfícies, equipa sem servidor e o tempo como dimensão
+
+- **Source:** ronda de ideias pedida pelo Carlos Andrade (2026-08-20), levantada
+  com três lentes independentes (dados por explorar · superfícies fora do ecrã ·
+  equipa e passagem do tempo), filtrada contra o `docs/features.md` para não
+  repetir o que já existe, e depois implementada por inteiro a pedido dele
+  ("implementa tudo"). As 23 ideias entraram todas.
+- **What landed:**
+  - **Registo que só se apanha na hora** (o primeiro lote, de propósito):
+    `store.WAITING_LOG_FILE`/`log_waiting_closed()`/`waiting_stats()` e o
+    `log_waiting_closed` chamado no `post_api_waiting`; o `archive_done_todo`
+    passou a guardar `due`, `repeat` e `created`.
+  - **Dobras sobre o histórico** (`cswaios/history.py`): `transition_stats()`,
+    `overwritten_pushes()`, `bounce_counts()` (a viajar dentro do
+    `sheet_history`, sem custar uma leitura a mais), `stale_summary()`,
+    `status_is_final()` (o gémeo do `statusIsFinal` da interface),
+    `reconstruct_at()` e `diff_between()`.
+  - **`cswaios/stats.py` (novo)**: `mediana`, `dias_entre`, `horas_entre` e o
+    `MIN_SAMPLE` — a mesma conta estava a nascer em cinco módulos.
+  - **`cswaios/todos.py`**: `occurrence_durations()` (as ocorrências cruzadas com
+    o registo diário do cronómetro) e `due_accuracy()`.
+  - **`cswaios/report.py`**: `timesheet_anomalies()` (dobrado dentro do
+    `timesheet_lines` que o relatório já devolvia), `period_comparison()`,
+    `meeting_anchor()`/`set_meeting_anchor()`/`meeting_report()`.
+  - **`cswaios/tasks.py`**: `save_last_read()`/`load_last_read()` +
+    `last_read.json` — o `_LAST_GOOD` deixou de viver só em memória, e a leitura
+    que falha no arranque passa a servir o retrato com o `warning_snapshot`.
+  - **`cswaios/team.py`**: recados (`publish_messages`/`load_team_messages`),
+    bola passada (`publish_handoffs`/`load_team_handoffs`), recibos
+    (`ack_seen`/`load_team_acks`) e o kit de chegada
+    (`publish_capsule`/`load_capsules`), cada um num ficheiro de quem escreve.
+  - **`cswaios/notify.py`**: `send_toast()` — avisos do Windows levantados pelo
+    servidor, com botões, pelo mesmo caminho do PowerShell que o Excel já usa. O
+    `_vigia` no `server.py` (fio de 15 min) é o que os faz valer com a janela
+    fechada.
+  - **`cswaios/tray.py` (novo)**: o farol, com os três ícones desenhados byte a
+    byte (`_ico_ponto`) e o `Shell_NotifyIcon` por `ctypes`.
+  - **Rotas novas**: `/api/waiting/stats`, `/api/history/stats`,
+    `/api/history/overwritten`, `/api/history/asof`, `/api/report/compare`,
+    `/api/report/meeting` (+ `POST /api/report/meeting/anchor`),
+    `/api/todo/stats`, `/api/todo/list`, `/api/montra`, `/api/remote`,
+    `/api/team/messages`, `/api/team/ack`, `/api/team/capsule(s)`, e as páginas
+    `/montra` e `/remote`.
+  - **Interface**: as marcas `↩` e `✉`/`⚑` nas linhas, o botão *Ricochete*, três
+    cartões novos nas Métricas, o ⚠ no registo da semana, o *Antes da reunião*, a
+    janela *Naquele dia*, a biografia e os vizinhos na caixa de detalhe, o livro
+    de dívidas na caixa da espera, o oráculo do cronómetro e a calibração das
+    datas na lista, as secções novas do *Hoje*, o kit de chegada nas Definições, o
+    interruptor dos avisos do Windows, os `montra.html`/`remote.html` (com
+    `static/js/montra.js`, `remote.js`, `static/css/montra.css`, `remote.css`) e o
+    🎤 do assistente.
+  - **Testes**: `tests/test_registo_esperas_e_datas.py`,
+    `test_dobras_do_historico.py`, `test_relatorio_e_rotas.py`,
+    `test_retrato_da_leitura.py`, `test_recados_e_kit.py`,
+    `test_folha_naquele_dia.py`, `test_farol_e_montra.py` (283 testes de Python,
+    offline) e `tests/js/test_dobras_ui.js` (24 no total do lado da interface).
+- **Design:**
+  - **O registo vem antes da vista.** Uma conta que se pode fazer a qualquer
+    momento sobre o disco espera; um dado que não é gravado quando acontece está
+    perdido para sempre. Por isso as esperas resolvidas e as datas dos itens
+    arquivados entraram no primeiro lote, antes de existir uma vista que as
+    mostrasse.
+  - **Dobrar o que já se mostra é mais barato do que ir buscar mais.** Quase tudo
+    o que é novo é uma dobra (eventos → durações, datas → distribuições, período
+    → comparação com o próprio passado) sobre ficheiros que já eram lidos. O
+    `bounce_counts` é o caso extremo: recebe os eventos que o `sheet_history` já
+    ia devolver, e por isso a contagem não custa uma leitura — em troca, só vê a
+    janela de dias que essa leitura trouxe, e a interface di-lo.
+  - **Um número tem de dizer com quantos casos fala.** Todas as medianas novas
+    levam `n` e uma marca `thin` abaixo de três casos, e a interface escreve "por
+    2 casos só" em vez de apresentar dois exemplos como uma mediana.
+  - **A folha naquele dia é uma vista SÓ DE LEITURA, e à parte da tabela.** A
+    tabela das Tarefas escreve na folha; uma tabela que às vezes mostra o passado
+    era a maneira mais fácil de alguém enviar um valor de há duas semanas sem
+    querer. A reconstrução é por desfazer ao contrário a partir do presente — não
+    há cópias da folha guardadas em sítio nenhum.
+  - **O que a app sabe de si mesma fica na máquina.** O livro de dívidas (os
+    tempos de resposta de cada pessoa) e a calibração das datas nunca são
+    publicados: com nomes, na pasta partilhada, seriam um quadro de honra ao
+    contrário. Publicado só o que é preciso para trabalhar em conjunto — recados,
+    bola passada e o kit —, sempre por um clique e nunca sozinho.
+  - **Um recibo custa um ato explícito.** O recado só é dado como lido quando a
+    caixa dele é ABERTA (não por passar os olhos pela tabela), e a bola só é dada
+    como aceite quando o Envio mexe naquela linha. Um recibo escrito por estar a
+    app aberta seria um sensor de presença, e não um aviso de leitura.
+  - **Uma superfície nova não é uma app nova.** O farol, a montra e o comando não
+    têm dados próprios: são vistas do que o `report.py`, o `/api/montra` e o
+    `/api/todo/list` já respondem, penduradas nos avisos que já existiam. A
+    montra e o comando são páginas à parte justamente para não carregarem os
+    ~800 KB da interface só para mostrar quatro números.
+  - **O comando manda o ecrã grande atrás do dedo.** Os avisos já levavam a
+    janela de origem (`X-Csw-Client`), por isso um evento `command` dirigido
+    transforma qualquer janela num ecrã conduzido — e quem mandou ignora o eco.
+  - **Um aviso do Windows é levantado pelo SERVIDOR.** Os avisos do browser
+    precisam de uma janela aberta, que é precisamente o que não há quando o aviso
+    faria falta. Sem dependência nova: o mesmo `powershell -NoProfile` das
+    escritas no Excel, com o XML por STDIN (uma linha de comandos com aspas e
+    acentos é a maneira mais fácil de isto falhar em silêncio).
+  - **Os tipos do `ctypes` declaram-se.** Num Windows de 64 bits, um `ctypes` sem
+    `argtypes` assume `int` de 32 bits: o `lParam` de uma mensagem estoura com
+    "int too long to convert" e o farol aparece no ecrã sem responder ao rato. Foi
+    exatamente o que aconteceu no primeiro arranque dele.
+  - **As funções puras recebem os dados por argumento.** O harness dos testes da
+    interface corre os ficheiros num contexto do `vm` e NÃO consegue injetar
+    variáveis `let`; o `todoTimerOracle` e o `waitingRecordOf` passaram a aceitar
+    os dados como parâmetro — melhor desenho, e testável.
+- **Released in:** v157.
+- **Known limits (worth revisiting):**
+  - **O passado que não existe:** o livro de dívidas e a calibração das datas
+    começam a contar nesta versão (antes, uma espera resolvida era apagada e a
+    data-limite ia-se com o item arquivado). Nas primeiras semanas dizem "por 2
+    casos só", e é isso mesmo.
+  - **O ricochete só vê a janela do histórico da folha** (30 dias por omissão):
+    uma linha que voltou da revisão em março não é contada. Contá-la exigia ler o
+    arquivo todo a cada leitura da folha, que é o custo que esta dobra evita.
+  - **A folha naquele dia** só sabe as colunas seguidas (estados, OBS, nome e "o
+    que fazer") e só até ao `seeded` de cada folha; uma linha que nasceu depois da
+    data pedida aparece como não existindo então, o que é verdade para a app mas
+    pode não ser verdade para a folha (ela pode ter existido antes de a app olhar
+    para ela).
+  - **Os recados e a bola são desta EQUIPA e desta pasta partilhada:** quem não
+    alcança a pasta não os manda nem os recebe (como as esperas), e o recibo de
+    leitura de quem lê num computador sem escrita na pasta nunca chega a quem
+    mandou. O `publish_messages` substitui a lista inteira de quem publica: duas
+    janelas da MESMA pessoa a mandar recados no mesmo segundo podem perder um.
+  - **O kit de chegada leva configuração, não estado** — e a página do estado do
+    projeto que vai com ele é um retrato do dia em que foi publicado, não uma
+    coisa viva.
+  - **O retrato do arranque às escuras** guarda seis combinações
+    (livro+aba+pessoa+vista) e nada com mais de 3 MB; um livro enorme não fica
+    guardado (e o log di-lo). Não é uma cache: nunca é escrito no Excel e a app
+    diz sempre a hora a que foi tirado.
+  - **O farol e os avisos do Windows são deste PROCESSO:** com a app fechada não
+    há ícone nem aviso. O menu do farol não envia alterações de propósito (um
+    Push a partir de um ícone, sem ver o que vai, é um risco que não se paga), e
+    o "Esconder este ícone" esconde o ícone e não fecha o servidor.
+  - **A montra e o comando não têm autenticação**, como o resto da app na rede
+    local: quem alcança o endereço vê os números e, no caso do comando, mexe na
+    lista Por fazer. O comando também não sabe de que livro é a linha — conduz a
+    lista, não a folha.
+  - **Ditar** não funciona a partir do telemóvel pela rede local (`http://` não é
+    contexto seguro) e, no Edge, o reconhecimento pode passar pelos serviços da
+    Microsoft — o botão só aparece onde funciona, e a dica diz o que faz.
+  - **Ideias postas de lado nesta ronda, e porquê:** **Parede** (o retrato do dia
+    como papel de parede — escreve por cima de uma coisa do utilizador) e **Caixa
+    de correio** (arrastar um email do Outlook para virar item — o "novo Outlook"
+    não tem COM). Ficam escritas para não voltarem a ser inventadas de fresco.
+
 ### [DONE] O feedback de quem não alcança a partilha ficava dado como entregue
 - **Source:** feedback `20260820_105055_Carlos_Andrade` (v154, página Sugestões):
   "o meu colega tentou dar-me uma sugestão e não conseguiu escrever na pasta do

@@ -56,6 +56,13 @@ function applyLang() {
   $("setSecNotify").textContent = t("set_sec_notify");
   $("notifyDesktopLbl").textContent = t("notify_desktop_lbl");
   $("notifyDesktopHint").textContent = t("notify_desktop_hint");
+  $("pagesLbl").textContent = t("pages_lbl");
+  $("pagesHint").textContent = t("pages_hint");
+  $("montraLink").textContent = t("pages_montra");
+  $("remoteLink").textContent = t("pages_remote");
+  $("notifyToastLbl").textContent = t("notify_toast_lbl");
+  $("notifyToastHint").textContent = t("notify_toast_hint");
+  $("notifyToastTestBtn").textContent = t("notify_hook_test");
   $("notifyHookLbl").textContent = t("notify_hook_lbl");
   $("notifyHookHint").textContent = t("notify_hook_hint");
   $("notifyHookSaveBtn").textContent = t("btn_save");
@@ -334,6 +341,7 @@ function renderSettingsPage() {
   if (typeof loadAnnouncement === "function") loadAnnouncement(false);
   // as cópias do estado mudam a cada dia de trabalho: a lista é lida ao entrar
   if (typeof loadBackups === "function") loadBackups();
+  if (typeof applyAsOfLang === "function") applyAsOfLang();
   if (typeof loadTeamConfig === "function") loadTeamConfig();
   graphAction("state");
 }
@@ -645,6 +653,11 @@ function renderNotifySettings() {
   $("notifyHookTestBtn").disabled = !notifyCfg.canEdit;
   $("notifyHookState").textContent = notifyCfg.enabled ? "✓" : "";
   $("notifyHookBox").classList.toggle("readonly", !notifyCfg.canEdit);
+  // os avisos do Windows são levantados pelo SERVIDOR (ver notify.send_toast):
+  // valem com a janela fechada, e por isso são um interruptor à parte do webhook
+  $("notifyToastChk").checked = !!notifyCfg.toasts;
+  $("notifyToastChk").disabled = !notifyCfg.canEdit;
+  $("notifyToastTestBtn").disabled = !notifyCfg.canEdit;
 }
 
 async function loadNotifySettings() {
@@ -673,6 +686,43 @@ async function saveNotifyHook() {
   }
 }
 
+async function setNotifyToasts(on) {
+  try {
+    const res = await fetch("/api/notify/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // o endereço do webhook não se mexe aqui: manda-se o que já está gravado
+      body: JSON.stringify({ url: notifyCfg.url || "", enabled: !!notifyCfg.enabled,
+        toasts: !!on }),
+    });
+    const out = await res.json();
+    if (!out.ok) { toast(out.error || t("err_server"), "bad"); return; }
+    notifyCfg = out;
+    renderNotifySettings();
+    toast(out.toasts ? t("notify_toast_on") : t("notify_toast_off"), "ok");
+  } catch (e) {
+    toast(t("err_server"), "bad");
+  }
+}
+
+async function testNotifyToast() {
+  try {
+    const res = await fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: t("notify_toast_test_text"), title: "My Organizer",
+        buttons: [{ label: t("notify_toast_test_btn"), url: location.origin + "/" }],
+      }),
+    });
+    const out = await res.json();
+    toast(out.toast ? t("notify_toast_sent") : t("notify_toast_off"),
+      out.toast ? "ok" : "");
+  } catch (e) {
+    toast(t("err_server"), "bad");
+  }
+}
+
 async function testNotifyHook() {
   try {
     const res = await fetch("/api/notify", {
@@ -694,6 +744,8 @@ $("notifyDesktopChk").addEventListener("change", async e => {
 });
 $("notifyHookSaveBtn").addEventListener("click", saveNotifyHook);
 $("notifyHookTestBtn").addEventListener("click", testNotifyHook);
+$("notifyToastChk").addEventListener("change", e => setNotifyToasts(e.target.checked));
+$("notifyToastTestBtn").addEventListener("click", testNotifyToast);
 // notify.js carrega depois deste ficheiro (ver index.html) e é lá que vive
 // desktopNotifyOn(): a primeira leitura espera pelo fim do carregamento, senão
 // o pedido ao servidor pode voltar antes disso e o render rebenta

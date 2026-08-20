@@ -20,6 +20,7 @@ from urllib.parse import urlparse, parse_qs
 
 from . import config
 from . import events
+from . import tray
 from .authors import AuthorError, who_changed
 from .chat import answer as chat_answer
 from .config import APP_VERSION, DOWNLOAD_URL, HERE, SHARE_URL, lan_ip
@@ -30,32 +31,41 @@ from .graph import (GraphError, ensure_graph_config, graph_browse, graph_ids_fro
                     graph_login_start, graph_logout, graph_pick, graph_state,
                     graph_state_public, graph_versions, is_graph_path,
                     save_login_email, save_onedrive_root)
-from .history import batch_events, recent_events, sheet_history
+from .history import (batch_events, diff_between, overwritten_pushes,
+                      recent_events, reconstruct_at, sheet_history,
+                      stale_summary, transition_stats)
 from .jira import (create_issue, fetch_issue, issue_status, issue_transitions,
                    list_projects, load_jira_config, log_work, save_jira_config,
                    search_issues, transition_issue)
 from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
-from .notify import load_notify_config, save_notify_config, send_webhook
+from .notify import (load_notify_config, save_notify_config, send_toast,
+                     send_webhook)
 from .notepad import apply_action as notepad_action
 from .notepad import image_file, image_type, load_notepad
 from .repo import (add_repo, browse_local_folder, list_dir, load_repos,
                    read_text, remove_repo, rename_repo, search_files)
-from .report import build_report
+from .report import (build_report, meeting_anchor, meeting_report,
+                     period_comparison, set_meeting_anchor, timesheet_lines)
 from .statefile import (backup_now, list_backups, restore_backup, state_lock)
-from .team import (load_team_config, load_team_filters, publish_filters,
-                   publish_waiting, save_team_config, team_dir, unpublish_waiting)
+from .team import (ack_seen, load_capsules, load_team_config,
+                   load_team_filters, load_team_handoffs, load_team_messages,
+                   publish_capsule, publish_filters, publish_handoffs,
+                   publish_messages, publish_waiting, save_team_config, team_dir,
+                   unpublish_waiting)
 from .store import (CCRS_FILE, NOTES_FILE, OVERRIDES_FILE, WAITING_FILE,
                     load_announcement, load_ccrs, load_notes, load_overrides,
-                    load_waiting, normalize_blocker, save_announcement, save_ccrs,
-                    save_notes, save_overrides, save_waiting)
+                    load_waiting, load_waiting_log, log_waiting_closed,
+                    normalize_blocker, save_announcement, save_ccrs,
+                    save_notes, save_overrides, save_waiting, waiting_stats)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
                     discard_overrides, forget_web_cache, known_headers,
                     pending_overrides_summary, push_overrides,
                     queue_cellcat_override)
 from .notepad import NOTEPAD_FILE
 from .todos import (DUE_RE, TODO_FILE, TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
-                    TODO_REPEATS, archive_done_todo, load_todo, normalize_due,
-                    normalize_ref, normalize_repeat, normalize_todo_item,
+                    TODO_REPEATS, archive_done_todo, due_accuracy, load_todo,
+                    normalize_due, normalize_ref, normalize_repeat,
+                    normalize_todo_item, occurrence_durations,
                     restart_todo_timer, save_todo, sort_todos_by_priority, spawn_repeat,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
                     todo_link_target, todo_sources)
@@ -281,6 +291,8 @@ class Handler(BaseHTTPRequestHandler):
         "/api/announcement": "get_api_announcement",
         "/api/team/config": "get_api_team_config",
         "/api/team/filters": "get_api_team_filters",
+        "/api/team/messages": "get_api_team_messages",
+        "/api/team/capsules": "get_api_team_capsules",
         "/api/backups": "get_api_backups",
         "/api/events": "get_api_events",
         "/api/ping": "get_api_ping",
@@ -289,6 +301,15 @@ class Handler(BaseHTTPRequestHandler):
         "/api/notify/config": "get_api_notify_config",
         "/api/history/authors": "get_api_history_authors",
         "/api/history/who": "get_api_history_who",
+        "/api/history/stats": "get_api_history_stats",
+        "/api/history/overwritten": "get_api_history_overwritten",
+        "/api/history/asof": "get_api_history_asof",
+        "/api/report/compare": "get_api_report_compare",
+        "/api/report/meeting": "get_api_report_meeting",
+        "/api/todo/stats": "get_api_todo_stats",
+        "/api/todo/list": "get_api_todo_list",
+        "/api/montra": "get_api_montra",
+        "/api/waiting/stats": "get_api_waiting_stats",
         "/api/jira/projects": "get_api_jira_projects",
         "/logs": "get_logs",
     }
@@ -303,11 +324,16 @@ class Handler(BaseHTTPRequestHandler):
         "/api/todo": "post_api_todo",
         "/api/chat": "post_api_chat",
         "/api/waiting": "post_api_waiting",
+        "/api/report/meeting/anchor": "post_api_report_meeting_anchor",
         "/api/notify/config": "post_api_notify_config",
         "/api/notify": "post_api_notify",
         "/api/export": "post_api_export",
         "/api/window": "post_api_window",
         "/api/team/filters": "post_api_team_filters",
+        "/api/team/messages": "post_api_team_messages",
+        "/api/team/ack": "post_api_team_ack",
+        "/api/remote": "post_api_remote",
+        "/api/team/capsule": "post_api_team_capsule",
         "/api/team/config": "post_api_team_config",
         "/api/backups": "post_api_backups",
         "/api/announcement": "post_api_announcement",
@@ -340,6 +366,14 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ('/', '/index.html'):
             log_event(f"{ip} abriu a página")
             with open(os.path.join(HERE, "index.html"), encoding="utf-8") as f:
+                self._send(200, f.read(), "text/html")
+        elif parsed.path in ('/montra', '/remote'):
+            # duas páginas leves e à parte da app: a montra (um ecrã para ler a
+            # dois metros) e o comando (o telemóvel a conduzir o computador).
+            # Nenhuma delas carrega a interface toda — são para ficar abertas.
+            nome = f"{parsed.path.strip('/')}.html"
+            log_event(f"{ip} abriu {nome}")
+            with open(os.path.join(HERE, nome), encoding="utf-8") as f:
                 self._send(200, f.read(), "text/html")
         elif parsed.path.startswith('/static/'):
             self.send_static(parsed.path[len("/static/"):])
@@ -411,6 +445,128 @@ class Handler(BaseHTTPRequestHandler):
             limit=min(5000, max(1, int((q.get("limit") or ["1000"])[0] or 1000))),
             since=(q.get("since") or [""])[0],
             until=(q.get("until") or [""])[0])}), "application/json")
+
+    def get_api_history_stats(self, parsed, ip):
+        # quanto tempo uma linha fica, tipicamente, em cada estado (ver
+        # history.transition_stats). Conta feita sobre os eventos que já estão
+        # gravados: não lê a folha nem o OneDrive.
+        q = parse_qs(parsed.query)
+        self._send(200, json.dumps({"ok": True, "cols": transition_stats(
+            days=min(730, max(7, int((q.get("days") or ["120"])[0] or 120))),
+            since=(q.get("since") or [""])[0],
+            until=(q.get("until") or [""])[0])}), "application/json")
+
+    def get_api_history_overwritten(self, parsed, ip):
+        # células que a app enviou e a folha depois mudou por cima: o envio deu
+        # certo, ninguém avisou de nada, e o valor já não é o que foi enviado
+        q = parse_qs(parsed.query)
+        self._send(200, json.dumps({"ok": True, "items": overwritten_pushes(
+            days=min(365, max(1, int((q.get("days") or ["30"])[0] or 30))),
+            since=(q.get("since") or [""])[0],
+            until=(q.get("until") or [""])[0])}), "application/json")
+
+    def get_api_history_asof(self, parsed, ip):
+        # a folha naquele dia: reconstruída ao contrário a partir do presente
+        # (ver history.reconstruct_at). Com `diff=1` responde o que mudou entre
+        # a data pedida e agora (ou até `to`), que é a vista "agora vs antes".
+        q = parse_qs(parsed.query)
+        livro = (q.get("file") or [""])[0]
+        aba = (q.get("sheet") or [""])[0]
+        # uma data (AAAA-MM-DD) vale como o fim daquele dia: é assim que se
+        # espera "como estava na terça"
+        at = (q.get("at") or [""])[0]
+        if len(at) == 10:
+            at = f"{at}T23:59:59"
+        ate = (q.get("to") or [""])[0]
+        if len(ate) == 10:
+            ate = f"{ate}T23:59:59"
+        if (q.get("diff") or ["0"])[0] == "1":
+            self._send(200, json.dumps({"ok": True,
+                                        **diff_between(livro, aba, at, ate)}),
+                       "application/json")
+            return
+        self._send(200, json.dumps({"ok": True, **reconstruct_at(livro, aba, at)}),
+                   "application/json")
+
+    def get_api_report_compare(self, parsed, ip):
+        # a bitola: este período ao lado da tua própria mediana dos anteriores
+        q = parse_qs(parsed.query)
+        self._send(200, json.dumps({"ok": True, **period_comparison(
+            days=int((q.get("days") or ["7"])[0] or 7),
+            windows=int((q.get("windows") or ["8"])[0] or 8))}),
+            "application/json")
+
+    def get_api_report_meeting(self, parsed, ip):
+        # "desde a última reunião": o período que nenhum seletor de datas sabe
+        # pedir. A âncora só se move quando alguém carregar no botão (POST).
+        q = parse_qs(parsed.query)
+        self._send(200, json.dumps(meeting_report(
+            lang=(q.get("lang") or ["pt"])[0],
+            anchor=(q.get("anchor") or [""])[0])), "application/json")
+
+    def get_api_todo_list(self, parsed, ip):
+        # a lista Por fazer, sozinha e sem tocar no Excel: é o que as páginas
+        # leves (a montra e o comando do telemóvel) precisam — pedir /api/tasks
+        # para isto abria o livro por causa de quatro números
+        self._send(200, json.dumps({"ok": True, "todo": load_todo()}),
+                   "application/json")
+
+    def get_api_montra(self, parsed, ip):
+        # a montra: quatro números e um rodapé, para ler a dois metros. Contas
+        # do servidor porque a página não carrega a interface toda.
+        q = parse_qs(parsed.query)
+        dias = min(60, max(1, int((q.get("days") or ["7"])[0] or 7)))
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        cobrar = 0
+        for marca in (load_waiting() or {}).values():
+            if not isinstance(marca, dict) or not marca.get("who"):
+                continue
+            ate = str(marca.get("until") or "")
+            if not ate or ate < hoje:
+                cobrar += 1        # sem prazo, ou prazo passado: é para cobrar
+        todos = load_todo()
+        linhas = timesheet_lines(
+            todos, (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d"), hoje)
+        eventos = [e for e in recent_events(days=2, limit=60) if e.get("via") != "app"]
+        self._send(200, json.dumps({
+            "ok": True,
+            **stale_summary(dias),
+            "chase": cobrar,
+            "pending": pending_overrides_summary().get("total", 0),
+            "unlogged_ms": sum(int(l.get("ms") or 0) for l in linhas),
+            "doing": len([t for t in todos if isinstance(t, dict)
+                          and not t.get("done") and t.get("col") == "inprogress"]),
+            "events": [{"ts": e.get("ts"), "fn": e.get("fn") or "", "col": e.get("col"),
+                        "to": e.get("to")} for e in eventos[:20]],
+        }), "application/json")
+
+    def get_api_todo_stats(self, parsed, ip):
+        # o que a lista Por fazer sabe sobre si mesma: quanto costuma levar cada
+        # volta de um item que se repete, e a calibração das datas que a pessoa
+        # se dá a si mesma (ver todos.occurrence_durations/due_accuracy)
+        voltas = {}
+        for item in load_todo():
+            if not isinstance(item, dict):
+                continue
+            dados = occurrence_durations(item)
+            if dados:
+                voltas[str(item.get("id") or "")] = dados
+        self._send(200, json.dumps({"ok": True, "repeats": voltas,
+                                    "due": due_accuracy()}), "application/json")
+
+    def post_api_report_meeting_anchor(self, path, ip):
+        # a reunião de hoje passa a ser a âncora da próxima
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            at = set_meeting_anchor(str(payload.get("at") or ""))
+            log_event(f"{ip} âncora da reunião marcada em {at}")
+            self._send(200, json.dumps({"ok": True, "at": at}), "application/json")
+        except Exception as exc:
+            log_event(f"{ip} /api/report/meeting/anchor FALHOU: {exc}")
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+        return
 
     def get_api_report_week(self, parsed, ip):
         q = parse_qs(parsed.query)
@@ -550,6 +706,14 @@ class Handler(BaseHTTPRequestHandler):
             # vez desde então)
             self._send(200, json.dumps({"ok": False, "error": str(exc)}),
                        "application/json")
+
+    def get_api_waiting_stats(self, parsed, ip):
+        # o "Livro de dívidas": quantas esperas cada pessoa já resolveu e em
+        # quantos dias. Fica na máquina (ver store.waiting_stats) — o que
+        # viaja para a equipa são as esperas ABERTAS, nunca estes tempos.
+        self._send(200, json.dumps({"ok": True, "people": waiting_stats(),
+                                    "logged": len(load_waiting_log())}),
+                   "application/json")
 
     def get_api_jira_projects(self, parsed, ip):
         try:
@@ -1302,10 +1466,16 @@ class Handler(BaseHTTPRequestHandler):
             if not sheet or not fn:
                 raise ValueError("linha não identificada")
             waiting = load_waiting()
-            found_key, _ = _override_entry(waiting, livro, sheet, fn, todo)
+            found_key, antes = _override_entry(waiting, livro, sheet, fn, todo)
             key = _wb_key(livro, sheet, fn, todo)
             waiting.pop(found_key, None)
             quem = str(payload.get("who") or "").strip()[:80]
+            # a marca que sai daqui é a única medida de quanto tempo aquela
+            # pessoa levou a devolver a linha: gravar agora ou nunca (ver
+            # store.log_waiting_closed). Mudar só o prazo não fecha a espera —
+            # fecha-a levantá-la ou passá-la a outra pessoa.
+            if isinstance(antes, dict) and str(antes.get("who") or "") not in ("", quem):
+                log_waiting_closed(found_key or key, antes)
             if quem:
                 ate = str(payload.get("until") or "").strip()[:10]
                 if ate and not DUE_RE.match(ate):
@@ -1346,7 +1516,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
-            cfg = save_notify_config(payload.get("url"), payload.get("enabled", True))
+            cfg = save_notify_config(payload.get("url"), payload.get("enabled", True),
+                                     payload.get("toasts"))
             log_event(f"{ip} webhook de avisos {'ligado' if cfg['enabled'] else 'desligado'}")
             self._send(200, json.dumps({"ok": True, **cfg, "canEdit": True}),
                        "application/json")
@@ -1364,7 +1535,15 @@ class Handler(BaseHTTPRequestHandler):
             enviado = send_webhook(payload.get("text"), payload.get("title"))
             if enviado:
                 log_event(f"{ip} aviso enviado para o webhook")
-            self._send(200, json.dumps({"ok": True, "sent": enviado}), "application/json")
+            # o aviso do Windows é levantado por ESTE processo, por isso vale
+            # também com a janela fechada (ver notify.send_toast). Os botões
+            # abrem um endereço da app no browser.
+            botoes = [(str(b.get("label") or "")[:60], str(b.get("url") or "")[:400])
+                      for b in (payload.get("buttons") or [])
+                      if isinstance(b, dict) and b.get("label") and b.get("url")]
+            aviso = send_toast(payload.get("text"), payload.get("title"), botoes)
+            self._send(200, json.dumps({"ok": True, "sent": enviado, "toast": aviso}),
+                       "application/json")
         except Exception as exc:
             log_event(f"{ip} aviso para o webhook FALHOU: {exc}")
             self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
@@ -1442,6 +1621,117 @@ class Handler(BaseHTTPRequestHandler):
             log_event(f"{ip} publicou {quantos} conjunto(s) de filtros")
             self._send(200, json.dumps({"ok": True, "published": quantos}),
                        "application/json")
+        except Exception as exc:
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+        return
+
+    def get_api_team_messages(self, parsed, ip):
+        # os recados que os outros deixaram nas linhas, já com o recibo de
+        # leitura cruzado (ver team.load_team_messages)
+        q = parse_qs(parsed.query)
+        pessoa = (q.get("person") or [""])[0]
+        self._send(200, json.dumps({
+            "ok": True,
+            "messages": load_team_messages(pessoa),
+            "handoffs": load_team_handoffs(pessoa),
+        }), "application/json")
+
+    def post_api_team_messages(self, path, ip):
+        # publicar os MEUS recados (substitui os anteriores) e/ou as bolas que
+        # passei. Escrita para fora desta máquina: só a partir deste computador,
+        # como a publicação dos filtros.
+        if not _is_local(ip):
+            self._send(403, json.dumps({"ok": False,
+                                        "error": "só a partir deste computador"}),
+                       "application/json")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            pessoa = payload.get("person")
+            saida = {"ok": True}
+            if isinstance(payload.get("messages"), list):
+                quantos = publish_messages(pessoa, payload["messages"])
+                if quantos is None:
+                    raise ValueError("a pasta partilhada não está ao alcance "
+                                     "(ou é só de leitura)")
+                saida["messages"] = quantos
+            if isinstance(payload.get("handoffs"), list):
+                quantos = publish_handoffs(pessoa, payload["handoffs"])
+                if quantos is None:
+                    raise ValueError("a pasta partilhada não está ao alcance "
+                                     "(ou é só de leitura)")
+                saida["handoffs"] = quantos
+            log_event(f"{ip} publicou recados/bolas: {saida}")
+            self._send(200, json.dumps(saida), "application/json")
+        except Exception as exc:
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+        return
+
+    def post_api_remote(self, path, ip):
+        # o comando do telemóvel: além de mexer na lista pelos caminhos de
+        # sempre, manda as janelas do computador saltarem para o mesmo sítio.
+        # Os avisos já levam a janela de origem, por isso quem manda não se
+        # recarrega por causa do próprio clique (ver events.set_origin).
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            acao = str(payload.get("action") or "")[:40]
+            if not acao:
+                raise ValueError("sem ação")
+            events.publish("command", action=acao,
+                           ref=str(payload.get("ref") or "")[:400],
+                           label=str(payload.get("label") or "")[:200])
+            self._send(200, json.dumps({"ok": True}), "application/json")
+        except Exception as exc:
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+        return
+
+    def post_api_team_ack(self, path, ip):
+        # o recibo: abri o recado, ou aceitei a bola. Escrito por um ato
+        # explícito e nunca por passar os olhos pela lista (ver team.ack_seen)
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            ok = ack_seen(payload.get("person"),
+                          payload.get("seen") or [],
+                          payload.get("taken") or [])
+            self._send(200, json.dumps({"ok": bool(ok)}), "application/json")
+        except Exception as exc:
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+        return
+
+    def get_api_team_capsules(self, parsed, ip):
+        # os kits de chegada publicados (ver team.load_capsules)
+        self._send(200, json.dumps({"ok": True, "capsules": load_capsules()}),
+                   "application/json")
+
+    def post_api_team_capsule(self, path, ip):
+        if not _is_local(ip):
+            self._send(403, json.dumps({"ok": False,
+                                        "error": "só a partir deste computador"}),
+                       "application/json")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            # a página do estado do projeto é escrita pela app, não por quem
+            # publica: é a mesma conta do relatório do período (ver report.py)
+            capsula = dict(payload.get("capsule") or {})
+            if not capsula.get("brief"):
+                try:
+                    capsula["brief"] = build_report(days=14, lang="pt")["markdown"]
+                except Exception:
+                    capsula["brief"] = ""
+            if publish_capsule(payload.get("person"), capsula) is None:
+                raise ValueError("a pasta partilhada não está ao alcance "
+                                 "(ou é só de leitura), ou o kit vinha vazio")
+            log_event(f"{ip} publicou o kit de chegada")
+            self._send(200, json.dumps({"ok": True}), "application/json")
         except Exception as exc:
             self._send(400, json.dumps({"ok": False, "error": str(exc)}),
                        "application/json")
@@ -2059,6 +2349,96 @@ def open_ui(url):
                   icon=os.path.join(HERE, "static", "img", "app-icon.ico"))
 
 
+# ---------------------------------------------------------------------------
+# O vigia: os avisos que só fazem sentido com a app FECHADA
+#
+# Os avisos do browser (static/js/notify.js) precisam de uma janela aberta. Este
+# fio corre no processo do servidor — que fica de pé com a janela fechada — e
+# levanta um aviso do Windows nos dois casos em que ninguém está a olhar:
+#
+#   - um cronómetro esquecido a correr (o caso que enche a folha de horas de
+#     dias de 9 horas);
+#   - alterações na folha nas linhas de quem usa esta instalação, desde a última
+#     vez que o vigia falou.
+#
+# Só faz alguma coisa com os avisos do Windows LIGADOS (Definições → Avisos),
+# que estão desligados por omissão. Sem isso o fio acorda, não vê nada para
+# fazer, e volta a dormir.
+
+VIGIA_INTERVALO = 15 * 60          # de quanto em quanto tempo acorda
+VIGIA_CRONOMETRO_H = 3             # horas a correr a partir das quais avisa
+VIGIA_SILENCIO = 6 * 3600          # não repete o mesmo aviso antes disto
+
+
+def _vigia_url(fragmento=""):
+    """Um endereço desta app para o botão do aviso abrir."""
+    return f"http://127.0.0.1:{config.SERVER_PORT}/{fragmento}"
+
+
+def _vigia_cronometro(ultimo):
+    """Aviso do cronómetro esquecido a correr, ou None."""
+    agora = time.time()
+    for item in load_todo():
+        if not isinstance(item, dict) or item.get("timer_started") is None:
+            continue
+        try:
+            desde = float(item.get("timer_started")) / 1000.0
+        except (TypeError, ValueError):
+            continue
+        horas = (agora - desde) / 3600.0
+        if horas < VIGIA_CRONOMETRO_H:
+            continue
+        chave = f"timer:{item.get('id')}"
+        if agora - ultimo.get(chave, 0) < VIGIA_SILENCIO:
+            continue
+        ultimo[chave] = agora
+        return (chave,
+                msg("toast_timer_title", "pt"),
+                msg("toast_timer", "pt", h=int(horas),
+                    t=str(item.get("title") or "")[:60]),
+                [(msg("toast_timer_btn", "pt"), _vigia_url("#todo"))])
+    return None
+
+
+def _vigia_folha(ultimo):
+    """Aviso do que mexeu na folha desde a última vez, ou None."""
+    agora = time.time()
+    if agora - ultimo.get("sheet", 0) < VIGIA_SILENCIO:
+        return None
+    desde = ultimo.get("sheet_ts") or (
+        datetime.now() - timedelta(seconds=VIGIA_INTERVALO * 2)).isoformat()
+    eventos = [e for e in recent_events(days=2, limit=500)
+               if str(e.get("ts") or "") > desde and e.get("via") != "app"]
+    ultimo["sheet_ts"] = datetime.now().isoformat()
+    if not eventos:
+        return None
+    ultimo["sheet"] = agora
+    linhas = {str(e.get("fn") or e.get("xlrow") or "") for e in eventos}
+    return ("sheet",
+            msg("toast_sheet_title", "pt"),
+            msg("toast_sheet", "pt", n=len(eventos), r=len(linhas)),
+            [(msg("toast_sheet_btn", "pt"), _vigia_url())])
+
+
+def _vigia():
+    """O fio do vigia: acorda, olha, e cala-se outra vez."""
+    ultimo = {}
+    while True:
+        time.sleep(VIGIA_INTERVALO)
+        try:
+            if not load_notify_config().get("toasts"):
+                continue
+            for olhar in (_vigia_cronometro, _vigia_folha):
+                aviso = olhar(ultimo)
+                if not aviso:
+                    continue
+                _chave, titulo, texto, botoes = aviso
+                if send_toast(texto, titulo, botoes):
+                    log_event(f"vigia: aviso do Windows levantado ({_chave})")
+        except Exception as exc:      # um vigia que rebenta deixa de vigiar
+            log_event(f"vigia falhou (segue): {exc!r}")
+
+
 def main():
     global _SERVER
     parser = argparse.ArgumentParser(
@@ -2138,6 +2518,12 @@ def main():
         print()
     print("Registos: tracker.log (ou /logs no browser).")
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    # o vigia dos avisos do Windows (desligados por omissão): é o que faz um
+    # cronómetro esquecido a correr ser dito com a janela fechada
+    threading.Thread(target=_vigia, daemon=True).start()
+    # o farol: um ícone ao lado do relógio com o estado da app (ver tray.py).
+    # Nunca levanta exceção — sem ele a app é exatamente o que era.
+    tray.start(url)
     if args.no_browser:
         # instância interna (ex.: reinicio a pedido do /api/update): a janela/
         # browser antigos já estão abertos e vão recarregar-se sozinhos

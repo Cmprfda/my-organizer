@@ -1355,6 +1355,10 @@ function render() {
   // contrário das paradas, não depende do histórico: a marca é nossa.
   const chaseN = rows.filter(r => waitingOverdue(metaFor(r))).length;
   if (chaseOnly) rows = rows.filter(r => waitingOverdue(metaFor(r)));
+  // "Ricochete": as linhas que voltaram a um estado onde já tinham estado. Como
+  // as paradas, sai do histórico e não de nenhuma coluna da folha
+  const bouncedN = temHistorico ? rows.filter(r => !!taskBounces(metaFor(r))).length : 0;
+  if (bouncedOnly && temHistorico) rows = rows.filter(r => !!taskBounces(metaFor(r)));
 
   let summaryHtml = `<span class="pill">${rows.length} ${rows.length === 1 ? t("tasks_one") : t("tasks_many")}` +
     (showAll ? ` ${t("of_all")}` : ` ${t("of_person")} ${esc(PERSON)}`) + `</span>`;
@@ -1386,12 +1390,17 @@ function render() {
     summaryHtml += `<span class="${pillClasses("chasepill", chaseOnly, chaseN)}" ` +
       `data-chase="1" title="${esc(t("t_chase"))}">⏸ ${esc(t("pill_chase"))}: ${chaseN}</span>`;
   }
+  if (temHistorico && (bouncedN || bouncedOnly)) {
+    summaryHtml += `<span class="${pillClasses("bouncepill", bouncedOnly, bouncedN)}" ` +
+      `data-bounced="1" title="${esc(t("t_filter_bounced"))}">↩ ${esc(t("filter_bounced"))}: ${bouncedN}</span>`;
+  }
   $("summary").innerHTML = summaryHtml;
 
   if (!rows.length) {
     tbl.classList.add("hidden");
     box.classList.remove("hidden");
-    box.innerHTML = (statusFilters.size || customFilterActive.size || staleOnly || chaseOnly)
+    box.innerHTML = (statusFilters.size || customFilterActive.size || staleOnly
+      || chaseOnly || bouncedOnly)
       ? `<h2>${t("none_filter")}.</h2><p>${t("none_hint")}</p>`
       : query.length
         ? `<h2>${t("none_search")} "${esc(searchLabel())}".</h2>`
@@ -1456,6 +1465,9 @@ function render() {
   // de onde escolher (ver openBulkStatus)
   $("bulkStatusBtn").classList.toggle("hidden",
     !currentStatuses.length || !bulkColsAvailable().length);
+  // "naquele dia" vive do histórico desta folha: sem ele não há nada a
+  // reconstruir, e um botão que abre uma janela vazia é pior do que não haver
+  $("asOfBtn").classList.toggle("hidden", !activeHistory());
 
   function statusCell(r, ri, i) {
     const meta = currentMeta[ri];
@@ -1488,7 +1500,8 @@ function render() {
   function firstColExtras(ri) {
     const m = currentMeta[ri];
     if (!m) return "";
-    return taskNoteFlagHtml(m) + staleChipHtml(m) + waitingChipHtml(m);
+    return taskNoteFlagHtml(m) + staleChipHtml(m) + waitingChipHtml(m)
+      + bounceChipHtml(m) + messageChipHtml(m);
   }
 
   function cellHtmlOf(r, ri, i2) {

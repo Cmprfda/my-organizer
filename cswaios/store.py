@@ -8,6 +8,7 @@ from datetime import datetime
 
 from .config import HERE
 from .statefile import read_json, write_json
+from .stats import dias_entre, mediana
 
 # Alterações de estado feitas na app. Ficam num ficheiro local em vez de
 # reescrever o .xlsx (reescrevê-lo com openpyxl destruiria validações de
@@ -56,6 +57,72 @@ def load_waiting():
 
 def save_waiting(data):
     write_json(WAITING_FILE, data)
+
+
+# O registo das esperas que ACABARAM. Uma espera resolvida era apagada do
+# `waiting.json` e com ela ia-se a única medida que a app tem da capacidade de
+# resposta de outra pessoa: quantos dias, em média, o Rui leva a devolver uma
+# linha. Isto não se recupera depois — no dia em que a marca é levantada, ou se
+# grava, ou nunca mais houve maneira de saber. Ver waiting.js (o "Livro de
+# dívidas") e docs/backlog.md.
+#
+# Só guarda o que a marca já dizia (quem, desde quando, até quando) mais a hora
+# em que foi levantada; não sai da máquina (o publish_waiting publica as esperas
+# ABERTAS, não este registo — um histórico de tempos de resposta com nomes
+# publicado na pasta partilhada seria um quadro de honra ao contrário).
+WAITING_LOG_FILE = os.path.join(HERE, "waiting_log.json")
+WAITING_LOG_MAX = 500
+
+
+def load_waiting_log():
+    """Esperas já resolvidas (lista; [] quando não há registo)."""
+    data = read_json(WAITING_LOG_FILE, [])
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
+
+def log_waiting_closed(key, entrada):
+    """Guarda uma espera que deixou de existir. `entrada` é a marca de antes."""
+    if not isinstance(entrada, dict):
+        return
+    quem = str(entrada.get("who") or "").strip()[:80]
+    if not quem:
+        return
+    registo = load_waiting_log()
+    registo.append({"key": str(key or "")[:400],
+                    "who": quem,
+                    "since": str(entrada.get("since") or "")[:10],
+                    "until": str(entrada.get("until") or "")[:10],
+                    "cleared_at": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    write_json(WAITING_LOG_FILE, registo[-WAITING_LOG_MAX:])
+
+
+def waiting_stats():
+    """Por pessoa: quantas esperas resolveu e em quantos dias, tipicamente.
+
+    Serve para o "Livro de dívidas" (waiting.js): uma espera aberta há 5 dias
+    numa pessoa cuja mediana são 3 diz outra coisa do que a mesma espera numa
+    pessoa cuja mediana são 10. Só conta o que foi gravado a partir da v157 —
+    antes disso as esperas resolvidas eram apagadas sem deixar rasto.
+    """
+    por_pessoa = {}
+    for reg in load_waiting_log():
+        quem = str(reg.get("who") or "").strip()
+        if not quem:
+            continue
+        dias = dias_entre(reg.get("since"), reg.get("cleared_at"))
+        if dias is None:
+            continue
+        alvo = por_pessoa.setdefault(quem.lower(), {"who": quem, "days": []})
+        alvo["days"].append(dias)
+    saida = []
+    for dados in por_pessoa.values():
+        dias = dados["days"]
+        saida.append({"who": dados["who"],
+                      "n": len(dias),
+                      "median_days": mediana(dias),
+                      "max_days": max(dias)})
+    saida.sort(key=lambda x: (-x["n"], x["who"].lower()))
+    return saida
 
 
 # o que está a segurar uma linha, quando é uma COISA e não só uma pessoa: outra

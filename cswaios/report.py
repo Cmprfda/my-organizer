@@ -8,9 +8,14 @@ Devolve os dados estruturados e o mesmo conteúdo em markdown — é o markdown 
 se copia para o chat/e-mail.
 """
 
+import os
 from datetime import datetime, timedelta
 
-from .history import iso_day, recent_events
+from .config import HERE
+from .history import iso_day, overwritten_pushes, recent_events
+from .statefile import read_json, write_json
+from .stats import MIN_SAMPLE, mediana
+from .store import load_waiting
 from .todos import load_done_archive, load_todo, timer_ms_in_period
 
 # rótulos do relatório (o resto da app usa i18n.msg, mas aqui são muitos e só
@@ -236,8 +241,10 @@ def build_report(days=7, lang="pt", since="", until=""):
         "timesheet": [{"day": d, "ms": por_dia[d]} for d in sorted(por_dia)],
         "timesheet_ms": sum(por_dia.values()),
         "timesheet_untracked_ms": sem_registo,
-        # o que dá para registar no Jira de uma vez (ver timesheet_lines)
-        "timesheet_lines": timesheet_lines(todos, dia_de, dia_ate),
+        # o que dá para registar no Jira de uma vez (ver timesheet_lines), já
+        # com as linhas que têm cara de erro marcadas (ver timesheet_anomalies)
+        "timesheet_lines": timesheet_anomalies(
+            todos, timesheet_lines(todos, dia_de, dia_ate)),
     }
     data["markdown"] = _markdown(data, lang)
     data["empty"] = not (app_changes or done or doing or jira or team_changes
@@ -309,3 +316,188 @@ def _markdown(data, lang):
 
     out.append(f"_{_lbl('seed_hint', lang)}_")
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Dia suspeito: o que na folha de horas tem cara de erro
+# ---------------------------------------------------------------------------
+
+# um dia com mais do que isto contado é quase sempre um cronómetro esquecido a
+# correr, e não um dia de trabalho
+DIA_ENORME_MS = 12 * 3600 * 1000
+# uma linha muito acima do costume DAQUELE item, e grande em absoluto: 3× de dez
+# minutos continua a ser meia hora, e meia hora não é um erro
+FORA_DO_COSTUME = 3.0
+FORA_DO_COSTUME_MIN_MS = 2 * 3600 * 1000
+# tempo contado num sábado ou domingo: pode ter sido a sério, mas é para olhar
+FIM_DE_SEMANA_MS = 60 * 60 * 1000
+
+
+def timesheet_anomalies(todos, linhas):
+    """Marca as linhas da folha de horas que têm cara de erro.
+
+    A app oferece de boa-fé o que o cronómetro acumulou — incluindo o cronómetro
+    que ficou a correr de um dia para o outro. A base para o apanhar já está no
+    disco: os `segments` de todos os itens dizem qual é um dia normal daquele
+    item.
+
+    Um aviso não é uma recusa: a linha continua a poder ser registada. O que
+    isto evita é registar 9h sem dar por isso.
+
+    Limite honesto: os segmentos guardam o DIA e o tempo, não a hora — um
+    cronómetro esquecido de um dia para o outro aparece como dois dias grandes
+    seguidos, e não como uma linha que atravessa a meia-noite.
+    """
+    # o dia normal de cada item, medido no próprio item
+    costume = {}
+    for item in todos:
+        if not isinstance(item, dict):
+            continue
+        dias = [int(s.get("ms") or 0) for s in (item.get("segments") or [])
+                if isinstance(s, dict) and int(s.get("ms") or 0) > 0]
+        if dias:
+            costume[str(item.get("id") or "")] = mediana(dias)
+    # o total contado em cada dia, somando todos os itens
+    por_dia = {}
+    for linha in linhas:
+        por_dia[linha["day"]] = por_dia.get(linha["day"], 0) + int(linha.get("ms") or 0)
+    saida = []
+    for linha in linhas:
+        avisos = []
+        ms = int(linha.get("ms") or 0)
+        if por_dia.get(linha["day"], 0) > DIA_ENORME_MS:
+            avisos.append("big_day")
+        tipico = costume.get(str(linha.get("id") or ""))
+        if tipico and ms > FORA_DO_COSTUME_MIN_MS and ms > tipico * FORA_DO_COSTUME:
+            avisos.append("unusual")
+        try:
+            if datetime.fromisoformat(linha["day"]).weekday() >= 5 \
+                    and ms > FIM_DE_SEMANA_MS:
+                avisos.append("weekend")
+        except (ValueError, KeyError):
+            pass
+        saida.append(dict(linha, warnings=avisos,
+                          typical_ms=int(tipico) if tipico else 0,
+                          day_ms=por_dia.get(linha["day"], 0)))
+    return saida
+
+
+# ---------------------------------------------------------------------------
+# Bitola: este período contra o teu próprio passado
+# ---------------------------------------------------------------------------
+
+def _period_totals(events, todos, dia_de, dia_ate):
+    """Os números de um período, sobre eventos e itens já lidos."""
+    dentro = [e for e in events if dia_de <= str(e.get("ts") or "")[:10] <= dia_ate]
+    fechados = 0
+    for item in todos:
+        if not isinstance(item, dict) or not item.get("done"):
+            continue
+        quando = str(item.get("done_at") or "")[:10]
+        if quando and dia_de <= quando <= dia_ate:
+            fechados += 1
+    return {"pushes": len([e for e in dentro if e.get("via") == "app"]),
+            "team_changes": len([e for e in dentro if e.get("via") != "app"]),
+            "todo_done": fechados,
+            "timer_ms": sum(timer_ms_in_period(t, dia_de, dia_ate)
+                            for t in todos if isinstance(t, dict))}
+
+
+def period_comparison(days=7, windows=8):
+    """Este período ao lado da tua própria mediana dos períodos anteriores.
+
+    O relatório descreve um período isolado e deixa ao leitor a pergunta que
+    importa — foi uma semana fora do normal, ou foi só uma semana? O arquivo do
+    histórico torna todos os períodos passados calculáveis, por isso a app pode
+    responder em vez de deixar a conta no ar.
+
+    `windows` é quantos períodos do mesmo tamanho para trás entram na mediana.
+    """
+    days = max(1, min(90, int(days or 7)))
+    windows = max(1, min(26, int(windows or 8)))
+    hoje = datetime.now().date()
+    # tudo de uma vez: uma leitura para todos os períodos em vez de N leituras
+    events = recent_events(days=days * (windows + 1), limit=20000)
+    todos = load_todo()
+    vivos = {str(t.get("id")) for t in todos if isinstance(t, dict)}
+    todos = todos + [a for a in load_done_archive()
+                     if str(a.get("id")) not in vivos]
+    janelas = []
+    for i in range(windows + 1):
+        fim = hoje - timedelta(days=days * i)
+        inicio = fim - timedelta(days=days - 1)
+        janelas.append(_period_totals(events, todos,
+                                      inicio.isoformat(), fim.isoformat()))
+    agora, passado = janelas[0], janelas[1:]
+    tipico, delta = {}, {}
+    for campo in ("pushes", "team_changes", "todo_done", "timer_ms"):
+        meio = mediana([j[campo] for j in passado]) or 0
+        tipico[campo] = meio
+        # sem passado nenhum não há comparação: dizer "+100%" contra um zero é
+        # inventar uma comparação que não existe
+        delta[campo] = round(100.0 * (agora[campo] - meio) / meio) if meio else None
+    return {"days": days, "windows": len(passado),
+            "current": agora, "typical": tipico, "delta_pct": delta,
+            "thin": len(passado) < MIN_SAMPLE}
+
+
+# ---------------------------------------------------------------------------
+# Antes da reunião: o período que nenhum calendário sabe pedir
+# ---------------------------------------------------------------------------
+
+# a âncora é o momento em que este relatório foi tirado da última vez. As
+# reuniões não caem em semanas de calendário, e "desde a última vez que falámos"
+# não é um período que um seletor de datas saiba produzir.
+MEETING_FILE = os.path.join(HERE, "meeting_anchor.json")
+
+
+def meeting_anchor():
+    """Quando o relatório da reunião foi tirado da última vez ("" se nunca)."""
+    data = read_json(MEETING_FILE, {})
+    return str(data.get("at") or "") if isinstance(data, dict) else ""
+
+
+def set_meeting_anchor(quando=""):
+    """Marca o momento desta reunião (por omissão, agora)."""
+    at = str(quando or "") or datetime.now().replace(microsecond=0).isoformat()
+    write_json(MEETING_FILE, {"at": at})
+    return at
+
+
+def meeting_report(lang="pt", anchor=""):
+    """O relatório "desde a última reunião", com o que vale a pena levantar lá.
+
+    Ao contrário do "Meu período", isto é sobre o PROJETO e não sobre quem
+    pergunta: o que mexeu, mais as perguntas em aberto — esperas que passaram do
+    prazo e linhas que a app enviou e a folha pisou por cima.
+    """
+    desde = str(anchor or "") or meeting_anchor()
+    dia = (iso_day(desde) or desde[:10]) if desde else ""
+    if dia:
+        dias = max(1, (datetime.now() - datetime.fromisoformat(dia)).days)
+        data = build_report(days=min(90, dias), lang=lang, since=dia,
+                            until=datetime.now().date().isoformat())
+    else:
+        # primeira vez: uma semana é o que uma reunião de estado costuma cobrir
+        dias = 7
+        data = build_report(days=dias, lang=lang)
+    hoje = datetime.now().date().isoformat()
+    atrasadas = []
+    for chave, marca in (load_waiting() or {}).items():
+        if not isinstance(marca, dict):
+            continue
+        ate = str(marca.get("until") or "")
+        if ate and ate < hoje:
+            atrasadas.append({"key": chave, "who": str(marca.get("who") or ""),
+                              "until": ate, "since": str(marca.get("since") or "")})
+    atrasadas.sort(key=lambda x: x["until"])
+    data["meeting"] = {
+        "anchor": desde,
+        "first_time": not desde,
+        "days": dias,
+        "overdue_waits": atrasadas,
+        # o que a app enviou e a folha mudou por cima desde a última reunião: numa
+        # reunião de estado é a pergunta mais útil que há
+        "overwritten": overwritten_pushes(days=min(365, dias)),
+    }
+    return data

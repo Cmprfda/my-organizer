@@ -92,6 +92,10 @@ let metricsActivityAsked = "";
 // concluídos já apagados do quadro (o arquivo, que o cliente não tem): as duas
 // contas ficavam a dizer números diferentes do mesmo período, lado a lado.
 let metricsTimesheet = null;     // { from, to, days, byDay, ms, untracked } ou null
+// o que a app sabe sobre si mesma, pedido ao servidor com o resto do período:
+// o relógio de estados (/api/history/stats) e a bitola (/api/report/compare)
+let metricsClock = null;
+let metricsCompare = null;
 
 // Livros abertos agora, pela chave com que o histórico os identifica: o
 // histórico guarda tudo o que já viu (livros fechados, cópias de teste), e os
@@ -149,6 +153,21 @@ async function loadMetricsActivity(force = false) {
     };
   } catch (e) {
     metricsTimesheet = null;
+  }
+  // as duas dobras sobre o histórico: o relógio de estados olha para uma janela
+  // maior do que o período à vista (uma mediana de 7 dias não é uma mediana), e
+  // a bitola precisa dos períodos ANTERIORES a este
+  try {
+    const res = await fetch("/api/history/stats?days=120");
+    metricsClock = await res.json();
+  } catch (e) {
+    metricsClock = null;
+  }
+  try {
+    const res = await fetch(`/api/report/compare?days=${r.days}&windows=8`);
+    metricsCompare = await res.json();
+  } catch (e) {
+    metricsCompare = null;
   }
   refreshMetricsIfOpen();
 }
@@ -600,6 +619,18 @@ function metricsTimesheetLines() {
     .filter(l => l && l.day >= r.from && l.day <= r.to && (+l.ms || 0) >= 60000);
 }
 
+// o porquê de cada ⚠ (ver report.timesheet_anomalies): um aviso que não diz o
+// que viu é só um susto
+function weekLogWarnHtml(linha) {
+  const avisos = linha.warnings || [];
+  if (!avisos.length) return "";
+  const porque = avisos.map(w =>
+    w === "big_day" ? tf("wl_warn_big_day", formatTodoElapsed(+linha.day_ms || 0))
+      : w === "unusual" ? tf("wl_warn_unusual", formatTodoElapsed(+linha.typical_ms || 0))
+        : w === "weekend" ? t("wl_warn_weekend") : w).join(" · ");
+  return ` <span class="wlWarn" title="${esc(porque)}">${esc(t("wl_warn"))}</span>`;
+}
+
 let weekLogBusy = false;
 
 function openWeekLogModal() {
@@ -607,16 +638,17 @@ function openWeekLogModal() {
   if (!linhas.length) { toast(t("week_log_none"), ""); return; }
   const overlay = weekLogOverlay();
   overlay.querySelector(".weekLogBody").innerHTML = linhas.map((l, i) => `
-    <tr data-wl="${i}">
+    <tr data-wl="${i}"${(l.warnings || []).length ? ' class="wlSuspect"' : ""}>
       <td><input type="checkbox" class="wlOn" checked></td>
-      <td class="wlDay">${esc(metricsDayLabel(l.day))}</td>
+      <td class="wlDay">${esc(metricsDayLabel(l.day))}${weekLogWarnHtml(l)}</td>
       <td class="wlTitle" title="${esc(l.title)}">${esc(l.title)}</td>
       <td class="wlIssue">${esc(l.issue)}</td>
       <td><input type="text" class="wlTime" value="${esc(msToJiraTime(+l.ms || 0))}"
           size="7" spellcheck="false"></td>
       <td class="wlState"></td>
     </tr>`).join("");
-  overlay.querySelector(".weekLogNote").textContent = t("week_log_hint");
+  overlay.querySelector(".weekLogNote").textContent = t("week_log_hint")
+    + (linhas.some(l => (l.warnings || []).length) ? ` ${t("wl_warn_hint")}` : "");
   overlay.dataset.lines = JSON.stringify(linhas);
   overlay.classList.remove("hidden");
 }
@@ -813,7 +845,12 @@ function renderMetrics() {
     metricCard(t("metric_time"), metricsTimeTiles(), t("metric_time_note")) +
     metricCard(t("metric_hours"), metricsTimesheetHtml(), t("metric_hours_note"),
       metricsRange().days > 7 ? "metricCardWide" : "") +
-    metricCard(t("metric_todo"), metricBars(metricsTodoItems()));
+    metricCard(t("metric_todo"), metricBars(metricsTodoItems())) +
+    metricCard(t("metric_clock"), metricsClockHtml(), t("metric_clock_note")) +
+    metricCard(t("metric_sediment"), metricsSedimentHtml(), t("metric_sediment_note")) +
+    metricCard(t("metric_compare"), metricsCompareHtml(),
+      metricsCompare && metricsCompare.windows
+        ? tf("metric_compare_note", metricsCompare.windows) : "");
 
   if (escrevia) {
     const agora = $("metricsDaySearch");
@@ -883,6 +920,154 @@ document.addEventListener("pointerdown", e => {
   closeExportPop();
 }, true);
 
+// ---------- o que a app sabe sobre si mesma ----------
+// Três cartões que não pedem dados novos a ninguém: saem do histórico que já
+// está gravado (o relógio de estados e a bitola, pelo servidor) e das idades que
+// a vista já tem em mão (o sedimento). Ver docs/backlog.md.
+
+// quanto tempo uma linha fica em cada estado (/api/history/stats)
+function metricsClockHtml() {
+  if (!metricsClock) return metricEmpty(t("loading"));
+  const cols = metricsClock.cols || {};
+  const nomes = Object.keys(cols);
+  if (!nomes.length) return metricEmpty(t("metric_no_history"));
+  return nomes.map(col => {
+    const linhas = (cols[col] || []).slice(0, 6);
+    if (!linhas.length) return "";
+    return `<p class="metricSub">${esc(col)}</p><ul class="metricList">` + linhas.map(l =>
+      `<li class="metricListRow">
+        <span class="badge ${statusClass(l.value)}">${esc(l.value)}</span>
+        <span class="metricListAge">${esc(l.thin
+          ? tf("metric_clock_thin", metricsDays1(l.median_days), l.n)
+          : tf("metric_clock_days", metricsDays1(l.median_days), l.n))}</span>
+      </li>`).join("") + `</ul>`;
+  }).join("");
+}
+
+// uma casa decimal, e nunca "0.0 dias" para meia hora: abaixo de um dia diz-se
+// em horas, que é como se fala do tempo de um estado curto
+function metricsDays1(dias) {
+  const n = +dias || 0;
+  if (n && n < 1) return `${Math.max(1, Math.round(n * 24))}h`;
+  return String(Math.round(n * 10) / 10);
+}
+
+// a idade do que não está acabado, em camadas (conta local: as idades já estão
+// na vista, ver taskAgeInTab)
+const SEDIMENT_BUCKETS = [
+  { key: "sediment_fresh", max: 7, cls: "teal" },
+  { key: "sediment_month", max: 30, cls: "purple" },
+  { key: "sediment_quarter", max: 90, cls: "sand" },
+  { key: "sediment_old", max: Infinity, cls: "slate" },
+];
+
+function metricsSedimentHtml() {
+  const semHistorico = !(workbookTabs || []).some(tab => taskHistoryByTab.get(tab.id));
+  if (semHistorico) return metricEmpty(t("metric_no_history"));
+  const contas = SEDIMENT_BUCKETS.map(b => ({ label: t(b.key), value: 0, cls: b.cls }));
+  let nunca = 0, total = 0;
+  metricsRows().forEach(({ tab, meta }) => {
+    // o sedimento é sobre o que FALTA: uma linha acabada não tem idade a contar
+    const estados = [((meta.cur || {})["Status TC"]), ((meta.cur || {})["Status TP"])]
+      .map(s => String(s || "").trim()).filter(s => s && norm(s) !== "n/a");
+    if (estados.length && estados.every(s => statusIsFinal(s))) return;
+    const idade = taskAgeInTab(tab.id, meta);
+    if (!idade) return;
+    total++;
+    // "≥ N dias" quer dizer que a linha nunca foi vista a mudar: é o fundo da
+    // folha, e misturá-la com uma linha de N dias a sério mentia nas duas
+    if (idade.estimated) { nunca++; return; }
+    const i = SEDIMENT_BUCKETS.findIndex(b => idade.days <= b.max);
+    contas[i < 0 ? SEDIMENT_BUCKETS.length - 1 : i].value++;
+  });
+  if (!total) return metricEmpty(t("metric_no_stale"));
+  const itens = contas.filter(c => c.value);
+  if (nunca) itens.push({ label: t("sediment_never"), value: nunca, cls: "indigo" });
+  return metricBars(itens) + (nunca
+    ? `<p class="metricNote">${esc(tf("metric_sediment_fossil", nunca, total,
+      Math.round(nunca / total * 100)))}</p>`
+    : "");
+}
+
+// este período contra a tua própria mediana (/api/report/compare)
+const COMPARE_FIELDS = [
+  { key: "pushes", label: "compare_pushes" },
+  { key: "todo_done", label: "compare_done" },
+  { key: "timer_ms", label: "compare_time", time: true },
+  { key: "team_changes", label: "compare_team" },
+];
+
+function metricsCompareHtml() {
+  if (!metricsCompare) return metricEmpty(t("loading"));
+  const { current, typical, delta_pct: delta, windows } = metricsCompare;
+  if (!windows) return metricEmpty(t("metric_compare_none"));
+  const tiles = COMPARE_FIELDS.map(f => {
+    const agora = +current[f.key] || 0;
+    const antes = +typical[f.key] || 0;
+    const pct = delta[f.key];
+    const valor = f.time ? formatTodoElapsed(agora) : String(agora);
+    // a seta é sobre a distância ao costume, não sobre bem ou mal: fechar menos
+    // numa semana de reuniões não é um defeito, é uma semana de reuniões
+    const seta = pct == null ? "" : pct > 9 ? "▲" : pct < -9 ? "▼" : "";
+    const nota = pct == null ? ""
+      : Math.abs(pct) <= 9 ? t("compare_usual")
+        : `${seta} ${Math.abs(pct)}% ${t("compare_typical")} (${f.time ? formatTodoElapsed(antes) : antes})`;
+    return { value: valor, label: `${t(f.label)}${nota ? ` · ${nota}` : ""}` };
+  });
+  return metricTiles(tiles) + (metricsCompare.thin
+    ? `<p class="metricNote">${esc(t("metric_compare_thin"))}</p>` : "");
+}
+
+// ---------- antes da reunião ----------
+// O período que nenhum seletor de datas sabe pedir: "desde a última vez que
+// falámos". A âncora só se move quando alguém carrega em Marcar (ver
+// report.set_meeting_anchor) — abrir o relatório não a mexe, senão o primeiro
+// clique gastava o período que se queria ler.
+let meetingText = "";
+
+async function openMeetingReport() {
+  $("reportOverlay").classList.remove("hidden");
+  $("reportMeetingMark").classList.remove("hidden");
+  $("reportTitle").textContent = t("meeting_title");
+  $("reportBody").textContent = t("loading");
+  weekReportText = "";
+  meetingText = "";
+  try {
+    const res = await fetch(`/api/report/meeting?lang=${LANG}`);
+    const out = await res.json();
+    const m = out.meeting || {};
+    const cabeca = m.first_time ? t("meeting_first")
+      : tf("meeting_since", String(m.anchor || "").replace("T", " ").slice(0, 16), m.days);
+    const abertos = [];
+    if ((m.overdue_waits || []).length)
+      abertos.push(`- ${tf("meeting_overdue", m.overdue_waits.length)}`);
+    if ((m.overwritten || []).length)
+      abertos.push(`- ${tf("meeting_overwritten", m.overwritten.length)}`);
+    meetingText = [cabeca, "", out.markdown || t("report_empty"),
+      abertos.length ? `\n## ${t("meeting_open")}\n${abertos.join("\n")}` : ""]
+      .join("\n").trim();
+    weekReportText = meetingText;   // o Copiar é o mesmo botão
+    $("reportBody").textContent = meetingText;
+  } catch (e) {
+    $("reportBody").textContent = t("err_server");
+  }
+}
+
+async function markMeeting() {
+  try {
+    const res = await fetch("/api/report/meeting/anchor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const out = await res.json();
+    if (!out.ok) { toast(out.error || t("err_server"), "bad"); return; }
+    toast(t("meeting_marked"), "ok");
+  } catch (e) {
+    toast(t("err_server"), "bad");
+  }
+}
+
 // ---------- relatório do período e do dia ----------
 let weekReportText = "";
 
@@ -890,6 +1075,7 @@ let weekReportText = "";
 // é o botão "O meu dia", para o ponto de situação do fim do dia
 async function openWeekReport(dia) {
   $("reportOverlay").classList.remove("hidden");
+  $("reportMeetingMark").classList.add("hidden");
   $("reportTitle").textContent = t(dia ? "report_title_day" : "report_title");
   $("reportBody").textContent = t("loading");
   weekReportText = "";
@@ -949,6 +1135,10 @@ function applyInsightsLang() {
   $("metricsToInput").title = t("t_metric_to");
   $("metricsReportBtn").textContent = t("btn_week_report");
   $("metricsReportBtn").title = t("t_week_report");
+  $("metricsMeetingBtn").textContent = t("btn_meeting");
+  $("metricsMeetingBtn").title = t("t_meeting");
+  $("reportMeetingMark").textContent = t("meeting_mark");
+  $("reportMeetingMark").title = t("t_meeting_mark");
   $("metricsDayReportBtn").textContent = t("btn_day_report");
   $("metricsDayReportBtn").title = t("t_day_report");
   $("metricsView").setAttribute("aria-label", t("tab_home"));
@@ -1046,6 +1236,8 @@ $("metricsBody").addEventListener("input", e => {
 $("metricsExportBtn").addEventListener("click", () => openExportPop($("metricsExportBtn")));
 $("reportSave").addEventListener("click", () => exportMetrics("report"));
 $("metricsReportBtn").addEventListener("click", () => openWeekReport(false));
+$("metricsMeetingBtn").addEventListener("click", openMeetingReport);
+$("reportMeetingMark").addEventListener("click", markMeeting);
 $("metricsDayReportBtn").addEventListener("click", () => openWeekReport(true));
 $("reportClose").addEventListener("click", closeWeekReport);
 $("reportCopy").addEventListener("click", copyWeekReport);

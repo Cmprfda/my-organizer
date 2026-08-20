@@ -149,6 +149,8 @@
                 <button class="secondary hidden" id="compoundCatBtn"></button>
                 <button class="secondary hidden" id="viewToggle">Vista completa</button>
                 <button class="secondary" id="toggleAll">Ver tudo</button>
+                <button class="secondary hidden" id="asOfBtn"
+                  title="Ver a folha como estava numa data passada, ou o que mudou desde ela">&#8987; Naquele dia</button>
                 <button class="secondary hidden" id="bulkStatusBtn"
                   title="Mudar o estado de todas as tarefas à vista de uma vez">&#8649; Estado em massa</button>
                 <button class="secondary hidden" id="clearLocals"
@@ -457,6 +459,8 @@
                 <button type="button" id="metricsExportBtn" class="secondary"
                   title="Guardar este período num ficheiro">&#10515; Exportar</button>
                 <button type="button" id="metricsDayReportBtn" class="secondary">O meu dia</button>
+                <button type="button" id="metricsMeetingBtn" class="secondary"
+                  title="O que mudou desde a última vez que carregaste neste botão">Antes da reunião</button>
                 <button type="button" id="metricsReportBtn"
                   title="Resumo do período escolhido ao lado, pronto a copiar">O meu período</button>
               </div>
@@ -619,6 +623,14 @@
                   <span id="notifyDesktopHint">Mostra o aviso ao lado do rel&oacute;gio quando a
                     janela da app est&aacute; em segundo plano.</span></label>
               </div>
+              <div class="setNote">
+                <span class="setNoteLbl" id="notifyToastLbl">Avisos do Windows (app fechada)</span>
+                <label class="setCheck"><input type="checkbox" id="notifyToastChk">
+                  <span id="notifyToastHint"></span></label>
+                <div class="setRow">
+                  <button type="button" class="mini" id="notifyToastTestBtn">Testar</button>
+                </div>
+              </div>
               <div class="setNote" id="notifyHookBox">
                 <span class="setNoteLbl" id="notifyHookLbl">Webhook (Teams/Slack)</span>
                 <input type="url" id="notifyHookUrl" placeholder="https://….webhook.office.com/…">
@@ -657,6 +669,14 @@
                   <span id="teamShareHint"></span></label>
                 <span id="teamShareState"></span>
               </div>
+              <div class="setNote">
+                <span class="setNoteLbl" id="teamCapsuleLbl">Kit de chegada</span>
+                <span id="teamCapsuleHint" class="setHint"></span>
+                <div class="setRow">
+                  <button type="button" id="teamCapsulePub" class="secondary">Publicar o meu kit</button>
+                  <button type="button" id="teamCapsuleGet" class="secondary">Trazer um kit&hellip;</button>
+                </div>
+              </div>
             </section>
 
             <section class="setCard" id="setCardBackup">
@@ -679,6 +699,16 @@
                 <button type="button" class="mini" id="appUpdateBtn">Atualizar app</button>
                 <button type="button" class="mini" id="changelogBtn">Novidades</button>
                 <button type="button" class="mini" id="shareAppBtn">↗</button>
+              </div>
+              <!-- duas páginas à parte da app, para ficarem abertas noutro sítio:
+                   a montra num segundo ecrã e o comando no telemóvel -->
+              <div class="setNote">
+                <span class="setNoteLbl" id="pagesLbl">Outras janelas</span>
+                <span id="pagesHint" class="setHint"></span>
+                <div class="setRow">
+                  <a class="mini" id="montraLink" href="/montra" target="_blank" rel="noopener">Montra</a>
+                  <a class="mini" id="remoteLink" href="/remote" target="_blank" rel="noopener">Comando</a>
+                </div>
               </div>
             </section>
           </div>
@@ -906,10 +936,44 @@
       <div class="helpHead">
         <strong id="reportTitle">O meu período</strong>
         <button type="button" class="mini" id="reportCopy">Copiar</button>
+        <button type="button" class="mini hidden" id="reportMeetingMark"
+          title="A próxima vez conta a partir de agora">Marcar esta reunião</button>
         <button type="button" class="mini" id="reportSave" title="Guardar num ficheiro .md">&#10515; Guardar</button>
         <button type="button" class="ccr-x" id="reportClose" title="Fechar">✕</button>
       </div>
       <pre id="reportBody" class="reportBody"></pre>
+    </div>
+  </div>
+
+  <!-- A folha naquele dia (ver history.js): o retrato é reconstruído ao
+       contrário a partir do presente, por isso é uma vista SÓ DE LEITURA — e
+       diz-se lá dentro até onde o histórico chega. -->
+  <div id="asOfOverlay" class="helpOverlay hidden" role="dialog" aria-modal="true"
+    aria-label="A folha naquele dia">
+    <div class="helpCard asOfCard">
+      <div class="helpHead">
+        <strong id="asOfTitle">A folha naquele dia</strong>
+        <button type="button" class="ccr-x" id="asOfClose" title="Fechar">&#10005;</button>
+      </div>
+      <div class="asOfBody">
+        <div class="controls">
+          <div class="field">
+            <label for="asOfDate">Data</label>
+            <input type="date" id="asOfDate" class="dateInput">
+          </div>
+          <div class="field">
+            <label for="asOfMode">Ver</label>
+            <select id="asOfMode">
+              <option value="diff">Só o que mudou desde então</option>
+              <option value="rows">A folha como estava</option>
+            </select>
+          </div>
+        </div>
+        <p class="asOfNote" id="asOfNote"></p>
+        <div class="asOfScroll">
+          <table class="asOfTable"><tbody id="asOfBodyRows"></tbody></table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1011,6 +1075,7 @@
     <form class="chatBar" id="chatForm" autocomplete="off">
       <input type="text" id="chatInput" autocomplete="off" spellcheck="false"
         placeholder="Pergunta sobre o que está aberto…">
+      <button type="button" id="chatMic" class="chatMic hidden" title="Ditar">&#127908;</button>
       <button type="submit" id="chatSend" title="Enviar">&#10148;</button>
     </form>
   </div>

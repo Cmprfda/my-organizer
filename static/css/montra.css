@@ -1,0 +1,144 @@
+/* A montra (montra.html): números para ler a dois metros.
+
+   Tudo com as variáveis do tema (theme.css), como o resto da app — nenhuma cor
+   escrita à mão, para o claro/escuro continuar a valer sozinho. O tamanho das
+   letras vem de `vw`/`vh` e não de pixels: a mesma página serve um monitor de 27
+   polegadas e um tablet velho, e em nenhum dos dois se lê de perto. */
+
+.montraBody {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+  overflow: hidden;
+}
+
+.montra {
+  display: flex;
+  flex-direction: column;
+  gap: 2vh;
+  height: 100vh;
+  padding: 3vh 3vw;
+  box-sizing: border-box;
+}
+
+.montraHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2vw;
+}
+
+.montraHead h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 2.4vw;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.montraWhen {
+  color: var(--muted);
+  font-size: 1.4vw;
+  font-variant-numeric: tabular-nums;
+}
+
+.montraTiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2vw;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.montraTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1vh;
+  border: 1px solid var(--border);
+  border-radius: var(--ios-radius-card);
+  background: var(--surface);
+}
+
+/* o vermelho é só para o que está à espera de alguém: um número grande não diz
+   por si se é bom ou mau, e pintar tudo tirava o sentido à cor */
+.montraTile.alerta {
+  border-color: var(--accent);
+}
+
+.montraTile.alerta .montraValue {
+  color: var(--accent);
+}
+
+.montraValue {
+  font-family: var(--font-display);
+  font-size: 9vw;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.montraLabel {
+  color: var(--muted);
+  font-size: 1.5vw;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.montraTicker {
+  flex: 0 0 auto;
+  max-height: 34vh;
+  overflow: hidden;
+}
+
+.montraTicker h2 {
+  margin: 0 0 1vh;
+  color: var(--muted);
+  font-size: 1.2vw;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.montraTicker ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vh;
+}
+
+.montraTicker li {
+  display: grid;
+  grid-template-columns: 7ch 1fr 1fr;
+  gap: 1.5vw;
+  align-items: baseline;
+  font-size: 1.3vw;
+}
+
+.montraTicker .mWhen {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.montraTicker .mVal {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.montraTicker .mQuiet {
+  display: block;
+  color: var(--muted);
+}
+
+/* sem servidor: a montra diz-lho em vez de deixar números velhos no ecrã a
+   parecerem verdade */
+.montraOff .montraTile,
+.montraOff .montraTicker {
+  opacity: 0.35;
+}

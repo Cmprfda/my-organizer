@@ -136,6 +136,8 @@ const customFilterActive = new Set();  // ids dos filtros personalizados ligados
 let staleOnly = false;
 // só as tarefas à espera de alguém cujo prazo já passou (ver waiting.js)
 let chaseOnly = false;
+// só as linhas que voltaram atrás (ver bounceChipHtml, history.js)
+let bouncedOnly = false;
 let searchTerms = [];              // termos de pesquisa fixados (Enter na caixa)
 // como combinar os termos: "or" = qualquer um deles, "and" = todos
 // por omissão "and" — cada termo novo estreita a pesquisa em vez de a alargar

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Comando — My Organizer</title>
+  <!--
+    O comando: o telemóvel como COMANDO e não como cópia pequena da app. Na
+    bancada de testes ninguém quer o quadro todo num ecrã de 6 polegadas — quer
+    três botões gordos para o item que está em curso. E cada toque também manda a
+    janela do computador saltar para aquele item (ver /api/remote), para o ecrã
+    grande seguir as mãos.
+  -->
+  <link rel="icon" href="/static/img/app-icon-192.png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/remote.css">
+</head>
+<body class="remoteBody">
+  <main class="remote">
+    <header class="remoteHead">
+      <span class="remoteTitle" id="remoteTitle">Comando</span>
+      <span class="remoteState" id="remoteState"></span>
+    </header>
+
+    <section class="remoteCard" id="remoteCard">
+      <span class="remoteItem" id="remoteItem">a ler…</span>
+      <span class="remoteTimer" id="remoteTimer"></span>
+    </section>
+
+    <section class="remoteBtns">
+      <button type="button" class="remoteBtn big" id="btnTimer">▶ / ❚❚</button>
+      <button type="button" class="remoteBtn" id="btnDone">✓ feito, o seguinte</button>
+      <button type="button" class="remoteBtn" id="btnStep">✓ próximo passo</button>
+      <button type="button" class="remoteBtn ghost" id="btnShow">↗ mostrar no PC</button>
+    </section>
+
+    <ul class="remoteList" id="remoteList"></ul>
+  </main>
+  <script src="/static/js/remote.js"></script>
+</body>
+</html>
