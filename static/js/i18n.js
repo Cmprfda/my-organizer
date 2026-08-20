@@ -1038,8 +1038,8 @@ const TR = {
   metric_clock: ["Quanto tempo em cada estado", "Time spent in each status"],
   metric_clock_note: ["Medido nas alterações já gravadas: dois eventos seguidos da mesma linha delimitam o tempo que ela passou no estado do meio. O estado atual de cada linha não conta (ainda está a correr).",
     "Measured on the changes already recorded: two consecutive events on the same row bound the time it spent in the status between them. Each row's current status does not count (it is still running)."],
-  metric_clock_days: ["{0} dias (mediana de {1})", "{0} days (median of {1})"],
-  metric_clock_thin: ["{0} dias — por {1} caso(s) só", "{0} days — from just {1} case(s)"],
+  metric_clock_days: ["{0} (mediana de {1})", "{0} (median of {1})"],
+  metric_clock_thin: ["{0} — por {1} caso(s) só", "{0} — from just {1} case(s)"],
   // sedimento: a idade do que não está acabado
   metric_sediment: ["Há quanto tempo não mexem", "How long since they moved"],
   metric_sediment_note: ["Cada linha que ainda não está acabada entra num grupo, conforme a última vez que alguém lhe mexeu.",

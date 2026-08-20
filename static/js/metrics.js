@@ -938,18 +938,20 @@ function metricsClockHtml() {
       `<li class="metricListRow">
         <span class="badge ${statusClass(l.value)}">${esc(l.value)}</span>
         <span class="metricListAge">${esc(l.thin
-          ? tf("metric_clock_thin", metricsDays1(l.median_days), l.n)
-          : tf("metric_clock_days", metricsDays1(l.median_days), l.n))}</span>
+          ? tf("metric_clock_thin", metricsDur(l.median_days), l.n)
+          : tf("metric_clock_days", metricsDur(l.median_days), l.n))}</span>
       </li>`).join("") + `</ul>`;
   }).join("");
 }
 
-// uma casa decimal, e nunca "0.0 dias" para meia hora: abaixo de um dia diz-se
-// em horas, que é como se fala do tempo de um estado curto
-function metricsDays1(dias) {
+// uma duração já com a unidade dentro (quem chama não acrescenta "dias"): uma
+// casa decimal, e nunca "0.0 dias" para meia hora — abaixo de um dia diz-se em
+// horas, que é como se fala do tempo de um estado curto
+function metricsDur(dias) {
   const n = +dias || 0;
   if (n && n < 1) return `${Math.max(1, Math.round(n * 24))}h`;
-  return String(Math.round(n * 10) / 10);
+  const arredondado = Math.round(n * 10) / 10;
+  return arredondado === 1 ? t("age_day") : tf("age_days", arredondado);
 }
 
 // a idade do que não está acabado, em camadas (conta local: as idades já estão
