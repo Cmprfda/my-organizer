@@ -923,6 +923,7 @@ def graph_forget_item():
     procurar o livro (usado no "Atualizar", que relê tudo de raiz)."""
     global _graph_item
     _graph_item = None
+    _MODIFIED_CACHE.clear()
 
 
 def graph_find_in_site(cfg):
@@ -1199,21 +1200,41 @@ def graph_close_session(session, drive_id="", item_id=""):
         pass
 
 
+# A versão do livro, guardada por uns segundos. Um só /api/tasks da fonte web
+# pergunta-a duas vezes (uma para saber se a cache crua ainda serve, outra para
+# a resposta levar a data), e cada pergunta é uma ida à rede. O prazo é curto de
+# propósito: fica muito abaixo do ciclo de 20 s do /api/modified, por isso uma
+# gravação de outra pessoa continua a ser vista à mesma.
+_MODIFIED_TTL = 3.0
+_MODIFIED_CACHE = {}   # (drive_id, item_id) -> (momento, resultado)
+
+
+def graph_forget_modified():
+    """Esquece a versão guardada: a próxima pergunta vai mesmo à rede."""
+    _MODIFIED_CACHE.clear()
+
+
 def graph_modified(drive_id="", item_id=""):
     """(data para mostrar, marca de versão). A marca muda a cada gravação do
     livro — é o que permite à interface recarregar sozinha sem ler a folha."""
     if not (drive_id and item_id):
         drive_id, item_id = graph_item()
     drive, item = drive_id, item_id
+    guardado = _MODIFIED_CACHE.get((drive, item))
+    if guardado and time.time() - guardado[0] < _MODIFIED_TTL:
+        return guardado[1]
     info = graph_api(f"/drives/{drive}/items/{item}"
                      "?$select=lastModifiedDateTime,eTag")
     stamp = info.get("lastModifiedDateTime", "")
     tag = f"{stamp}|{info.get('eTag', '')}"
     try:
         utc = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        return utc.astimezone().strftime("%d/%m/%Y %H:%M"), tag
+        resultado = (utc.astimezone().strftime("%d/%m/%Y %H:%M"), tag)
     except ValueError:
-        return stamp, tag
+        resultado = (stamp, tag)
+    # só se guarda o que correu bem: um erro de rede tem de voltar a tentar
+    _MODIFIED_CACHE[(drive, item)] = (time.time(), resultado)
+    return resultado
 
 
 def col_letter(index):
@@ -1297,6 +1318,8 @@ def graph_write_status(sheet, xlrow, xlcol, fncol, fn, value, drive_id="", item_
                                drive_id=drive_id, item_id=item_id)
             except GraphError as exc:
                 log_event(f"não consegui ligar o moldar texto em {target} ({exc})")
+        # acabámos de mudar o livro: a versão guardada já não vale
+        _MODIFIED_CACHE.clear()
         return True, "OK (OneDrive)"
     except GraphError as exc:
         return False, str(exc)

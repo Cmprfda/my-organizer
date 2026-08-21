@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from datetime import datetime
 
 import openpyxl
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 from . import config
 from . import events
@@ -117,7 +118,12 @@ def admin_statuses(path):
 
 
 
-EXCEL_WRITE_PS1 = r"""
+# O esqueleto comum a todas as idas ao Excel por COM: agarrar a instância já
+# aberta (ou abrir uma invisível só para isto), fazer o trabalho, gravar uma vez
+# e fechar o que abrimos. Só o meio muda de tarefa para tarefa — antes estava
+# copiado em cada script, e qualquer correção à forma de agarrar o livro tinha
+# de ser feita em dois sítios.
+_PS_SKELETON = r"""
 param([string]$ParamsPath)
 $ErrorActionPreference = 'Stop'
 $own = $null
@@ -134,18 +140,7 @@ try {
     $own.DisplayAlerts = $false
     $wb = $own.Workbooks.Open($p.path)
   }
-  $ws = $wb.Worksheets.Item($p.sheet)
-  $fnCell = [string]$ws.Cells($p.xlrow, $p.fncol).Value2
-  $a = ($fnCell -replace '\s+', ' ').Trim()
-  $b = ([string]$p.fn -replace '\s+', ' ').Trim()
-  if ($a -ne $b) {
-    throw "a linha $($p.xlrow) da folha mudou entretanto (esperava '$b', encontrei '$a') - atualiza a app e tenta de novo"
-  }
-  $cell = $ws.Cells($p.xlrow, $p.xlcol)
-  $cell.Value2 = [string]$p.value
-  # texto com mudanças de linha só se lê na folha com "moldar texto" ligado:
-  # sem isto o Excel guardava as linhas mas mostrava-as todas colada numa só
-  if (([string]$p.value).Contains([string][char]10)) { $cell.WrapText = $true }
+__BODY__
   $wb.Save()
   if ($own) { $wb.Close($true); $own.Quit() }
   Write-Output 'OK'
@@ -156,6 +151,84 @@ try {
   exit 1
 }
 """
+
+_WRITE_BODY = r"""  $ws = $wb.Worksheets.Item($p.sheet)
+  $fnCell = [string]$ws.Cells($p.xlrow, $p.fncol).Value2
+  $a = ($fnCell -replace '\s+', ' ').Trim()
+  $b = ([string]$p.fn -replace '\s+', ' ').Trim()
+  if ($a -ne $b) {
+    throw "a linha $($p.xlrow) da folha mudou entretanto (esperava '$b', encontrei '$a') - atualiza a app e tenta de novo"
+  }
+  $cell = $ws.Cells($p.xlrow, $p.xlcol)
+  $cell.Value2 = [string]$p.value
+  # texto com mudanças de linha só se lê na folha com "moldar texto" ligado:
+  # sem isto o Excel guardava as linhas mas mostrava-as todas colada numa só
+  if (([string]$p.value).Contains([string][char]10)) { $cell.WrapText = $true }"""
+
+EXCEL_WRITE_PS1 = _PS_SKELETON.replace("__BODY__", _WRITE_BODY)
+
+# O Push em lote: todas as células de uma folha numa só ida ao Excel, com um
+# Save no fim. A guarda de cada linha continua a ser verificada AQUI, célula a
+# célula e contra a folha ao vivo, como quando cada célula levava o seu próprio
+# PowerShell — o que desaparece é o processo e o Save por célula, não a guarda.
+# Cada célula diz o que lhe aconteceu ("OK <i>" / "ERRO <i>: ..."), para que uma
+# falhar não arraste as outras.
+_BATCH_BODY = r"""  $ws = $wb.Worksheets.Item($p.sheet)
+  foreach ($r in $p.rows) {
+    $guard = [string]$r.guard
+    $fncol = [int]$r.fncol
+    foreach ($c in $r.cells) {
+      try {
+        $fnCell = [string]$ws.Cells($r.xlrow, $fncol).Value2
+        $a = ($fnCell -replace '\s+', ' ').Trim()
+        $b = ($guard -replace '\s+', ' ').Trim()
+        if ($a -ne $b) {
+          throw "a linha $($r.xlrow) da folha mudou entretanto (esperava '$b', encontrei '$a') - atualiza a app e tenta de novo"
+        }
+        $cell = $ws.Cells($r.xlrow, [int]$c.xlcol)
+        $cell.Value2 = [string]$c.value
+        if (([string]$c.value).Contains([string][char]10)) { $cell.WrapText = $true }
+        Write-Output ('OK ' + $c.i)
+        if ([int]$c.xlcol -eq $fncol) { $guard = [string]$c.value }
+      } catch {
+        Write-Output ('ERRO ' + $c.i + ': ' + $_.Exception.Message)
+      }
+    }
+  }"""
+
+EXCEL_BATCH_PS1 = _PS_SKELETON.replace("__BODY__", _BATCH_BODY)
+
+
+def _run_excel_ps(script, params, timeout=120):
+    """Corre um script COM (gerado de _PS_SKELETON) num PowerShell próprio.
+
+    Devolve (returncode, stdout limpo); o returncode vem None quando o processo
+    nem chegou a responder (demorou demasiado, ou nem arrancou), e nesse caso a
+    mensagem vem no lugar do stdout. Fica na fila do `com_wait`, como todas as
+    escritas: há um só Excel na máquina.
+    """
+    with com_wait(params.get("basename", "")), tempfile.TemporaryDirectory() as td:
+        params_path = os.path.join(td, "params.json")
+        ps1_path = os.path.join(td, "script.ps1")
+        with open(params_path, "w", encoding="utf-8") as f:
+            json.dump(params, f, ensure_ascii=False)
+        # UTF-8 COM marca (BOM): é a única forma de o PowerShell 5.1 ler bem um
+        # .ps1 acentuado — sem a marca trata o ficheiro como ANSI. Ficava em
+        # "ascii", e como os scripts têm comentários em português a escrita
+        # rebentava (UnicodeEncodeError) antes de o PowerShell sequer arrancar,
+        # levando com ela qualquer escrita num livro local.
+        with open(ps1_path, "w", encoding="utf-8-sig") as f:
+            f.write(script)
+        try:
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", ps1_path, params_path],
+                capture_output=True, timeout=timeout)
+            return proc.returncode, proc.stdout.decode("utf-8", errors="replace").strip()
+        except subprocess.TimeoutExpired:
+            return None, "o Excel demorou demasiado a responder"
+        except Exception as exc:
+            return None, str(exc)
 
 
 def write_status_to_excel(path, sheet, xlrow, xlcol, fncol, fn, value):
@@ -175,24 +248,74 @@ def write_status_to_excel(path, sheet, xlrow, xlcol, fncol, fn, value):
     params = {"path": path, "basename": os.path.basename(path), "sheet": sheet,
               "xlrow": int(xlrow), "xlcol": int(xlcol), "fncol": int(fncol),
               "fn": fn, "value": value}
-    with com_wait(os.path.basename(path)), tempfile.TemporaryDirectory() as td:
-        params_path = os.path.join(td, "params.json")
-        ps1_path = os.path.join(td, "write.ps1")
-        with open(params_path, "w", encoding="utf-8") as f:
-            json.dump(params, f, ensure_ascii=False)
-        with open(ps1_path, "w", encoding="ascii") as f:
-            f.write(EXCEL_WRITE_PS1)
-        try:
-            proc = subprocess.run(
-                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-                 "-File", ps1_path, params_path],
-                capture_output=True, timeout=120)
-            out = proc.stdout.decode("utf-8", errors="replace").strip()
-            return proc.returncode == 0, out or "sem resposta do Excel"
-        except subprocess.TimeoutExpired:
-            return False, "o Excel demorou demasiado a responder"
-        except Exception as exc:
-            return False, str(exc)
+    rc, out = _run_excel_ps(EXCEL_WRITE_PS1, params)
+    return rc == 0, out or "sem resposta do Excel"
+
+
+def write_cells_to_excel(path, sheet, row_groups):
+    """Escreve várias células de uma folha numa só ida ao Excel: um PowerShell,
+    a guarda de cada célula verificada dentro do script, um único Save no fim.
+
+    row_groups: [{"xlrow": int, "fncol": int, "guard": str,
+                  "cells": [{"i": int, "xlcol": int, "value": str}, ...]}, ...]
+
+    Devolve {i: (ok, mensagem)} — o `i` de cada célula é o que veio no pedido,
+    para quem chamou saber exatamente qual passou e qual falhou.
+    """
+    for grupo in row_groups:
+        for c in grupo.get("cells", []):
+            # dentro de uma célula o Excel muda de linha com \n; um \r a
+            # acompanhar aparece na folha como um quadradinho no meio do texto
+            if isinstance(c.get("value"), str):
+                c["value"] = c["value"].replace("\r\n", "\n").replace("\r", "\n")
+
+    n_cells = sum(len(g.get("cells", [])) for g in row_groups)
+    if not n_cells:
+        return {}
+
+    if is_graph_path(path):
+        # fonte web: o Excel/COM não se aplica, escreve-se célula a célula pela
+        # API do Excel, mantendo aqui a mesma ordem da guarda que o script faz
+        drive_id, item_id = graph_ids_from_path(path)
+        results = {}
+        for grupo in row_groups:
+            guard = grupo["guard"]
+            fncol = int(grupo["fncol"])
+            for c in grupo.get("cells", []):
+                ok, msg = graph_write_status(sheet, grupo["xlrow"], int(c["xlcol"]),
+                                             fncol, guard, c["value"],
+                                             drive_id, item_id)
+                results[c["i"]] = (ok, msg)
+                if ok and int(c["xlcol"]) == fncol:
+                    guard = str(c["value"])
+        return results
+
+    params = {"path": path, "basename": os.path.basename(path), "sheet": sheet,
+              "rows": row_groups}
+    # o Excel a abrir e a gravar já custava até 2 min por célula; em lote dá-se
+    # folga por célula escrita, mas com um teto para não ficar aqui pendurado
+    rc, out = _run_excel_ps(EXCEL_BATCH_PS1, params,
+                            timeout=min(600, 120 + 10 * n_cells))
+
+    results = {}
+    if rc == 0:
+        for linha in (out or "").splitlines():
+            linha = linha.strip()
+            m = re.match(r"^OK (\d+)$", linha)
+            if m:
+                results[int(m.group(1))] = (True, "OK")
+                continue
+            m = re.match(r"^ERRO (\d+): (.*)$", linha, re.S)
+            if m:
+                results[int(m.group(1))] = (False, "ERRO: " + m.group(2))
+    for grupo in row_groups:
+        for c in grupo.get("cells", []):
+            if c["i"] not in results:
+                # rc != 0 (o livro nem abriu, ou o Save falhou) ou o processo
+                # nem respondeu: nada ficou gravado, nem as células que já
+                # tinham dito OK — as alterações pendentes têm de sobreviver
+                results[c["i"]] = (False, out or "sem resposta do Excel")
+    return results
 
 
 def _parse_cell_ref(cell):
@@ -200,21 +323,6 @@ def _parse_cell_ref(cell):
     if not m:
         raise ValueError(f"referência de célula inválida: {cell!r}")
     return m.group(1).upper(), int(m.group(2))
-
-
-def _col_letters_to_num(letters):
-    n = 0
-    for ch in letters:
-        n = n * 26 + (ord(ch) - ord("A") + 1)
-    return n
-
-
-def _num_to_col_letters(n):
-    letters = ""
-    while n > 0:
-        n, r = divmod(n - 1, 26)
-        letters = chr(65 + r) + letters
-    return letters
 
 
 def _options_list_range(sheet, cell, orientation, size):
@@ -230,45 +338,20 @@ def _options_list_range(sheet, cell, orientation, size):
     if orientation == "vertical":
         end_col, end_row = col, row + size - 1
     elif orientation == "horizontal":
-        end_col, end_row = _num_to_col_letters(_col_letters_to_num(col) + size - 1), row
+        end_col, end_row = get_column_letter(column_index_from_string(col) + size - 1), row
     else:
         raise ValueError("orientação inválida (usa 'vertical' ou 'horizontal')")
     return f"'{sheet}'!${col}${row}:${end_col}${end_row}"
 
 
-SET_VALIDATION_PS1 = r"""
-param([string]$ParamsPath)
-$ErrorActionPreference = 'Stop'
-$own = $null
-try {
-  $p = Get-Content -Raw -Path $ParamsPath -Encoding UTF8 | ConvertFrom-Json
-  $wb = $null
-  try { $x = [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application') } catch { $x = $null }
-  if ($x) {
-    $wb = @($x.Workbooks) | Where-Object { $_.Name -eq $p.basename } | Select-Object -First 1
-  }
-  if (-not $wb) {
-    $own = New-Object -ComObject Excel.Application
-    $own.Visible = $false
-    $own.DisplayAlerts = $false
-    $wb = $own.Workbooks.Open($p.path)
-  }
-  $ws = $wb.Worksheets.Item($p.targetSheet)
+_VALIDATION_BODY = r"""  $ws = $wb.Worksheets.Item($p.targetSheet)
   $cell = $ws.Range($p.targetCell)
   $cell.Validation.Delete()
   $cell.Validation.Add(3, 1, 1, [string]$p.formula, [string]::Empty)
   $cell.Validation.IgnoreBlank = $true
-  $cell.Validation.InCellDropdown = $true
-  $wb.Save()
-  if ($own) { $wb.Close($true); $own.Quit() }
-  Write-Output 'OK'
-  exit 0
-} catch {
-  Write-Output ('ERRO: ' + $_.Exception.Message)
-  if ($own) { try { $wb.Close($false) } catch {}; try { $own.Quit() } catch {} }
-  exit 1
-}
-"""
+  $cell.Validation.InCellDropdown = $true"""
+
+SET_VALIDATION_PS1 = _PS_SKELETON.replace("__BODY__", _VALIDATION_BODY)
 
 
 def _run_set_validation(path, target_sheet, target_cell, formula):
@@ -277,24 +360,8 @@ def _run_set_validation(path, target_sheet, target_cell, formula):
     set_data_validation_list e set_data_validation_fixed_list."""
     params = {"path": path, "basename": os.path.basename(path), "targetSheet": target_sheet,
               "targetCell": target_cell, "formula": formula}
-    with com_wait(os.path.basename(path)), tempfile.TemporaryDirectory() as td:
-        params_path = os.path.join(td, "params.json")
-        ps1_path = os.path.join(td, "validation.ps1")
-        with open(params_path, "w", encoding="utf-8") as f:
-            json.dump(params, f, ensure_ascii=False)
-        with open(ps1_path, "w", encoding="ascii") as f:
-            f.write(SET_VALIDATION_PS1)
-        try:
-            proc = subprocess.run(
-                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-                 "-File", ps1_path, params_path],
-                capture_output=True, timeout=120)
-            out = proc.stdout.decode("utf-8", errors="replace").strip()
-            return proc.returncode == 0, out or "sem resposta do Excel"
-        except subprocess.TimeoutExpired:
-            return False, "o Excel demorou demasiado a responder"
-        except Exception as exc:
-            return False, str(exc)
+    rc, out = _run_excel_ps(SET_VALIDATION_PS1, params)
+    return rc == 0, out or "sem resposta do Excel"
 
 
 def set_data_validation_list(path, target_sheet, target_cell, source_sheet, source_cell,
@@ -341,9 +408,16 @@ def set_data_validation_fixed_list(path, target_sheet, target_cell, values):
     return _run_set_validation(path, target_sheet, target_cell, formula)
 
 
-def locate_row(path, sheet_wanted, fn, todo):
-    """Localiza (xlrow, hidx) de uma tarefa na folha atual (ou na cache, se o
-    ficheiro estiver bloqueado). Devolve None se a linha não existir."""
+def load_sheet_snapshot(path, sheet_wanted):
+    """Lê a folha UMA vez (ou usa a última leitura crua, se o ficheiro estiver
+    bloqueado) e devolve (rows, hidx, header_index) para localizar linhas.
+    Devolve None se a folha não existir, não tiver cabeçalho, ou não tiver
+    coluna Function/TC.
+
+    É a metade de carregamento do antigo `locate_row`, separada para o Push
+    localizar TODAS as linhas com uma leitura só: antes relia o livro inteiro
+    (3,7 MB) por cada alteração pendente.
+    """
     raw_key = (path, normalize(sheet_wanted))
     try:
         if is_graph_path(path):
@@ -382,9 +456,17 @@ def locate_row(path, sheet_wanted, fn, todo):
         hidx[normalize(h)] = j
     if "function/tc" not in hidx:
         return None
+    return rows, hidx, header_index
+
+
+def locate_row_in(snapshot, fn, todo):
+    """(xlrow, hidx) da linha fn+todo dentro de um snapshot devolvido por
+    `load_sheet_snapshot`, ou None se não estiver lá."""
+    rows, hidx, header_index = snapshot
+    headers_len = len(rows[header_index])
     for i, row in enumerate(rows[header_index + 1:]):
         cells = [cell_to_text(v) for v in row]
-        cells += [""] * (len(headers) - len(cells))
+        cells += [""] * (headers_len - len(cells))
         fn_key = cells[hidx["function/tc"]]
         todo_key = cells[hidx["to do"]] if "to do" in hidx else ""
         if fn_key == fn and todo_key == todo:

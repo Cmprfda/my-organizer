@@ -1867,6 +1867,32 @@ $("todoBoard").addEventListener("dragleave", e => {
   }
 });
 
+// O tique dos 15 s só tem de fazer andar o relógio dos cronómetros a correr.
+// Desenhar o quadro inteiro para isso apagava o que estivesse a meio (texto
+// selecionado, a coluna onde se ia a passar o rato) e crescia com a lista toda.
+// Se o botão de algum cronómetro não estiver no ecrã (item movido, coluna
+// escondida), então a vista e os dados estão a discordar e aí sim vale a pena
+// redesenhar tudo.
+function tickTodoTimers() {
+  const aCorrer = todos.filter(it => it && it.timer_started != null && todoColOf(it) === "inprogress");
+  const botoes = [...document.querySelectorAll("[data-ttimer]")];
+  for (const it of aCorrer) {
+    const meus = botoes.filter(b => b.dataset.ttimer === String(it.id) && b.classList.contains("running"));
+    if (!meus.length) { renderTodo(); return; }
+    const corrido = todoLiveElapsed(it);
+    const texto = formatTodoElapsed(corrido);
+    const oraculo = todoTimerOracle(it, corrido);
+    for (const btn of meus) {
+      // o tempo é o último nó de texto do botão (ver todoTimerHtml); se a
+      // forma do botão mudar, mais vale voltar ao desenho completo
+      const ultimo = btn.lastChild;
+      if (!ultimo || ultimo.nodeType !== Node.TEXT_NODE) { renderTodo(); return; }
+      if (ultimo.nodeValue !== texto) ultimo.nodeValue = texto;
+      btn.classList.toggle("overTypical", oraculo.cls.includes("overTypical"));
+    }
+  }
+}
+
 setInterval(() => {
-  if ((currentView === "todo" || sideView === "todo") && !editorOpen && hasTodoRunningTimer()) renderTodo();
+  if ((currentView === "todo" || sideView === "todo") && !editorOpen && hasTodoRunningTimer()) tickTodoTimers();
 }, 15000);

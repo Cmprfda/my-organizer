@@ -18,9 +18,9 @@ from .config import (APP_VERSION, BASE_STATUSES, CANDIDATE_DIRS, DEFAULT_PERSON,
 from .statefile import read_json, write_json
 from .excel import (_ADMIN_CACHE, _RAW_CACHE, admin_statuses, close_excel_workbook,
                     detect_header_row, find_named_file, find_tracker_files,
-                    forget_files_cache, locate_row, pick_sheet,
-                    set_data_validation_fixed_list, set_data_validation_list,
-                    write_status_to_excel)
+                    forget_files_cache, load_sheet_snapshot, locate_row_in,
+                    pick_sheet, set_data_validation_fixed_list,
+                    set_data_validation_list, write_cells_to_excel)
 from .graph import (GRAPH_PATH, GraphError, current_book, graph_config, graph_forget_item,
                     graph_ids_from_path, graph_load_rows, graph_modified, graph_path_for,
                     graph_state, graph_state_public, has_book, is_graph_path)
@@ -69,18 +69,36 @@ def _snapshot_key(cache_key):
     return "||".join(str(p) for p in cache_key)
 
 
+# as impressões digitais do que está gravado no disco, semeadas de uma vez por
+# ficheiro. O caso normal — leitura igual à anterior, de dois em dois minutos por
+# cada janela aberta — sai por aqui sem reler o last_read.json inteiro (que
+# chega perto de 100 KB) só para comparar oito carateres. A chave é o ficheiro a
+# que o mapa se refere, para os testes (que trocam o LAST_READ_FILE) e a linha
+# de comandos não apanharem o mapa de outro.
+_LAST_READ_DIGESTS = (None, {})
+
+
+def _last_read_digests():
+    global _LAST_READ_DIGESTS
+    if _LAST_READ_DIGESTS[0] != LAST_READ_FILE:
+        semente = {k: v.get("digest") for k, v in _read_snapshots().items()
+                   if isinstance(v, dict) and v.get("digest")}
+        _LAST_READ_DIGESTS = (LAST_READ_FILE, semente)
+    return _LAST_READ_DIGESTS[1]
+
+
 def save_last_read(cache_key, result):
     """Grava o retrato desta leitura (só se ele mudou desde o último)."""
     if not isinstance(result, dict) or result.get("error") or not result.get("rows"):
         return
     chave = _snapshot_key(cache_key)
-    guardados = _read_snapshots()
-    anterior = guardados.get(chave)
+    digest = result.get("digest")
+    digests = _last_read_digests()
     # a impressão digital do conteúdo já é calculada para a vista: com ela, uma
     # leitura igual à anterior (o caso normal, a cada 2 minutos) não escreve nada
-    if isinstance(anterior, dict) and anterior.get("digest") \
-            and anterior.get("digest") == result.get("digest"):
+    if digest and digests.get(chave) == digest:
         return
+    guardados = _read_snapshots()
     retrato = {k: v for k, v in result.items() if k not in LAST_READ_SKIP}
     retrato["at"] = datetime.now().replace(microsecond=0).isoformat()
     try:
@@ -96,7 +114,12 @@ def save_last_read(cache_key, result):
         ordem = sorted(guardados, key=lambda k: str(guardados[k].get("at") or ""))
         for velho in ordem[:len(guardados) - LAST_READ_KEEP]:
             guardados.pop(velho, None)
+            digests.pop(velho, None)
     write_json(LAST_READ_FILE, guardados)
+    if digest:
+        digests[chave] = digest
+    else:
+        digests.pop(chave, None)
 
 
 def _read_snapshots():
@@ -114,7 +137,9 @@ def load_last_read(cache_key):
 
 def forget_last_read():
     """Esquece os retratos gravados (linha de comandos e testes)."""
+    global _LAST_READ_DIGESTS
     write_json(LAST_READ_FILE, {})
+    _LAST_READ_DIGESTS = (None, {})
 
 
 # marca de versão da fonte na altura em que cada entrada do _RAW_CACHE foi
@@ -288,7 +313,8 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     # livro mudar.
     stamp = _source_stamp(path)
     em_cache = _RAW_CACHE.get(raw_key)
-    if em_cache and stamp and _RAW_STAMP.get(raw_key) == stamp:
+    raw_hit = bool(em_cache and stamp and _RAW_STAMP.get(raw_key) == stamp)
+    if raw_hit:
         _, real_sheet, all_sheets, rows = em_cache
     else:
         try:
@@ -514,7 +540,14 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
     # retrato antigo do _RAW_CACHE — as linhas são as mesmas de propósito) e só
     # numa folha do tracker (numa folha genérica nenhuma destas colunas existe).
     # Nunca deixar o histórico rebentar uma leitura: é um extra, não o serviço.
-    if warning_ts is None and not generic:
+    #
+    # Com a marca da fonte igual à da cache (raw_hit) as linhas são as MESMAS
+    # que a leitura fresca que pôs a marca já anotou: voltar a abrir e comparar
+    # o history.json inteiro a cada pedido só para concluir "não mudou nada"
+    # custava o ficheiro todo por cada janela aberta, de dois em dois minutos.
+    # Depois de um Push o `forget_cache` limpa a marca, por isso a leitura
+    # seguinte é fresca e a escrita continua a ser atribuída à app.
+    if warning_ts is None and not raw_hit and not generic:
         try:
             record_read(path, real_sheet, history_rows)
         except Exception as exc:
@@ -869,6 +902,27 @@ def push_overrides(target):
     # linhas diferentes, ambas renomeadas para a mesma identidade neste mesmo
     # Push, fundam por engano as suas colunas pendentes numa só
     renamed_this_call = set()
+
+    # O Push faz-se em duas voltas. Na primeira junta-se tudo o que há para
+    # escrever — uma leitura da folha por aba, em vez de uma releitura do livro
+    # inteiro por cada alteração pendente — e na segunda arruma-se o resultado
+    # (histórico, renomeações, o que falhou). Pelo meio há uma só ida ao Excel
+    # por aba: antes era um PowerShell e uma gravação do livro POR CÉLULA, o que
+    # punha um envio de cinco linhas a demorar dezenas de segundos.
+    jobs = {}       # normalize(aba) -> (grafia da aba, [grupos de linha])
+    plano = []      # o que fazer com cada chave, na ordem original
+    preset = {}     # resultados já decididos sem ir ao Excel
+    snapshots = {}  # normalize(aba) -> leitura da folha (ou None)
+    seq = 0
+
+    def _juntar(sheet, grupo):
+        # a aba fica com a primeira grafia que aparecer: o Worksheets.Item do
+        # Excel não distingue maiúsculas de minúsculas
+        nsheet = normalize(sheet)
+        if nsheet not in jobs:
+            jobs[nsheet] = (sheet, [])
+        jobs[nsheet][1].append(grupo)
+
     for key in list(overrides.keys()):
         entry = overrides.get(key)
         if not isinstance(entry, dict):
@@ -889,7 +943,59 @@ def push_overrides(target):
             valor, base = entry.get("value", ""), entry.get("base", "")
             # a célula é a sua própria "guarda": só escreve se ainda tiver o
             # texto que foi lido quando a alteração local foi feita
-            ok, msg_text = write_status_to_excel(target, sheet, xlrow, xlcol, xlcol, base, valor)
+            _juntar(sheet, {"xlrow": xlrow, "fncol": xlcol, "guard": base,
+                            "cells": [{"i": seq, "xlcol": xlcol, "value": valor}]})
+            plano.append({"kind": "cellcat", "key": key, "entry": entry, "sheet": sheet,
+                          "xlrow": xlrow, "col0": col0, "xlcol": xlcol,
+                          "valor": valor, "i": seq})
+            seq += 1
+            continue
+        wb_id, sheet, fn, todo = _split_key(key)
+        # chave antiga (sem livro): é do tempo em que só havia um, vai para o
+        # destino pedido; com livro, só se for mesmo este
+        if wb_id is not None and os.path.normcase(wb_id) != os.path.normcase(target):
+            continue
+        nsheet = normalize(sheet)
+        if nsheet not in snapshots:
+            snapshots[nsheet] = load_sheet_snapshot(target, sheet)
+        snap = snapshots[nsheet]
+        coords = locate_row_in(snap, fn, todo) if snap else None
+        if coords is None:
+            failed.append({"fn": fn, "error": "linha não encontrada na folha"})
+            continue
+        xlrow, hidx = coords
+        cells, cols = [], []
+        for col_name, o in list(entry.items()):
+            want = normalize(col_name)
+            if want not in hidx or not isinstance(o, dict):
+                # não chega a ir ao Excel, mas guarda-se o lugar na fila para a
+                # falha sair na ordem certa (e com a guarda certa) na 2ª volta
+                preset[seq] = (False, f"coluna {col_name} não encontrada")
+                cols.append((seq, col_name, None))
+            else:
+                valor = o.get("value", "")
+                cells.append({"i": seq, "xlcol": hidx[want] + 1, "value": valor})
+                cols.append((seq, col_name, valor))
+            seq += 1
+        if cells:
+            _juntar(sheet, {"xlrow": xlrow, "fncol": hidx["function/tc"] + 1,
+                            "guard": fn, "cells": cells})
+        plano.append({"kind": "row", "key": key, "entry": entry, "sheet": sheet,
+                      "wb_id": wb_id, "fn": fn, "todo": todo, "xlrow": xlrow,
+                      "cols": cols})
+
+    # ---- a ida ao Excel: um PowerShell e uma gravação do livro por aba ----
+    results = dict(preset)
+    for grafia, grupos in jobs.values():
+        results.update(write_cells_to_excel(target, grafia, grupos))
+
+    # ---- 2ª volta: arrumar o resultado, na ordem original das chaves ----
+    for rec in plano:
+        key, entry, sheet = rec["key"], rec["entry"], rec["sheet"]
+        if rec["kind"] == "cellcat":
+            xlrow, col0, xlcol = rec["xlrow"], rec["col0"], rec["xlcol"]
+            valor = rec["valor"]
+            ok, msg_text = results.get(rec["i"], (False, "sem resposta do Excel"))
             if ok:
                 overrides.pop(key, None)
                 pushed += 1
@@ -910,34 +1016,18 @@ def push_overrides(target):
             else:
                 failed.append({"fn": f"{sheet}!{get_column_letter(xlcol)}{xlrow}", "error": msg_text})
             continue
-        wb_id, sheet, fn, todo = _split_key(key)
-        # chave antiga (sem livro): é do tempo em que só havia um, vai para o
-        # destino pedido; com livro, só se for mesmo este
-        if wb_id is not None and os.path.normcase(wb_id) != os.path.normcase(target):
-            continue
-        coords = locate_row(target, sheet, fn, todo)
-        if coords is None:
-            failed.append({"fn": fn, "error": "linha não encontrada na folha"})
-            continue
-        xlrow, hidx = coords
+        wb_id, fn, todo, xlrow = rec["wb_id"], rec["fn"], rec["todo"], rec["xlrow"]
         # o Function/TC e o "To Do" fazem parte da identidade da linha: se
         # forem escritos, a identidade muda e há ligações a refazer
         new_fn, new_todo = fn, todo
         # a escrita confirma sempre a célula do Function/TC antes de gravar;
         # depois de a mudarmos, as restantes colunas desta linha têm de ser
-        # confirmadas com o valor novo
+        # confirmadas com o valor novo (o script faz o mesmo, célula a célula)
         guard_fn = fn
-        for col_name, o in list(entry.items()):
-            want = normalize(col_name)
-            if want not in hidx or not isinstance(o, dict):
-                failed.append({"fn": guard_fn, "error": f"coluna {col_name} não encontrada"})
-                continue
-            valor = o.get("value", "")
-            ok, msg_text = write_status_to_excel(
-                target, sheet, xlrow, hidx[want] + 1,
-                hidx["function/tc"] + 1, guard_fn, valor)
+        for i, col_name, valor in rec["cols"]:
+            ok, msg_text = results.get(i, (False, "sem resposta do Excel"))
             if ok:
-                entry.pop(col_name)
+                entry.pop(col_name, None)
                 pushed += 1
                 mark_app_write(target, sheet, xlrow, col_name, valor, batch)
                 if col_name == "Function/TC":

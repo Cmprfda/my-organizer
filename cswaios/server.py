@@ -127,9 +127,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, code, body, content_type):
         data = body.encode("utf-8")
+        codificacao = ""
+        # a mesma compressão que o send_static já faz aos ficheiros: a resposta
+        # do /api/tasks passa das centenas de KB e é pedida de dois em dois
+        # minutos por cada janela aberta — incluindo os telemóveis pela LAN.
+        # Abaixo de 1 KB comprimir só gasta tempo dos dois lados.
+        if len(data) > 1024 and "gzip" in (self.headers.get("Accept-Encoding") or ""):
+            comprimido = gzip.compress(data, 6)
+            if len(comprimido) < len(data):
+                data, codificacao = comprimido, "gzip"
         self.send_response(code)
         self.send_header("Content-Type", content_type + "; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        if codificacao:
+            self.send_header("Content-Encoding", codificacao)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)

@@ -27,6 +27,7 @@ Duas decisões de propósito:
 
 import os
 import re
+import time
 from datetime import datetime, timedelta
 
 from .config import HERE
@@ -245,6 +246,17 @@ def load_team_filters(exclude_person=""):
     return out
 
 
+# As esperas dos colegas, guardadas por pouco tempo e pela marca da pasta. Quem
+# chama isto é a leitura da folha, a cada pedido de cada janela aberta.
+_TEAM_WAITING_TTL = 30.0
+_team_waiting_cache = {}   # (pasta, pessoa de fora) -> (marca, momento, resultado)
+
+
+def forget_team_waiting():
+    """Esquece as esperas guardadas (linha de comandos e testes)."""
+    _team_waiting_cache.clear()
+
+
 def load_team_waiting(exclude_person=""):
     """As esperas dos OUTROS, por chave partilhada.
 
@@ -255,12 +267,24 @@ def load_team_waiting(exclude_person=""):
     pasta = team_dir()
     if not pasta:
         return {}
+    fora = normalize(exclude_person)
+    # isto é pedido a cada leitura da folha, e cada pedido é uma listagem da
+    # pasta partilhada mais a leitura de um ficheiro por colega. A marca da
+    # pasta muda sempre que alguém publica (o write_json troca o ficheiro por
+    # os.replace, dentro dela), por isso guardar pelo par (marca, prazo) nunca
+    # esconde uma espera nova por mais do que o prazo.
+    try:
+        marca = os.stat(pasta).st_mtime_ns
+    except OSError:
+        return {}
+    guardado = _team_waiting_cache.get((pasta, fora))
+    if guardado and guardado[0] == marca and time.time() - guardado[1] < _TEAM_WAITING_TTL:
+        return guardado[2]
     try:
         nomes = sorted(n for n in os.listdir(pasta)
                        if n.startswith("waiting-") and n.endswith(".json"))
     except OSError:
         return {}
-    fora = normalize(exclude_person)
     corte = (datetime.now() - timedelta(days=TEAM_TTL_DAYS)).strftime("%Y-%m-%d")
     out, quando = {}, {}
     for nome in nomes:
@@ -291,6 +315,7 @@ def load_team_waiting(exclude_person=""):
                     "kind": str(bloqueio.get("kind") or "")[:10],
                     "label": str(bloqueio.get("label") or "")[:200]}
             quando[key] = atualizado
+    _team_waiting_cache[(pasta, fora)] = (marca, time.time(), out)
     return out
 
 

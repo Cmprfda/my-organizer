@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import urllib.request
 import zipfile
 
@@ -55,11 +56,30 @@ def _version_tuple(version_str_or_obj):
     return _parse_version(version_str_or_obj)
 
 
+# A pasta partilhada, guardada por um minuto. A procura varre raízes do
+# OneDrive, e ficheiros "só na nuvem" podem pendurar cada varredura — e isto era
+# pedido no caminho de cada leitura da folha (pelas esperas da equipa, pelo
+# aviso, pelo feedback). O prazo é curto: uma pasta que acabe de aparecer entra
+# ao minuto seguinte, muito antes de fazer diferença para quem está a usar.
+_RELEASES_TTL = 60.0
+_releases_cache = None   # (momento, caminho ou None)
+
+
+def forget_releases_dir():
+    """Esquece a pasta guardada: a procura seguinte varre outra vez."""
+    global _releases_cache
+    _releases_cache = None
+
+
 def find_releases_dir():
     """Pasta partilhada com as releases: no OneDrive do dono ou no atalho
     OneDrive de quem recebeu a partilha. Os atalhos podem ganhar um prefixo
     (ex.: "Carlos Manuel Andrade's files - BSP-G2-Tracker-App"), por isso a
     procura aceita qualquer nome que termine no nome da pasta."""
+    global _releases_cache
+    agora = time.time()
+    if _releases_cache and agora - _releases_cache[0] < _RELEASES_TTL:
+        return _releases_cache[1]
     home = os.path.expanduser("~")
     roots = glob.glob(os.path.join(home, "OneDrive*")) + \
         [os.path.join(home, "CRITICAL SOFTWARE, S.A")]
@@ -67,10 +87,17 @@ def find_releases_dir():
     for base in roots:
         for pattern in (f"*{RELEASES_DIRNAME}", os.path.join("*", f"*{RELEASES_DIRNAME}")):
             candidates += glob.glob(os.path.join(base, pattern))
+    found = None
     for c in candidates:
         if os.path.isfile(os.path.join(c, "latest.json")):
-            return c
-    return candidates[0] if candidates else None
+            found = c
+            break
+    if found is None:
+        found = candidates[0] if candidates else None
+    # guarda-se também o "não encontrei": é justamente esse o caso em que a
+    # procura custa mais (varre tudo e não acha nada)
+    _releases_cache = (agora, found)
+    return found
 
 
 def github_latest():
