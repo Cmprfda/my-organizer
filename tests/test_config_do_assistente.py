@@ -95,12 +95,35 @@ class TestConfigDoAssistente(unittest.TestCase):
         chat.save_chat_config("llm", "", None)
         self.assertEqual(self._ficheiro()["llm"]["model"], "claude-opus-5")
 
-    def test_voltar_ao_local_nao_perde_a_chave_guardada(self):
+    def test_passar_pelo_motor_local_nao_perde_a_chave(self):
+        """Experimentar o motor local e voltar atrás não pode obrigar a
+        reescrever a chave: a interface nunca a mostra, quem a perdesse tinha de
+        a ir buscar a outro sítio.
+
+        O teste TEM de voltar ao motor do modelo para o confirmar — parar no
+        `hasKey` do motor local dava verdade em qualquer dos casos, e foi assim
+        que este erro passou pela primeira versão do teste.
+        """
         chat.save_chat_config("llm", "claude-opus-5", "sk-ant-secreta")
         chat.save_chat_config("local")
-        # o ficheiro fica só com o motor; a chave volta quando se voltar ao llm
         self.assertEqual(self._ficheiro()["engine"], "local")
-        self.assertFalse(chat.chat_config_view()["hasKey"])
+        # a chave continua guardada (o `hasKey` diz que ela existe, não que está
+        # em uso: com o motor local o campo dela nem aparece na interface)
+        self.assertTrue(chat.chat_config_view()["hasKey"])
+        # e volta a valer ao voltar ao modelo, sem se reescrever nada
+        chat.save_chat_config("llm", "", None)
+        self.assertTrue(chat.chat_config_view()["hasKey"])
+        self.assertEqual(self._ficheiro()["llm"]["api_key"], "sk-ant-secreta")
+        self.assertEqual(self._ficheiro()["llm"]["model"], "claude-opus-5")
+
+    def test_o_motor_local_nunca_devolve_a_chave(self):
+        # guardada, sim; devolvida, nunca — nem com o motor local
+        chat.save_chat_config("llm", "claude-opus-5", "sk-ant-secreta")
+        chat.save_chat_config("local")
+        vista = chat.chat_config_view()
+        self.assertEqual(vista["engine"], "local")
+        self.assertNotIn("api_key", vista)
+        self.assertNotIn("sk-ant-secreta", json.dumps(vista))
 
     # ------------------------------------------------------------- leitura
     def test_sem_ficheiro_a_vista_e_o_motor_local(self):

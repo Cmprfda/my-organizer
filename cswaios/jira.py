@@ -42,6 +42,12 @@ def save_jira_config(base_url, token):
     cfg = {"baseUrl": base_url, "token": token}
     with open(JIRA_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=1)
+    # o token pode ser de outra conta: a identidade guardada deixa de valer, e é
+    # por ela que os worklogs são reconhecidos como meus (ver my_worklogs). Sem
+    # isto, trocar de conta sem reiniciar a app deixava o "Já no Jira" a comparar
+    # com o dono do token antigo e a não encontrar nada.
+    global _MYSELF
+    _MYSELF = None
     return cfg
 
 

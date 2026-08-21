@@ -771,7 +771,22 @@ def archive_done_todo(item):
                "repeat": normalize_repeat(item.get("repeat")),
                "created": str(item.get("created") or "")[:32],
                "jiraLoggedSeconds": _int_or_zero(item.get("jiraLoggedSeconds")),
-               "jiraIssues": [j for j in (item.get("jiraIssues") or []) if isinstance(j, dict)]}
+               "jiraIssues": [j for j in (item.get("jiraIssues") or []) if isinstance(j, dict)],
+               # o que faz o item ser ELE e não só um título: a linha (ou CCR) de
+               # onde veio, o que estava escrito nele e os passos que tinha. Não
+               # era guardado enquanto o arquivo só servia o relatório, mas
+               # agora um item pode voltar ao quadro (ver pop_archived) — e
+               # voltar sem a origem era voltar desligado do sítio onde nasceu,
+               # sem forma de a recuperar
+               "ref": normalize_ref(item.get("ref")),
+               "detail": str(item.get("detail") or ""),
+               "subtasks": [s for s in (item.get("subtasks") or []) if isinstance(s, dict)],
+               "priority": item.get("priority"),
+               "links": [l for l in (item.get("links") or []) if isinstance(l, dict)]}
+    # a coluna NÃO se guarda de propósito: à saída do quadro é sempre a dos
+    # concluídos, e trazê-la de volta punha o item outra vez como feito (o
+    # normalize_todo_item lê `done` da coluna). Sem ela, reabrir devolve-o a
+    # "por fazer", que é o que se quer de um item reaberto.
     arquivo = [x for x in load_done_archive() if x.get("id") != entrada["id"]]
     arquivo.append(entrada)
     write_json(DONE_ARCHIVE_FILE, arquivo[-DONE_ARCHIVE_MAX:])

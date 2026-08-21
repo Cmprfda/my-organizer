@@ -288,15 +288,20 @@ def save_chat_config(engine, model="", api_key=None):
     if engine not in ("local", "llm"):
         raise ValueError("motor inválido (usa 'local' ou 'llm')")
     atual = load_chat_config()
-    cfg = {"engine": engine}
+    # o bloco do modelo sobrevive à escolha do motor: passar para o motor local
+    # é desligar o modelo, não esquecer a chave. Apagá-la aqui obrigava a
+    # reescrevê-la só por se ter experimentado o outro motor — e a interface
+    # nunca a mostra, por isso quem a perdesse tinha de a ir buscar outra vez.
+    llm = dict(atual.get("llm") or {}) if isinstance(atual.get("llm"), dict) else {}
     if engine == "llm":
-        llm = dict(atual.get("llm") or {}) if isinstance(atual.get("llm"), dict) else {}
         llm["provider"] = "anthropic"
         # modelo vazio: fica o que lá estava, ou nenhum — e sem nenhum o
         # chatllm usa o de omissão (ver LLM_MODEL)
         llm["model"] = str(model or "").strip() or str(llm.get("model") or "")
         if isinstance(api_key, str) and api_key.strip():
             llm["api_key"] = api_key.strip()
+    cfg = {"engine": engine}
+    if llm:
         cfg["llm"] = llm
     with open(CHAT_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=1)

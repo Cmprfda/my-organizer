@@ -375,3 +375,54 @@
   ninguém lê — e, por estar "entregue", nem oferecia a alternativa. Agora fica
   guardada como pendente (e segue sozinha assim que houver acesso) e aparece o
   botão para abrir a issue no GitHub já preenchida.
+
+## v161
+
+- **A montra e o Hoje dizem quem está à tua espera**: a marca "à espera de
+  alguém" de um colega ficava só do lado dele, e quem é o gargalo costuma ser o
+  único que não sabe que o é. O separador Hoje ganha um **À tua espera** e a
+  montra um número, que só aparece quando alguém espera mesmo.
+- **A marca do bloqueio já não fica a apontar a nada**: apagar a CCR (ou o item,
+  ou a linha) que segurava uma tarefa deixava o chip lá, sem salto e sem forma de
+  o limpar. Agora aparece riscado e a caixa da tarefa oferece limpar só a marca,
+  sem mexer no "à espera de quem". Só para marcas desta instalação: as dos
+  colegas trazem o nome e não o id.
+- **Ver mais atrás na história de uma linha**: a caixa dizia "a primeira
+  alteração foi…" quando o que sabia era "a primeira que cabe nos 30 dias". Um
+  botão vai ler o arquivo dos meses anteriores àquela linha, pela identidade dela
+  e não pelo número (que muda de mês para mês).
+- **As CCRs deixam rasto**: a idade aparece ao lado do número, apagar arruma no
+  arquivo o que já tinha trabalho feito (em vez de apagar para sempre), e as que
+  estão prontas a fechar aparecem no Hoje.
+- **Arquivo dos concluídos, à vista**: o que sai do quadro Por fazer já ia para
+  um arquivo e continuava a contar no relatório, mas não havia como o ver — a
+  única forma de recuperar um item era repor a cópia do dia inteiro. Agora há
+  uma lista com procura e datas, um **Reabrir** por item, e um grupo no Ctrl+K
+  para a pergunta "isto já o fiz, e quando?".
+- **O motor do assistente liga-se nas Definições**: era um ficheiro escrito à
+  mão ao lado da app, o que punha uma funcionalidade inteira fora do alcance de
+  quem não edita JSON. Passa a estar em *Definições → Assistente*, com um botão
+  **Testar** que diz se o modelo responde. Só no computador onde a app corre, e
+  a chave nunca volta a ser mostrada.
+- **O registo de horas já sabe o que está no Jira**: a app só sabia o tempo que
+  ela própria tinha registado, por isso um dia registado à mão no Jira podia
+  voltar a ser oferecido — e registar duas vezes o mesmo esforço é um problema de
+  auditoria. O diálogo passa a mostrar a coluna **Já no Jira** e a vir com os
+  dias já cobertos desligados (ligar à mão continua a ser possível).
+- **As tuas sugestões, e em que pé estão**: quem enviava feedback não voltava a
+  saber nada dele. A página passa a mostrar o que está por entregar, por tratar
+  e já tratado. Sem a pasta partilhada ao alcance diz que não alcança, em vez de
+  um "nada" que parecia desprezo.
+- **O Envio para o Excel deixou de ser lento**: escrevia-se célula a célula, cada
+  uma com o seu PowerShell e a sua gravação do livro inteiro, e a folha era
+  relida por cada alteração pendente. Agora é uma ida ao Excel por aba, com a
+  folha lida uma vez — um envio de cinco linhas passa de dezenas de segundos a
+  poucos. A confirmação de que a linha não mudou continua a ser feita célula a
+  célula, contra a folha ao vivo.
+- **Escrever num livro local voltou a funcionar**: a escrita rebentava antes de
+  o Excel arrancar, por causa dos acentos nos comentários do script.
+- **A app pede menos e responde mais depressa**: as leituras deixaram de repetir
+  trabalho a cada pedido (o histórico, a versão do livro no OneDrive, o retrato
+  da última leitura, a pasta partilhada) e as respostas passam a ir comprimidas,
+  o que se nota sobretudo no telemóvel. No quadro Por fazer, o relógio dos
+  cronómetros avança sem redesenhar a lista toda.
