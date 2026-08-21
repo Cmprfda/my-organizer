@@ -52,6 +52,12 @@ async function loadTaskHistory(tab) {
       // idas e voltas de cada linha (ver bounceChipHtml)
       bounces: out.bounces || {},
     });
+    // a folha mudou: o que foi buscado ao arquivo para as linhas deste
+    // separador já não descreve o que está lá, e volta a pedir-se se alguém
+    // quiser (ver taskDeepEvents)
+    [...taskDeepEvents.keys()].forEach(k => {
+      if (k.startsWith(`${tab.id}|`)) taskDeepEvents.delete(k);
+    });
     // o histórico chegou depois do desenho: o botão "Paradas" e as idades só
     // existem com ele, por isso desenha-se outra vez (nunca por cima de um
     // editor aberto — o render() já se protege disso sozinho). O cartão
@@ -285,9 +291,24 @@ function histWhoInTab(tabId, iso) {
 const histWho = iso => histWhoInTab(activeTabId, iso);
 
 // ---------- histórico de uma linha, para a caixa de detalhe ----------
+// ---------- ir mais atrás numa linha ----------
+// O histórico que a folha carrega são os últimos 30 dias: a caixa de uma tarefa
+// dizia "a primeira alteração foi..." quando o que sabia era "a primeira que
+// cabe na janela". O arquivo mensal tem o resto (ver history.archived_events),
+// e o servidor já o sabe ler — só ninguém lhe pedia mais do que a janela.
+// Pede-se a pedido, por linha, e nunca em nenhum ciclo automático: são vários
+// ficheiros do arquivo por clique.
+const taskDeepEvents = new Map();   // "separador|função||to do" -> {events, days}
+const DEEP_DAYS = 1095;             // três anos: mais do que o arquivo tem
+const deepKey = meta => `${activeTabId}|${(meta && meta.fn) || ""}||${(meta && meta.todo) || ""}`;
+
 function taskEvents(meta) {
   const hist = activeHistory();
   if (!hist || !meta || meta.xlrow == null) return [];
+  // a história funda vem do servidor já filtrada pela identidade da linha (o
+  // número da linha muda de mês para mês, a identidade não)
+  const fundo = taskDeepEvents.get(deepKey(meta));
+  if (fundo) return fundo.events;
   return hist.events.filter(e => String(e.xlrow) === String(meta.xlrow));
 }
 
@@ -307,13 +328,36 @@ const histValue = v => String(v || "").trim() || "—";
 
 // Campo "Histórico" da caixa de detalhe (ver itemBoxFields, itembox.js).
 // Devolve null quando não há nada para mostrar sobre esta linha.
+// vai buscar ao arquivo a história toda DESTA linha e volta a desenhar a caixa
+async function loadDeepTaskHistory(meta, btn) {
+  const hist = activeHistory();
+  const data = (workbookTabs.find(x => x.id === activeTabId) || {}).lastData;
+  if (!hist || !data || !data.file || !data.sheet) return;
+  btn.disabled = true;
+  btn.textContent = t("hist_deeper_wait");
+  try {
+    const res = await fetch(`/api/history?file=${encodeURIComponent(data.file)}` +
+      `&sheet=${encodeURIComponent(data.sheet)}&days=${DEEP_DAYS}&limit=1000` +
+      `&fn=${encodeURIComponent(meta.fn || "")}&todo=${encodeURIComponent(meta.todo || "")}`);
+    const out = await res.json();
+    taskDeepEvents.set(deepKey(meta), { events: out.events || [], days: DEEP_DAYS });
+    if (typeof refreshItemBox === "function") refreshItemBox();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = t("hist_deeper_fail");
+  }
+}
+
 function taskHistoryNode(meta) {
   const eventos = taskEvents(meta);
+  const fundo = taskDeepEvents.get(deepKey(meta));
   const age = taskAge(meta);
   if (!eventos.length && !age) return null;
   const wrap = document.createElement("div");
   wrap.className = "histBox";
-  const linhas = eventos.slice(0, 12).map((e, i) => {
+  // já se foi ao arquivo: mostra-se mais do que a dúzia do costume, senão a
+  // história funda ficava toda escondida atrás do corte
+  const linhas = eventos.slice(0, fundo ? 40 : 12).map((e, i) => {
     const quem = e.via === "app" ? "" : histWho(e.ts);
     const marca = e.via === "app" ? t("hist_via_app")
       : (quem ? tf("hist_saved_by", quem) : t("hist_via_sheet"));
@@ -351,12 +395,23 @@ function taskHistoryNode(meta) {
   // a tarefa nunca mudou desde que há histórico (idade estimada), ou mudou mas
   // as alterações já saíram da janela guardada
   const vazio = age && !age.estimated ? t("hist_pruned") : t("hist_none");
+  // o arquivo tem o que a janela dos 30 dias já não mostra: oferece-se ir lá,
+  // uma linha de cada vez e só a pedido
+  const maisAtras = fundo
+    ? `<div class="histDeeperNote">${esc(tf("hist_deeper_done", fundo.days))}</div>`
+    : `<button type="button" class="mini histDeeper">${esc(t("hist_deeper"))}</button>`;
   wrap.innerHTML = resumo + taskKinHtml(meta) + taskDossierHtml(meta) + (linhas
     ? `<ul class="histList">${linhas}</ul>`
-    : `<div class="histEmpty">${esc(vazio)}</div>`);
+    : `<div class="histEmpty">${esc(vazio)}</div>`) + maisAtras;
   // o índice no botão aponta para a lista MOSTRADA (a mesma fatia de 12), por
   // isso lê-se daqui e não de um novo taskEvents (que podia já ter mudado)
   wrap.addEventListener("click", ev => {
+    const fundura = ev.target.closest(".histDeeper");
+    if (fundura) {
+      ev.stopPropagation();
+      loadDeepTaskHistory(meta, fundura);
+      return;
+    }
     const lote = ev.target.closest("[data-histbatch]");
     if (lote) {
       ev.stopPropagation();

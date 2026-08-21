@@ -122,6 +122,33 @@ function blockerOf(meta) {
 
 const BLOCKER_ICON = { row: "▤", ccr: "◆", todo: "✓" };
 
+// O que segurava a linha ainda existe? Apagar uma CCR (ou um item por fazer, ou
+// a própria linha) deixava a marca a apontar a nada: o chip continuava lá e o
+// salto não ia a sítio nenhum, sem forma de o limpar a não ser reescrever a
+// espera. Só se afirma isto de um bloqueio DESTA instalação (com `ref`): o que
+// chega de um colega traz o nome mas não o id, e "não encontro" seria mentira.
+// Sem dados carregados também não se afirma nada — calar é melhor que enganar.
+function blockerTargetGone(meta) {
+  const b = blockerOf(meta);
+  if (!b || !b.ref || (waitingOf(meta) || {}).by) return false;
+  if (b.kind === "ccr") {
+    if (!lastData || lastData.error) return false;
+    return !(ccrs || {})[b.ref];
+  }
+  if (b.kind === "todo") {
+    if (!Array.isArray(todos)) return false;
+    return !todos.some(it => it && String(it.id) === String(b.ref));
+  }
+  if (b.kind !== "row") return false;
+  // a linha que bloqueia foi escolhida da folha à frente (ver blockerChoices),
+  // por isso é aí que se procura — e só quando essa folha está mesmo carregada
+  const linhas = ((lastData || {}).row_meta) || [];
+  if (!lastData || lastData.error || !linhas.length) return false;
+  const [fn, todo] = String(b.ref).split("||");
+  return !linhas.some(m => m && norm(String(m.fn || "")) === norm(fn || "")
+    && norm(String(m.todo || "")) === norm(todo || ""));
+}
+
 // chip do bloqueio, a seguir ao da espera. Só salta quando o bloqueio é DESTA
 // instalação: o que chega de um colega traz o nome mas não o id (ver team.py),
 // e um salto para um id que não existe aqui não levava a nada.
@@ -129,6 +156,13 @@ function blockerChipHtml(meta) {
   const b = blockerOf(meta);
   if (!b) return "";
   const nome = String(b.label || b.ref || "");
+  if (blockerTargetGone(meta)) {
+    // riscado e sem salto: o chip diz o que era, e a caixa da tarefa é que
+    // oferece limpar (é lá que a espera se edita)
+    const icon = BLOCKER_ICON[b.kind] || "⛔";
+    return `<span class="blockChip gone" title="${esc(t("t_blocker_gone"))}">` +
+      `⛔ ${esc(icon)} <s>${esc(nome)}</s></span>`;
+  }
   const salta = !!b.ref && !waitingOf(meta).by;
   const tip = tf("blocker_tip", nome) + (salta ? `\n${t("blocker_go")}` : "");
   const icon = BLOCKER_ICON[b.kind] || "⛔";
@@ -257,6 +291,13 @@ function waitingNode(meta) {
       : tf("waiting_note_open", w.who))}</p>`
     : `<p class="waitNote">${esc(t("waiting_hint"))}</p>`) +
     waitingRecordHtml(meta) +
+    // o que segurava a linha desapareceu: aqui é o único sítio onde a marca se
+    // edita, por isso é aqui que se oferece limpá-la sem mexer na espera
+    (blockerTargetGone(meta)
+      ? `<p class="waitNote blockGone">⛔ ${esc(tf("blocker_gone_note",
+        String(b.label || b.ref || "")))} ` +
+        `<button type="button" class="mini blockClearBtn">${esc(t("blocker_clear"))}</button></p>`
+      : "") +
     // o outro lado da cadeia: quem está à espera DESTA linha. É o que faz a
     // marca valer para quem tem o trabalho na mão, e não só para quem espera
     blockedNoteHtml(meta);
@@ -316,6 +357,16 @@ function waitingNode(meta) {
   });
   const limpar = wrap.querySelector(".waitClear");
   if (limpar) limpar.addEventListener("click", e => { e.stopPropagation(); save(""); });
+  // limpar SÓ a marca do bloqueio: esvaziar os campos e gravar a espera como
+  // está deixa cair o `blocker` (ver store.normalize_blocker) e mantém o "à
+  // espera de quem", que continua a valer
+  const limparBloqueio = wrap.querySelector(".blockClearBtn");
+  if (limparBloqueio) limparBloqueio.addEventListener("click", e => {
+    e.stopPropagation();
+    wrap.querySelector(".blockKind").value = "";
+    wrap.querySelector(".blockWhat").value = "";
+    save(w ? w.who : wrap.querySelector(".waitWho").value.trim());
+  });
   wrap.querySelector(".waitWho").addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); save(e.target.value.trim()); }
   });

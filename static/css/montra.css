@@ -44,12 +44,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* as colunas nascem dos mosaicos que estao a mostrar: o "a tua espera" so
+   aparece quando alguem espera mesmo, e sem ele a montra fica como sempre foi */
 .montraTiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 2vw;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.montraTile[hidden] {
+  display: none;
 }
 
 .montraTile {

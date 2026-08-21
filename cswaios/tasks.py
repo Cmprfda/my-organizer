@@ -30,7 +30,7 @@ from .logs import log_event
 from .team import load_team_waiting
 from .store import (load_ccrs, load_notes, load_overrides, load_waiting,
                     save_notes, save_overrides)
-from .text import cell_to_text, normalize
+from .text import cell_to_text, normalize, person_matcher
 from .todos import load_todo, save_todo
 
 # última leitura bem-sucedida por (ficheiro, aba, pessoa, todas) — serve de
@@ -400,12 +400,9 @@ def read_sheet(path, sheet_name, person, show_all, lang="pt"):
 
     person_norm = normalize(person) if person else ""
     # aceita também células só com um dos nomes (ex.: "Carlos"), porque a folha
-    # usa nomes inconsistentes ("Mariana" vs "Mariana Ribeiro")
-    person_tokens = {t for t in person_norm.split() if len(t) >= 4}
-
-    def mentions_person(cell):
-        c = normalize(cell)
-        return person_norm in c or c in person_tokens
+    # usa nomes inconsistentes ("Mariana" vs "Mariana Ribeiro"). O teste vive no
+    # text.py para as esperas da equipa usarem o MESMO (ver team.team_waiting_on)
+    mentions_person = person_matcher(person)
 
     def is_me(cells, idx_name):
         if idx_name not in hidx:

@@ -430,9 +430,15 @@ def record_read(workbook_id, sheet, rows):
         return len(mudancas)
 
 
-def sheet_history(workbook_id, sheet, days=30, limit=400):
+def sheet_history(workbook_id, sheet, days=30, limit=400, fn=None, todo=None):
     """O que a interface precisa de saber sobre uma folha: quando cada linha
-    mudou pela última vez (para as tarefas paradas) e os eventos recentes."""
+    mudou pela última vez (para as tarefas paradas) e os eventos recentes.
+
+    Com `fn`/`todo` responde só sobre UMA linha, pela identidade dela e não pelo
+    número (o número muda de mês para mês, a identidade não) — é o que permite à
+    caixa de uma tarefa ir buscar a história toda dela sem arrastar a folha
+    inteira do arquivo.
+    """
     key = _key(workbook_id, sheet)
     with _lock:
         data = _load()
@@ -446,6 +452,11 @@ def sheet_history(workbook_id, sheet, days=30, limit=400):
     eventos = [e for e in archived_events(corte, _SEM_FIM)
                if e.get("book") == workbook_id and e.get("sheet") == sheet] + eventos
     eventos = [e for e in eventos if str(e.get("ts") or "") >= corte]
+    if fn is not None or todo is not None:
+        alvo_fn, alvo_todo = normalize(fn or ""), normalize(todo or "")
+        eventos = [e for e in eventos
+                   if normalize(e.get("fn") or "") == alvo_fn
+                   and normalize(e.get("todo") or "") == alvo_todo]
     # a interface encontra as linhas pelo número que a folha tem AGORA: o
     # retrato é guardado por identidade, e é aqui que se volta a essa chave
     linhas = {}

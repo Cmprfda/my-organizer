@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 
 from .config import HERE
 from .statefile import read_json, write_json
-from .text import normalize
+from .text import normalize, person_matcher
 
 TEAM_CONFIG_FILE = os.path.join(HERE, "team_config.json")
 TEAM_SUBDIR = "team"
@@ -317,6 +317,33 @@ def load_team_waiting(exclude_person=""):
             quando[key] = atualizado
     _team_waiting_cache[(pasta, fora)] = (marca, time.time(), out)
     return out
+
+
+def team_waiting_on(person):
+    """As esperas dos colegas em que o cobrado sou EU.
+
+    É o outro lado do `load_team_waiting`: aquilo mostra o que os outros já
+    cobram, para eu não cobrar em dobro; isto mostra o que me cobram A MIM. Numa
+    equipa quem é o gargalo costuma ser o único que não sabe que o é — a marca
+    do colega ficava só do lado dele.
+
+    Devolve [{key, who, since, until, by}], das mais antigas para as mais
+    recentes (a que está à espera há mais tempo é a mais urgente).
+    """
+    if not str(person or "").strip():
+        return []      # sem nome não se pode dizer que alguém espera por mim
+    sou_eu = person_matcher(person)
+    minhas = []
+    for key, entrada in load_team_waiting(person).items():
+        if not sou_eu(entrada.get("who") or ""):
+            continue
+        minhas.append({"key": key,
+                       "who": str(entrada.get("who") or ""),
+                       "since": str(entrada.get("since") or ""),
+                       "until": str(entrada.get("until") or ""),
+                       "by": str(entrada.get("by") or "")})
+    minhas.sort(key=lambda m: (m["since"] or "9999-99-99", m["by"]))
+    return minhas
 
 
 # ---------------------------------------------------------------------------

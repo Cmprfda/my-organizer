@@ -81,6 +81,7 @@ $("teamShareChk").addEventListener("change", e => setTeamShare(e.target.checked)
 
 let teamMessages = [];      // recados que me dizem respeito (e os meus)
 let teamHandoffs = [];      // bolas passadas (para mim e por mim)
+let teamWaitingMe = [];     // esperas dos colegas em que o cobrado sou eu
 let teamMsgAsked = false;
 
 async function loadTeamMessages(force = false) {
@@ -91,9 +92,11 @@ async function loadTeamMessages(force = false) {
     const out = await res.json();
     teamMessages = out.ok ? (out.messages || []) : [];
     teamHandoffs = out.ok ? (out.handoffs || []) : [];
+    teamWaitingMe = out.ok ? (out.waiting_me || []) : [];
   } catch (err) {
     teamMessages = [];
     teamHandoffs = [];
+    teamWaitingMe = [];
   }
 }
 

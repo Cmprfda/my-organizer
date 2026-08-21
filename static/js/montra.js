@@ -9,6 +9,9 @@
 
 const MONTRA_CICLO = 120000;      // rede de segurança, não o caminho normal
 const MONTRA_DIAS = 7;            // limite das paradas (o mesmo valor por omissão da app)
+// o nome vive no browser (a mesma chave do state.js): sem ele o servidor não
+// pode dizer quem está à espera desta pessoa
+const MONTRA_PESSOA = localStorage.getItem("bsp-tracker-person") || "";
 
 function montraSet(id, valor, alerta) {
   const el = document.getElementById(id);
@@ -33,7 +36,8 @@ function montraHora(iso) {
 async function montraCarrega() {
   let out;
   try {
-    const res = await fetch(`/api/montra?days=${MONTRA_DIAS}`);
+    const res = await fetch(`/api/montra?days=${MONTRA_DIAS}` +
+      `&person=${encodeURIComponent(MONTRA_PESSOA)}`);
     out = await res.json();
   } catch (err) {
     document.getElementById("montraWhen").textContent = "sem servidor";
@@ -47,6 +51,12 @@ async function montraCarrega() {
   montraSet("tileStale", out.stale || 0, false);
   montraSet("tilePending", out.pending || 0, (out.pending || 0) > 0);
   montraSet("tileUnlogged", montraTempo(out.unlogged_ms), false);
+  // este só aparece quando há mesmo alguém à espera: um zero permanente numa
+  // montra é ruído, e quem trabalha sozinho não tem esperas de colegas
+  const espera = out.waitme || 0;
+  const mosaico = document.getElementById("tileWaitMe");
+  if (mosaico) mosaico.hidden = !espera;
+  montraSet("tileWaitMe", espera, espera > 0);
   document.getElementById("montraWhen").textContent =
     `${new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}` +
     ` · ${out.open || 0} linhas abertas · paradas há ${out.days} dias`;

@@ -320,6 +320,19 @@ function todayHandoffRows() {
     </button></li>`);
 }
 
+// esperas dos colegas em que o cobrado sou eu: quem e o gargalo costuma ser o
+// unico que nao sabe que o e, porque a marca ficava so do lado de quem a fez
+function todayWaitMeRows() {
+  return (typeof teamWaitingMe === "undefined" ? [] : (teamWaitingMe || []))
+    .slice(0, TODAY_MAX_ROWS)
+    .map(w => `<li class="todayRow"><button type="button" class="todayGo"
+        data-todaykey="${esc(w.key)}" title="${esc(tf("waitme_line", w.by, w.since || "?"))}">
+      <span class="todayDue now">${esc(w.by)}</span>
+      <span class="todayName">${esc(w.key.split("||")[1] || "")}</span>
+      <span class="todayWhere">${esc(tf("waitme_since", w.since || "?"))}</span>
+    </button></li>`);
+}
+
 function renderToday() {
   const box = $("todayBody");
   if (!box) return;
@@ -343,6 +356,9 @@ function renderToday() {
     // recados e bola passada: o que outra pessoa deixou à minha espera (team.js)
     todaySection(t("today_messages"), todayMessageRows(), todayMessageRows().length),
     todaySection(t("today_handoffs"), todayHandoffRows(), todayHandoffRows().length),
+    // e o que me cobram a MIM (team.py team_waiting_on)
+    todaySection(t("today_waitme"), todayWaitMeRows(),
+      (typeof teamWaitingMe === "undefined" ? [] : (teamWaitingMe || [])).length),
     todaySection(t("today_overwritten"),
       (todayOverwritten || []).slice(0, TODAY_MAX_ROWS).map(todayOverwrittenRow),
       (todayOverwritten || []).length),

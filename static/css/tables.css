@@ -561,6 +561,16 @@ button.blockChip.go:hover {
   color: var(--text);
 }
 
+/* o que segurava a linha ja nao existe: o chip fica riscado e nao salta */
+.blockChip.gone {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+.blockChip.gone s {
+  text-decoration-thickness: 1px;
+}
+
 /* a lista do que se desbloqueia (no editor da espera) */
 .waitNote.unblocks {
   color: var(--muted);

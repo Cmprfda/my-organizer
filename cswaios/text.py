@@ -12,6 +12,25 @@ def normalize(text):
     return text.lower().strip()
 
 
+def person_matcher(person):
+    """O mesmo teste de nome que as colunas da folha usam (ver
+    tasks.build_payload): serve a célula que contenha o nome todo, ou que seja
+    igual a UM dos nomes com pelo menos 4 letras — a folha escreve "Mariana"
+    num sítio e "Mariana Ribeiro" noutro.
+
+    Atenção: sem pessoa o teste dá sempre verdade, que é o que a leitura da
+    folha espera (sem pessoa escolhida não se filtra nada). Quem precisar do
+    contrário tem de tratar o caso vazio antes de chamar.
+    """
+    person_norm = normalize(person) if person else ""
+    tokens = {t for t in person_norm.split() if len(t) >= 4}
+
+    def matches(cell):
+        c = normalize(cell)
+        return person_norm in c or c in tokens
+    return matches
+
+
 def cell_to_text(value):
     if value is None:
         return ""

@@ -52,7 +52,7 @@ from .team import (ack_seen, load_capsules, load_team_config,
                    load_team_filters, load_team_handoffs, load_team_messages,
                    publish_capsule, publish_filters, publish_handoffs,
                    publish_messages, publish_waiting, save_team_config, team_dir,
-                   unpublish_waiting)
+                   team_waiting_on, unpublish_waiting)
 from .store import (CCRS_FILE, NOTES_FILE, OVERRIDES_FILE, WAITING_FILE,
                     load_announcement, load_ccrs, load_notes, load_overrides,
                     load_waiting, load_waiting_log, log_waiting_closed,
@@ -453,10 +453,24 @@ class Handler(BaseHTTPRequestHandler):
         # histórico de uma folha: quando cada linha mudou pela última vez
         # (tarefas paradas) e os eventos recentes. Pedido repetido a cada
         # leitura, por isso sem registo no log.
+        # `fn`/`todo` pedem a história de UMA linha (o "ver mais atrás" da caixa
+        # da tarefa), e aí a janela pode ser de anos: o limite existe para que um
+        # pedido à mão não mande ler o arquivo todo desde sempre.
         q = parse_qs(parsed.query)
+        fn = (q.get("fn") or [None])[0]
+        todo = (q.get("todo") or [None])[0]
+        try:
+            dias = int((q.get("days") or ["30"])[0] or 30)
+        except ValueError:
+            dias = 30
+        try:
+            teto = int((q.get("limit") or ["400"])[0] or 400)
+        except ValueError:
+            teto = 400
         self._send(200, json.dumps(sheet_history(
             (q.get("file") or [""])[0], (q.get("sheet") or [""])[0],
-            days=int((q.get("days") or ["30"])[0] or 30))), "application/json")
+            days=min(3660, max(1, dias)), limit=min(2000, max(1, teto)),
+            fn=fn, todo=todo)), "application/json")
 
     def get_api_history_recent(self, parsed, ip):
         # atividade de todos os livros/abas (vista de métricas). `days` é a
@@ -540,6 +554,9 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(parsed.query)
         dias = min(60, max(1, int((q.get("days") or ["7"])[0] or 7)))
         hoje = datetime.now().strftime("%Y-%m-%d")
+        # sem pessoa a montra nao pode dizer quem espera por mim (o nome vive em
+        # cada browser, e chega no pedido)
+        a_minha_espera = len(team_waiting_on((q.get("person") or [""])[0]))
         cobrar = 0
         for marca in (load_waiting() or {}).values():
             if not isinstance(marca, dict) or not marca.get("who"):
@@ -555,6 +572,7 @@ class Handler(BaseHTTPRequestHandler):
             "ok": True,
             **stale_summary(dias),
             "chase": cobrar,
+            "waitme": a_minha_espera,
             # o resumo é uma LISTA (uma entrada por campo por enviar), e não um
             # dicionário com um total: é o número de alterações que o próximo
             # Envio leva
@@ -1661,6 +1679,9 @@ class Handler(BaseHTTPRequestHandler):
             "ok": True,
             "messages": load_team_messages(pessoa),
             "handoffs": load_team_handoffs(pessoa),
+            # o outro lado das esperas: as marcas dos colegas que me cobram a
+            # mim (ver team.team_waiting_on)
+            "waiting_me": team_waiting_on(pessoa),
         }), "application/json")
 
     def post_api_team_messages(self, path, ip):
