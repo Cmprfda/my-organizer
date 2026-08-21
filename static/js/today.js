@@ -333,6 +333,32 @@ function todayWaitMeRows() {
     </button></li>`);
 }
 
+// CCRs com os passos de antes do fecho todos feitos, mas ainda nao fechadas:
+// estao a espera de alguem se lembrar delas (a vista de CCRs ja o mostra, o
+// Hoje e que nao sabia que as CCRs existiam)
+function todayCcrRows() {
+  return Object.keys(typeof ccrs === "undefined" ? {} : (ccrs || {}))
+    .filter(id => {
+      const c = ((ccrs[id] || {}).checks) || {};
+      return CCR_PRE.every(([k]) => c[k]) && !CCR_POST.every(([k]) => c[k]);
+    })
+    .slice(0, TODAY_MAX_ROWS)
+    .map(id => `<li class="todayRow"><button type="button" class="todayGo"
+        data-todayccr="${esc(id)}" title="${esc(t("ccr_ready"))}">
+      <span class="todayDue now">CCR</span>
+      <span class="todayName">CCR ${esc(id)}</span>
+      <span class="todayWhere">${esc(t("ccr_ready"))}</span>
+    </button></li>`);
+}
+
+function todayCcrCount() {
+  return Object.keys(typeof ccrs === "undefined" ? {} : (ccrs || {}))
+    .filter(id => {
+      const c = ((ccrs[id] || {}).checks) || {};
+      return CCR_PRE.every(([k]) => c[k]) && !CCR_POST.every(([k]) => c[k]);
+    }).length;
+}
+
 function renderToday() {
   const box = $("todayBody");
   if (!box) return;
@@ -359,6 +385,8 @@ function renderToday() {
     // e o que me cobram a MIM (team.py team_waiting_on)
     todaySection(t("today_waitme"), todayWaitMeRows(),
       (typeof teamWaitingMe === "undefined" ? [] : (teamWaitingMe || [])).length),
+    // CCRs prontas a fechar: primeira vez que elas aparecem no Hoje
+    todaySection(t("today_ccrs"), todayCcrRows(), todayCcrCount()),
     todaySection(t("today_overwritten"),
       (todayOverwritten || []).slice(0, TODAY_MAX_ROWS).map(todayOverwrittenRow),
       (todayOverwritten || []).length),
@@ -448,6 +476,12 @@ $("todayBody").addEventListener("click", e => {
   if (todo) {
     closeToday();
     showView("todo");
+    return;
+  }
+  const ccr = e.target.closest("[data-todayccr]");
+  if (ccr) {
+    closeToday();
+    revealSource({ view: "ccrs", ccr: ccr.dataset.todayccr });
     return;
   }
   const chave = e.target.closest("[data-todaykey]");

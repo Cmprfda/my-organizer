@@ -777,6 +777,25 @@ def archive_done_todo(item):
     write_json(DONE_ARCHIVE_FILE, arquivo[-DONE_ARCHIVE_MAX:])
 
 
+def pop_archived(item_id):
+    """Tira UM item do arquivo, para o devolver ao quadro. None se não existir.
+
+    Sai mesmo do arquivo: o tempo contado e os dias em que foi contado voltam
+    com o item para o `todo.json`, e deixar as duas cópias fazia o relatório
+    contar o mesmo trabalho duas vezes.
+    """
+    alvo = str(item_id or "")
+    if not alvo:
+        return None
+    arquivo = load_done_archive()
+    achado = next((x for x in arquivo if str(x.get("id") or "") == alvo), None)
+    if achado is None:
+        return None
+    write_json(DONE_ARCHIVE_FILE, [x for x in arquivo
+                                   if str(x.get("id") or "") != alvo])
+    return achado
+
+
 def occurrence_durations(item):
     """Quanto tempo costuma levar UMA volta de um item que se repete.
 

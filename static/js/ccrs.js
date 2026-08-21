@@ -1,5 +1,34 @@
 // My Organizer — vista de CCRs
 
+// idade de uma CCR, em dias. O `created` antigo e um "dd/mm HH:MM" sem ano (era
+// so para mostrar), por isso le-se como a ocorrencia mais recente ja passada; as
+// novas trazem `created_iso` e nao precisam de adivinhacao.
+function ccrAgeDays(c) {
+  if (!c) return null;
+  const iso = String(c.created_iso || "");
+  let quando = null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    quando = new Date(`${iso}T00:00:00`);
+  } else {
+    const m = /^(\d{1,2})\/(\d{1,2})/.exec(String(c.created || ""));
+    if (!m) return null;
+    const hoje = new Date();
+    quando = new Date(hoje.getFullYear(), +m[2] - 1, +m[1]);
+    // uma data "no futuro" e do ano passado (o campo antigo nao guarda o ano)
+    if (quando > hoje) quando = new Date(hoje.getFullYear() - 1, +m[2] - 1, +m[1]);
+  }
+  if (isNaN(quando)) return null;
+  const dias = Math.floor((Date.now() - quando.getTime()) / 86400000);
+  return dias >= 0 ? dias : null;
+}
+
+function ccrAgeChipHtml(id) {
+  const dias = ccrAgeDays(ccrs[id]);
+  if (dias == null || dias < 1) return "";
+  const texto = dias === 1 ? t("age_day") : tf("age_days", dias);
+  return `<span class="staleChip" title="${esc(t("ccr_age_tip"))}">⏳ ${esc(texto)}</span>`;
+}
+
 function renderCCRs() {
   const ids = Object.keys(ccrs).sort((a, b) => {
     const na = parseInt(a, 10), nb = parseInt(b, 10);
@@ -18,7 +47,7 @@ function renderCCRs() {
       ? `<button type="button" class="taskNoteFlag" data-ccrlink="${esc(id)}" title="${esc(t("t_open_linked_note"))}">📌</button>`
       : "";
     return `<tr draggable="true" class="${done ? "ccr-done" : ready ? "ccr-ready" : ""}">
-  <td class="fn">CCR ${esc(id)}${ccrFlag}${ready && !done ? `<br><span class="badge done">${t("ccr_ready")}</span>` : ""}</td>
+  <td class="fn">CCR ${esc(id)}${ccrFlag}${ccrAgeChipHtml(id)}${ready && !done ? `<br><span class="badge done">${t("ccr_ready")}</span>` : ""}</td>
   <td class="ccr-chk">${chk(CCR_PRE)}</td>
   <td class="ccr-chk">${ready ? chk(CCR_POST) : `<span class="obs">${t("ccr_wait")}</span>`}</td>
   <td class="ccrNote" data-nid="${esc(id)}" title="${t("t_edit_note")}">${ccrs[id].note ? `<span class="obs">${esc(ccrs[id].note)}</span>` : `<span class="addnote">${t("addnote")}</span>`

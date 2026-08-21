@@ -4,6 +4,8 @@ notes.json
 ccrs.json
 todo.json
 todo_done_archive.json
+# arquivo das CCRs apagadas (ver store.CCR_ARCHIVE_FILE): dados de quem usa
+ccr_done_archive.json
 notepad.json
 history.json
 notepad_images/

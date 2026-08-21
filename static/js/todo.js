@@ -1348,6 +1348,115 @@ function addManualTodo() {
 }
 $("todoAdd").addEventListener("click", addManualTodo);
 $("todoNew").addEventListener("keydown", e => { if (e.key === "Enter") addManualTodo(); });
+// ---------- arquivo dos concluidos ----------
+// O que se apaga do quadro nao desaparece: fica no todo_done_archive.json (ver
+// todos.archive_done_todo) e continua a contar no relatorio. Só que ninguem o
+// conseguia VER — a unica forma de recuperar um item era repor uma copia do dia
+// inteiro. Isto e uma lista de leitura, com procura e um "reabrir" por item.
+let todoArchItems = [];
+let todoArchTimer = null;
+
+function todoArchOverlay() {
+  let overlay = $("todoArchOverlay");
+  if (overlay) return overlay;
+  overlay = document.createElement("div");
+  overlay.id = "todoArchOverlay";
+  overlay.className = "helpOverlay hidden";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.innerHTML = `
+    <div class="helpCard todoArchCard">
+      <div class="helpHead">
+        <strong id="todoArchTitle">${esc(t("arch_title"))}</strong>
+        <button type="button" class="ccr-x todoArchClose" title="${esc(t("btn_cancel"))}">✕</button>
+      </div>
+      <p class="metricNote" id="todoArchHint">${esc(t("arch_hint"))}</p>
+      <div class="todoArchFields">
+        <input type="search" id="todoArchQ" placeholder="${esc(t("arch_search_ph"))}">
+        <input type="date" id="todoArchFrom" title="${esc(t("arch_from"))}">
+        <input type="date" id="todoArchTo" title="${esc(t("arch_to"))}">
+      </div>
+      <div class="todoArchScroll"><ul class="todoArchList" id="todoArchList"></ul></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay || e.target.closest(".todoArchClose")) { closeTodoArchive(); return; }
+    const abrir = e.target.closest("[data-archreopen]");
+    if (abrir) { reopenArchived(abrir.dataset.archreopen); return; }
+  });
+  const pedir = () => {
+    clearTimeout(todoArchTimer);
+    todoArchTimer = setTimeout(loadTodoArchive, 250);
+  };
+  ["todoArchQ", "todoArchFrom", "todoArchTo"].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener("input", pedir);
+  });
+  return overlay;
+}
+
+async function loadTodoArchive() {
+  const lista = $("todoArchList");
+  if (!lista) return;
+  const q = ($("todoArchQ") || {}).value || "";
+  const de = ($("todoArchFrom") || {}).value || "";
+  const ate = ($("todoArchTo") || {}).value || "";
+  try {
+    const res = await fetch(`/api/todo/archive?q=${encodeURIComponent(q)}` +
+      `&from=${encodeURIComponent(de)}&to=${encodeURIComponent(ate)}`);
+    const out = await res.json();
+    todoArchItems = out.ok ? (out.items || []) : [];
+  } catch (err) {
+    lista.innerHTML = `<li class="todoArchEmpty">${esc(t("arch_fail"))}</li>`;
+    return;
+  }
+  renderTodoArchive();
+}
+
+function renderTodoArchive() {
+  const lista = $("todoArchList");
+  if (!lista) return;
+  if (!todoArchItems.length) {
+    lista.innerHTML = `<li class="todoArchEmpty">${esc(t("arch_empty"))}</li>`;
+    return;
+  }
+  lista.innerHTML = todoArchItems.map(it => {
+    const dia = String(it.done_at || "").slice(0, 10);
+    const tempo = (+it.elapsed_ms || 0) > 0 ? formatTodoElapsed(it.elapsed_ms) : "";
+    const issue = ((it.jiraIssues || [])[0] || {}).key || "";
+    return `<li class="todoArchRow">
+      <span class="todoArchWhen">${esc(dia)}</span>
+      <span class="todoArchName">${esc(String(it.title || ""))}</span>
+      ${tempo ? `<span class="todoArchTime">⏱ ${esc(tempo)}</span>` : ""}
+      ${issue ? `<span class="todoArchIssue">${esc(issue)}</span>` : ""}
+      <button type="button" class="mini" data-archreopen="${esc(String(it.id || ""))}"
+        title="${esc(t("arch_reopen_tip"))}">${esc(t("arch_reopen"))}</button>
+    </li>`;
+  }).join("");
+}
+
+async function reopenArchived(id) {
+  if (!id) return;
+  const ok = await postTodo({ action: "reopen_archived", id });
+  if (ok === false) return;
+  // saiu do arquivo: a lista tem de deixar de o mostrar
+  await loadTodoArchive();
+  toast(t("arch_reopened"), "ok");
+}
+
+function openTodoArchive() {
+  const overlay = todoArchOverlay();
+  overlay.classList.remove("hidden");
+  const campo = $("todoArchQ");
+  if (campo) campo.focus();
+  loadTodoArchive();
+}
+
+function closeTodoArchive() {
+  const overlay = $("todoArchOverlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
 $("todoModeList").addEventListener("click", () => setTodoLayout("list"));
 $("todoModeKanban").addEventListener("click", () => setTodoLayout("kanban"));
 // botão que abre o painel das colunas: o index.html só traz os dois botões de
@@ -1358,6 +1467,16 @@ todoColsBtn.id = "todoColsBtn";
 todoColsBtn.className = "secondary todoColsBtn hidden";
 $("todoModeKanban").parentElement.insertAdjacentElement("afterend", todoColsBtn);
 todoColsBtn.addEventListener("click", () => openTodoColsPop(todoColsBtn));
+
+// botao do arquivo, ao lado dos de vista (o index.html so traz Lista/Kanban)
+const todoArchBtn = document.createElement("button");
+todoArchBtn.type = "button";
+todoArchBtn.id = "todoArchBtn";
+todoArchBtn.className = "secondary";
+todoArchBtn.textContent = t("todo_arch_btn");
+todoArchBtn.title = t("arch_title");
+$("todoModeKanban").parentElement.insertAdjacentElement("afterend", todoArchBtn);
+todoArchBtn.addEventListener("click", () => openTodoArchive());
 
 // ---------- painel das colunas do quadro ----------
 // (segue o padrão dos painéis pequenos das Notas: nada de prompt()/confirm()

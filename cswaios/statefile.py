@@ -58,6 +58,7 @@ STATE_FILES = (
     "todo_done_archive.json",
     "notes.json",
     "ccrs.json",
+    "ccr_done_archive.json",
     "waiting.json",
     "notepad.json",
     "history.json",

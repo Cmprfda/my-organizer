@@ -141,7 +141,35 @@ function searchScore(title, termos) {
   return 0;
 }
 
-const SEARCH_GROUP_ORDER = ["actions", "tasks", "todo", "ccrs", "notes", "jira"];
+const SEARCH_GROUP_ORDER = ["actions", "tasks", "todo", "ccrs", "notes", "jira", "arch"];
+
+// o arquivo dos concluídos vive num ficheiro que a app não tem em memória:
+// pede-se uma vez por cada abertura do Ctrl+K, e sem resposta a procura segue
+// sem ele (nunca fica à espera do arquivo para mostrar o resto)
+let searchArchCache = null;
+
+async function loadSearchArchive() {
+  if (searchArchCache !== null) return;
+  searchArchCache = [];
+  try {
+    const res = await fetch("/api/todo/archive");
+    const out = await res.json();
+    searchArchCache = out.ok ? (out.items || []) : [];
+  } catch (err) { searchArchCache = []; }
+  refreshSearch();
+}
+
+// "isto já o fiz, e quando?" — a pergunta que o arquivo responde
+function searchArchHits(termos) {
+  return (searchArchCache || [])
+    .filter(it => searchMatches(String(it.title || ""), termos))
+    .map(it => ({
+      group: "arch", icon: "🗃", title: String(it.title || ""),
+      sub: tf("arch_done_on", String(it.done_at || "").slice(0, 10)),
+      score: searchScore(it.title, termos),
+      go: () => { showView("todo"); openTodoArchive(); },
+    }));
+}
 
 function buildSearchResults(q) {
   const termos = searchTermsOf(q);
@@ -152,6 +180,7 @@ function buildSearchResults(q) {
   const todosHits = [
     ...searchActionHits(termos), ...searchTaskHits(termos), ...searchTodoHits(termos),
     ...searchCcrHits(termos), ...searchNoteHits(termos), ...searchJiraHits(termos),
+    ...searchArchHits(termos),
   ];
   const out = [];
   SEARCH_GROUP_ORDER.forEach(g => {
@@ -197,6 +226,7 @@ function setSearchOpen(open) {
   $("cmdInput").value = "";
   refreshSearch();
   $("cmdInput").focus();
+  loadSearchArchive();
 }
 
 function runSearchResult(i) {

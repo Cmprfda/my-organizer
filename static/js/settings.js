@@ -98,6 +98,8 @@ function applyLang() {
   $("todoNew").placeholder = t("ph_todo");
   $("todoAdd").textContent = t("btn_add");
   $("todoModeList").textContent = t("todo_mode_list");
+  const arqBtn = $("todoArchBtn");
+  if (arqBtn) { arqBtn.textContent = t("todo_arch_btn"); arqBtn.title = t("arch_title"); }
   $("todoModeKanban").textContent = t("todo_mode_kanban");
   $("todoEmpty").innerHTML = `<h2>${t("todo_empty_t")}</h2><p>${t("todo_empty_p")}</p>`;
   $("noteAdd").textContent = t("btn_note_add");

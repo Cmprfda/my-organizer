@@ -158,6 +158,45 @@ def save_ccrs(data):
     write_json(CCRS_FILE, data)
 
 
+# CCRs que saíram da vista. Apagar uma CCR era definitivo, ao contrário do
+# quadro Por fazer, que arruma os concluídos num arquivo (ver
+# todos.archive_done_todo): quem apagava perdia os passos que tinha feito e, com
+# eles, a resposta a "quanto tempo nos leva uma CCR". Apagar é arrumar a lista,
+# não apagar o registo.
+CCR_ARCHIVE_FILE = os.path.join(HERE, "ccr_done_archive.json")
+CCR_ARCHIVE_MAX = 200
+
+
+def load_ccr_archive():
+    data = read_json(CCR_ARCHIVE_FILE, [])
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
+
+def archive_ccr(ccr_id, entry):
+    """Guarda uma CCR antes de ela sair da vista, se ela tiver alguma coisa
+    para guardar (um passo feito ou uma nota).
+
+    Guarda-se qualquer CCR com trabalho feito, e não só as "fechadas": os
+    passos de fecho estão definidos na interface (ver CCR_PRE/CCR_POST no
+    state.js) e o servidor não os conhece — dizer aqui o que é "fechada" era
+    duplicar essa lista e ficar a arriscar que as duas se desencontrassem.
+    """
+    if not isinstance(entry, dict):
+        return
+    passos = entry.get("checks") if isinstance(entry.get("checks"), dict) else {}
+    if not any(passos.values()) and not str(entry.get("note") or "").strip():
+        return
+    entrada = {"id": str(ccr_id or ""),
+               "checks": {k: bool(v) for k, v in passos.items() if isinstance(k, str)},
+               "note": str(entry.get("note") or ""),
+               "created": str(entry.get("created") or "")[:32],
+               "created_iso": str(entry.get("created_iso") or "")[:10],
+               "deleted_at": datetime.now().strftime("%Y-%m-%d %H:%M")}
+    arquivo = [x for x in load_ccr_archive() if x.get("id") != entrada["id"]]
+    arquivo.append(entrada)
+    write_json(CCR_ARCHIVE_FILE, arquivo[-CCR_ARCHIVE_MAX:])
+
+
 # Aviso do dono da instalação: uma mensagem escrita nas Definições (só a partir
 # do PC onde a app corre) que aparece a quem abrir a app. O `id` é o resumo do
 # conteúdo: mudar o texto dá um id novo e o aviso volta a aparecer a toda a

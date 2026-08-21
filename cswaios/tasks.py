@@ -72,19 +72,39 @@ def _snapshot_key(cache_key):
 # as impressões digitais do que está gravado no disco, semeadas de uma vez por
 # ficheiro. O caso normal — leitura igual à anterior, de dois em dois minutos por
 # cada janela aberta — sai por aqui sem reler o last_read.json inteiro (que
-# chega perto de 100 KB) só para comparar oito carateres. A chave é o ficheiro a
-# que o mapa se refere, para os testes (que trocam o LAST_READ_FILE) e a linha
-# de comandos não apanharem o mapa de outro.
-_LAST_READ_DIGESTS = (None, {})
+# chega perto de 100 KB) só para comparar oito carateres.
+#
+# O mapa é validado contra a marca do ficheiro (existência, hora e tamanho), e
+# não só contra o nome: apagar o last_read.json à mão é um passo de recuperação
+# que a app documenta, e um mapa a dizer "isso já está gravado" sobre um
+# ficheiro que já não existe deixava o arranque sem rede sem retrato até o
+# conteúdo da folha mudar. Um os.stat por pedido é o que isto custa — a leitura
+# do ficheiro inteiro é que era o peso.
+_LAST_READ_DIGESTS = (None, None, {})   # (ficheiro, marca, mapa)
+
+
+def _last_read_mark():
+    try:
+        st = os.stat(LAST_READ_FILE)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None      # não existe (ou não se alcança): não há nada gravado
 
 
 def _last_read_digests():
     global _LAST_READ_DIGESTS
-    if _LAST_READ_DIGESTS[0] != LAST_READ_FILE:
+    marca = _last_read_mark()
+    if _LAST_READ_DIGESTS[0] != LAST_READ_FILE or _LAST_READ_DIGESTS[1] != marca:
         semente = {k: v.get("digest") for k, v in _read_snapshots().items()
-                   if isinstance(v, dict) and v.get("digest")}
-        _LAST_READ_DIGESTS = (LAST_READ_FILE, semente)
-    return _LAST_READ_DIGESTS[1]
+                   if isinstance(v, dict) and v.get("digest")} if marca else {}
+        _LAST_READ_DIGESTS = (LAST_READ_FILE, marca, semente)
+    return _LAST_READ_DIGESTS[2]
+
+
+def _remember_last_read_mark():
+    """Depois de gravar, a marca do mapa passa a ser a do ficheiro novo."""
+    global _LAST_READ_DIGESTS
+    _LAST_READ_DIGESTS = (LAST_READ_FILE, _last_read_mark(), _LAST_READ_DIGESTS[2])
 
 
 def save_last_read(cache_key, result):
@@ -120,6 +140,7 @@ def save_last_read(cache_key, result):
         digests[chave] = digest
     else:
         digests.pop(chave, None)
+    _remember_last_read_mark()
 
 
 def _read_snapshots():
@@ -139,7 +160,7 @@ def forget_last_read():
     """Esquece os retratos gravados (linha de comandos e testes)."""
     global _LAST_READ_DIGESTS
     write_json(LAST_READ_FILE, {})
-    _LAST_READ_DIGESTS = (None, {})
+    _LAST_READ_DIGESTS = (None, None, {})
 
 
 # marca de versão da fonte na altura em que cada entrada do _RAW_CACHE foi
@@ -910,6 +931,10 @@ def push_overrides(target):
     plano = []      # o que fazer com cada chave, na ordem original
     preset = {}     # resultados já decididos sem ir ao Excel
     snapshots = {}  # normalize(aba) -> leitura da folha (ou None)
+    # linhas que não estavam na folha lida: dizem-se no fim, quando já se sabe
+    # se alguma renomeação deste envio explica a ausência
+    nao_encontradas = []
+    renomeadas = set()   # abas onde este envio mudou algum Function/TC
     seq = 0
 
     def _juntar(sheet, grupo):
@@ -958,7 +983,13 @@ def push_overrides(target):
         snap = snapshots[nsheet]
         coords = locate_row_in(snap, fn, todo) if snap else None
         if coords is None:
-            failed.append({"fn": fn, "error": "linha não encontrada na folha"})
+            # A folha é lida uma vez, ANTES de se escrever: uma linha que só
+            # passe a ter esta identidade por causa de uma renomeação deste
+            # mesmo envio ainda não está aqui (antes, com uma releitura do livro
+            # por cada alteração, aparecia). Não se perde nada — a alteração
+            # fica pendente e o envio seguinte, já com a folha relida, leva-a —
+            # mas quem está a olhar merece que se lhe diga isso.
+            nao_encontradas.append({"fn": fn, "sheet": nsheet})
             continue
         xlrow, hidx = coords
         cells, cols = [], []
@@ -1029,6 +1060,7 @@ def push_overrides(target):
                 mark_app_write(target, sheet, xlrow, col_name, valor, batch)
                 if col_name == "Function/TC":
                     new_fn = guard_fn = str(valor)
+                    renomeadas.add(normalize(sheet))
                 elif col_name == "To Do":
                     new_todo = str(valor)
             else:
@@ -1067,6 +1099,18 @@ def push_overrides(target):
             _relink_row(wb_key, sheet, fn, todo, new_fn, new_todo)
         if not entry:
             overrides.pop(key, None)
+
+    # as linhas que não se acharam: se este envio renomeou alguma linha nessa
+    # aba, a identidade que falta pode ser a que acabou de nascer — a alteração
+    # continua pendente e o envio seguinte, com a folha relida, apanha-a
+    for falta in nao_encontradas:
+        if falta["sheet"] in renomeadas:
+            failed.append({"fn": falta["fn"],
+                           "error": "linha não encontrada na folha lida antes "
+                                    "deste envio (outra linha foi renomeada "
+                                    "agora) - envia outra vez"})
+        else:
+            failed.append({"fn": falta["fn"], "error": "linha não encontrada na folha"})
     save_overrides(overrides)
     if pushed:
         # o valor local (✎) que segurava a célula acabou de ser apagado: a

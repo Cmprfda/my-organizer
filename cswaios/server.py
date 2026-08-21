@@ -54,23 +54,26 @@ from .team import (ack_seen, load_capsules, load_team_config,
                    publish_messages, publish_waiting, save_team_config, team_dir,
                    team_waiting_on, unpublish_waiting)
 from .store import (CCRS_FILE, NOTES_FILE, OVERRIDES_FILE, WAITING_FILE,
-                    load_announcement, load_ccrs, load_notes, load_overrides,
-                    load_waiting, load_waiting_log, log_waiting_closed,
-                    normalize_blocker, save_announcement, save_ccrs,
-                    save_notes, save_overrides, save_waiting, waiting_stats)
+                    archive_ccr, load_announcement, load_ccr_archive, load_ccrs,
+                    load_notes, load_overrides, load_waiting, load_waiting_log,
+                    log_waiting_closed, normalize_blocker, save_announcement,
+                    save_ccrs, save_notes, save_overrides, save_waiting,
+                    waiting_stats)
 from .tasks import (_override_entry, _wb_key, build_payload, current_stamp,
                     discard_overrides, forget_web_cache, known_headers,
                     pending_overrides_summary, push_overrides,
                     queue_cellcat_override)
 from .notepad import NOTEPAD_FILE
 from .todos import (DUE_RE, TODO_FILE, TODO_COLUMNS, TODO_PRIORITIES, TODO_PRIORITY_DEFAULT,
-                    TODO_REPEATS, archive_done_todo, due_accuracy, load_todo,
-                    normalize_due, normalize_ref, normalize_repeat,
+                    TODO_REPEATS, archive_done_todo, due_accuracy, load_done_archive,
+                    load_todo, normalize_due, normalize_ref, normalize_repeat,
+                    pop_archived,
                     normalize_todo_item, occurrence_durations,
                     restart_todo_timer, save_todo, sort_todos_by_priority, spawn_repeat,
                     stop_todo_timer, sync_todo_timer_with_column, todo_identity,
                     todo_link_target, todo_sources)
 from .export import EXPORT_DIR, write_export
+from .text import normalize
 from .updates import (GITHUB_REPO, check_update, find_releases_dir, github_latest,
                       read_changelog)
 from . import cli
@@ -320,6 +323,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/report/meeting": "get_api_report_meeting",
         "/api/todo/stats": "get_api_todo_stats",
         "/api/todo/list": "get_api_todo_list",
+        "/api/todo/archive": "get_api_todo_archive",
         "/api/montra": "get_api_montra",
         "/api/waiting/stats": "get_api_waiting_stats",
         "/api/jira/projects": "get_api_jira_projects",
@@ -547,6 +551,28 @@ class Handler(BaseHTTPRequestHandler):
         # para isto abria o livro por causa de quatro números
         self._send(200, json.dumps({"ok": True, "todo": load_todo()}),
                    "application/json")
+
+    def get_api_todo_archive(self, parsed, ip):
+        # os concluídos que já saíram do quadro (ver todos.load_done_archive):
+        # existiam desde sempre, mas só o relatório e a exportação os liam —
+        # ninguém os conseguia VER. Leitura pura, sem tocar no Excel.
+        q = parse_qs(parsed.query)
+        texto = normalize((q.get("q") or [""])[0])
+        de = (q.get("from") or [""])[0]
+        ate = (q.get("to") or [""])[0]
+        itens = []
+        for item in load_done_archive():
+            quando = str(item.get("done_at") or "")[:10]
+            if texto and texto not in normalize(item.get("title") or ""):
+                continue
+            if de and quando < de:
+                continue
+            if ate and quando > ate:
+                continue
+            itens.append(item)
+        # os últimos fechados primeiro: é por eles que se procura
+        itens.sort(key=lambda x: str(x.get("done_at") or ""), reverse=True)
+        self._send(200, json.dumps({"ok": True, "items": itens}), "application/json")
 
     def get_api_montra(self, parsed, ip):
         # a montra: quatro números e um rodapé, para ler a dois metros. Contas
@@ -1310,6 +1336,15 @@ class Handler(BaseHTTPRequestHandler):
                         archive_done_todo(t)
                 todos = [t for t in todos if t.get("id") != payload.get("id")]
                 log_event(f"{ip} TODO apagado: {payload.get('id')}")
+            elif action == "reopen_archived":
+                # tira do arquivo e devolve ao quadro, com o tempo que levava
+                item = pop_archived(str(payload.get("id") or ""))
+                if item is None:
+                    raise ValueError("item do arquivo não encontrado")
+                item["done"] = False
+                item.pop("done_at", None)
+                todos.insert(0, item)
+                log_event(f"{ip} reabriu do arquivo: {str(item.get('title', ''))[:60]!r}")
             elif action == "move":
                 ids = [t.get("id") for t in todos]
                 if payload.get("id") in ids:
@@ -2114,15 +2149,23 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("ID da CCR vazio")
             ccrs = load_ccrs()
             if action == "delete":
+                # o que tiver trabalho feito vai para o arquivo antes de sair da
+                # vista: apagar arruma a lista, nao apaga o registo
+                archive_ccr(ccr_id, ccrs.get(ccr_id))
                 ccrs.pop(ccr_id, None)
                 log_event(f"{ip} apagou a CCR {ccr_id}")
             elif action == "add":
                 if ccr_id not in ccrs:
                     ccrs[ccr_id] = {"checks": {},
-                                    "created": datetime.now().strftime("%d/%m %H:%M")}
+                                    "created": datetime.now().strftime("%d/%m %H:%M"),
+                                    # o `created` antigo nao leva o ano, e sem
+                                    # ano nao se consegue dizer a idade
+                                    "created_iso": datetime.now().strftime("%Y-%m-%d")}
                     log_event(f"{ip} adicionou a CCR {ccr_id}")
             else:
-                entry = ccrs.setdefault(ccr_id, {"created": datetime.now().strftime("%d/%m %H:%M")})
+                entry = ccrs.setdefault(ccr_id, {
+                    "created": datetime.now().strftime("%d/%m %H:%M"),
+                    "created_iso": datetime.now().strftime("%Y-%m-%d")})
                 detail = []
                 if "checks" in payload:
                     raw = payload.get("checks") or {}
