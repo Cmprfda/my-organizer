@@ -68,6 +68,7 @@ failure in red (`--ios-red` → `--csw-red-600`).
   `--ios-shadow-lg` (overlays, floating elements, card hover).
 - **No glass/blur:** `--ios-blur: none` — the design system uses flat surfaces.
   Bonus: avoids `backdrop-filter` creating *containing blocks* for `position: fixed`.
+  (The Modern skin turns it on and leans into it — see §6, *The glass*.)
 - **Flat backgrounds:** no decorative gradients.
 - **Motion:** `--dur-fast` 120ms / `--dur-base` 200ms with `--ease-standard`
   `cubic-bezier(.2,0,0,1)`. Hover = darken + slight elevation; no bounce.
@@ -107,12 +108,39 @@ Apple-flavoured appearance for whoever prefers it. It is a *skin*, not a second 
 | `--font-sans` / `--font-display` | Aptos / Aptos Narrow | `-apple-system`, SF Pro, Segoe UI |
 | `--font-label` | `--font-mono` (Aptos Mono) | `--font-sans` |
 | Corners | card 12px, button 4px | card 16px, button 12px |
-| `--ios-blur` | `none` | `blur(20px) saturate(180%)` — frosted glass is back on |
+| `--ios-blur` | `none` | `blur(28px) saturate(200%)` — frosted glass is back on |
 | Neutral ramp `--ink-*` | brand ink | Apple system grays |
 | Motion | 120/200ms, `cubic-bezier(.2,0,0,1)` | 150/280ms, `cubic-bezier(.32,.72,0,1)` |
 | Status / `--coltag-*` | brand semantics | system green/orange/red/blue, purple/teal/indigo |
 
 Red keeps its iOS meaning in this skin: it marks what destroys, not the brand.
+
+### The glass
+
+Blur alone doesn't read as glass — a translucent panel over a flat gray page still
+looks like a flat panel. The skin therefore adds three things, all in `theme.css`:
+
+1. **A wash behind everything** — three soft radial blobs (`--wash-1/2/3`) painted on
+   `body` under `var(--bg)` with `background-attachment: fixed`. This is the only
+   place the skin breaks §4's "no decorative gradients": it is what the glass refracts.
+2. **Translucent panels** — `--glass-fill` (a top-to-bottom translucent gradient) plus
+   `backdrop-filter: var(--ios-blur)` on the cards and popovers that used to be opaque
+   `--surface`. The selector list sits inside `:where()` **on purpose**: `:where()`
+   contributes zero specificity, so every existing `:hover` / `.selected` / `.active`
+   rule still outranks it. Only the resting look changes.
+3. **A light edge** — `--glass-sheen` (`inset 0 1px 0`) is folded into `--ios-shadow`
+   and `--ios-shadow-lg`, so everything already using those tokens gets the highlight
+   on its top edge for free.
+
+Overlays (`.helpOverlay`, `.noteSideBack`) blur the app behind them with the shorter
+`--ios-blur-scrim` instead of only dimming it.
+
+**What is deliberately left opaque:** `#notesView` / `#codeView` in full screen, the
+`.notesHead` and the `.noteFrameBar`. They are ancestors of the notes toolbar menus,
+which are `position: fixed` — a `backdrop-filter` on them would anchor those menus to
+the panel instead of the viewport (the same trap the caveat below describes). `--surface`
+itself also stays opaque: fields, selects and table rows sit *on* the glass, and stacking
+translucency on translucency turns the text muddy.
 
 **Caveat to keep in mind:** with `--ios-blur` active, `backdrop-filter` makes
 `.ios-top` and `.tabs` into *containing blocks* — a `position: fixed` element placed

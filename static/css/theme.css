@@ -321,8 +321,14 @@ html[data-skin="modern"] {
   --ios-radius-btn: 12px;
   --ios-radius-pill: 999px;
 
-  /* o vidro fosco volta a ligar-se (na marca Critical estava a `none`) */
-  --ios-blur: blur(20px) saturate(180%);
+  /* o vidro fosco volta a ligar-se (na marca Critical estava a `none`) e com
+     força a mais: os 28px de desfoque com saturação alta é o que faz o vidro
+     tomar a cor do que está por baixo, em vez de ficar um cinzento leitoso.
+     O `--ios-blur` é a ficha que as barras já usam (ver o layout.css) — subi-la
+     aqui engrossa o vidro que já existia sem tocar em nenhuma dessas regras. */
+  --ios-blur: blur(28px) saturate(200%);
+  /* desfoque mais curto para os fundos que tapam a app (o "?" e a gaveta) */
+  --ios-blur-scrim: blur(14px) saturate(140%);
 
   /* curva de saída da Apple e um toque mais de tempo para se ver o deslize */
   --ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
@@ -337,8 +343,19 @@ html[data-skin="modern"][data-theme="light"] {
   --ios-bg-primary: #f2f2f7;
   --ios-bg-secondary: #ffffff;
   --ios-bg-grouped: #f2f2f7;
-  --ios-glass-bg: rgba(255, 255, 255, 0.72);
-  --ios-glass-border: rgba(60, 60, 67, 0.13);
+  --ios-glass-bg: rgba(255, 255, 255, 0.55);
+  --ios-glass-border: rgba(60, 60, 67, 0.12);
+  /* enchimento dos painéis de vidro: um degradé de cima para baixo, para o
+     painel apanhar luz na aresta de cima como o vidro real */
+  --glass-fill: linear-gradient(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.48));
+  /* o fio de luz na aresta de cima — vai dentro das fichas de sombra, para
+     chegar de uma vez a tudo o que já usa --ios-shadow */
+  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  /* manchas de cor por baixo de tudo: sem nada atrás, o vidro não tem o que
+     refratar e volta a parecer uma superfície opaca */
+  --wash-1: rgba(0, 122, 255, 0.10);
+  --wash-2: rgba(255, 149, 0, 0.07);
+  --wash-3: rgba(88, 86, 214, 0.09);
   --ios-blue: #007aff;
   --ios-green: #34c759;
   --ios-red: #ff3b30;
@@ -347,8 +364,9 @@ html[data-skin="modern"][data-theme="light"] {
   --ios-gray-light: #e5e5ea;
   --ios-text-primary: #000000;
   --ios-text-secondary: rgba(60, 60, 67, 0.6);
-  --ios-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  --ios-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --ios-shadow: var(--glass-sheen), 0 4px 16px rgba(0, 0, 0, 0.07);
+  --ios-shadow-lg: var(--glass-sheen), 0 12px 40px rgba(0, 0, 0, 0.14),
+    0 2px 8px rgba(0, 0, 0, 0.06);
   --scrim-strong: rgba(0, 0, 0, 0.45);
 
   --border: rgba(60, 60, 67, 0.13);
@@ -390,8 +408,13 @@ html[data-skin="modern"][data-theme="dark"] {
   --ios-bg-primary: #000000;
   --ios-bg-secondary: #1c1c1e;
   --ios-bg-grouped: #000000;
-  --ios-glass-bg: rgba(28, 28, 30, 0.72);
-  --ios-glass-border: rgba(255, 255, 255, 0.12);
+  --ios-glass-bg: rgba(28, 28, 30, 0.55);
+  --ios-glass-border: rgba(255, 255, 255, 0.14);
+  --glass-fill: linear-gradient(rgba(58, 58, 62, 0.62), rgba(28, 28, 30, 0.52));
+  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --wash-1: rgba(10, 132, 255, 0.18);
+  --wash-2: rgba(255, 159, 10, 0.08);
+  --wash-3: rgba(94, 92, 230, 0.15);
   --ios-blue: #0a84ff;
   --ios-green: #30d158;
   --ios-red: #ff453a;
@@ -400,8 +423,9 @@ html[data-skin="modern"][data-theme="dark"] {
   --ios-gray-light: #2c2c2e;
   --ios-text-primary: #ffffff;
   --ios-text-secondary: rgba(235, 235, 245, 0.6);
-  --ios-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  --ios-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.4);
+  --ios-shadow: var(--glass-sheen), 0 4px 20px rgba(0, 0, 0, 0.4);
+  --ios-shadow-lg: var(--glass-sheen), 0 16px 48px rgba(0, 0, 0, 0.6),
+    0 2px 10px rgba(0, 0, 0, 0.4);
   --scrim-strong: rgba(0, 0, 0, 0.7);
 
   --border: rgba(255, 255, 255, 0.12);
@@ -451,4 +475,71 @@ html[data-skin="modern"] .eyebrow {
 
 html[data-skin="modern"] .eyebrow::before {
   content: none;
+}
+
+/* ─── O vidro ─────────────────────────────────────────────────────────────
+   Três peças fazem o efeito: (1) o banho de cor por baixo de tudo, para o
+   vidro ter o que refratar; (2) o enchimento translúcido + backdrop-filter
+   nos painéis que antes eram opacos; (3) o fio de luz na aresta de cima, que
+   já vem nas fichas de sombra acima.
+
+   Os painéis vão dentro de `:where()` de propósito: assim a regra não pesa
+   nada na especificidade e o CSS que já existe para os estados (:hover,
+   .selected, .active) continua a ganhar-lhe. Só a aparência de repouso muda.
+   ───────────────────────────────────────────────────────────────────────── */
+
+html[data-skin="modern"] body {
+  background:
+    radial-gradient(62% 48% at 8% -6%, var(--wash-1), transparent 68%),
+    radial-gradient(52% 42% at 96% 4%, var(--wash-2), transparent 70%),
+    radial-gradient(70% 56% at 46% 108%, var(--wash-3), transparent 72%),
+    var(--bg);
+  /* preso à janela: o banho é o cenário, não rola com o conteúdo */
+  background-attachment: fixed;
+}
+
+/* Painéis e cartões passam a vidro. Ficam de fora, de propósito, o #notesView
+   e o #codeView em ecrã cheio, a .notesHead e a .noteFrameBar: são os
+   antecessores dos menus da barra de notas, que são `position: fixed`, e um
+   backdrop-filter neles ancorava esses menus ao painel em vez da janela
+   (a mesma armadilha que o THEME.md §6 já avisa para a .ios-top e as .tabs). */
+html[data-skin="modern"] :where(.tablebox,
+  .setCard,
+  .metricCard,
+  .montraTile,
+  .helpCard,
+  .notifyCard,
+  .remoteCard,
+  .state,
+  .todoCol,
+  .todoCard,
+  .jiraCard,
+  .jiraTodoPanel,
+  .jiraSearchResults,
+  .chatPanel,
+  .notesSide,
+  .codeSide,
+  .copyMenu,
+  .todoColsPop,
+  .noteColorPop,
+  .noteLabelPop,
+  .noteTablePop) {
+  background: var(--glass-fill);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border-color: var(--ios-glass-border);
+}
+
+/* o aviso passageiro tem regra com id (responsive.css), logo precisa da sua */
+html[data-skin="modern"] #toast {
+  background: var(--glass-fill);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+}
+
+/* os fundos que tapam a app desfocam-na em vez de só a escurecerem */
+html[data-skin="modern"] :where(.helpOverlay, .noteSideBack) {
+  background: rgba(0, 0, 0, 0.26);
+  backdrop-filter: var(--ios-blur-scrim);
+  -webkit-backdrop-filter: var(--ios-blur-scrim);
 }
