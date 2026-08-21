@@ -22,12 +22,14 @@ from . import config
 from . import events
 from . import tray
 from .authors import AuthorError, who_changed
+from .chat import ChatEngineError, chat_config_view, load_chat_config, save_chat_config
 from .chat import answer as chat_answer
+from .chatllm import llm_test
 from .config import APP_VERSION, DOWNLOAD_URL, HERE, SHARE_URL, lan_ip
 from .excel import browse_local_file
 from .feedback import (attach_server_log, deliver, drop_pending, flush_pending,
-                       github_issue_url, pending_list, report_bug,
-                       reveal_pending, stage_feedback_folder)
+                       github_issue_url, my_reports, pending_list, report_bug,
+                       reveal_pending, safe_name, stage_feedback_folder)
 from .graph import (GraphError, ensure_graph_config, graph_browse, graph_ids_from_path,
                     graph_login_start, graph_logout, graph_pick, graph_state,
                     graph_state_public, graph_versions, is_graph_path,
@@ -36,8 +38,8 @@ from .history import (batch_events, diff_between, overwritten_pushes,
                       recent_events, reconstruct_at, sheet_history,
                       stale_summary, transition_stats)
 from .jira import (create_issue, fetch_issue, issue_status, issue_transitions,
-                   list_projects, load_jira_config, log_work, save_jira_config,
-                   search_issues, transition_issue)
+                   list_projects, load_jira_config, log_work, my_worklogs,
+                   save_jira_config, search_issues, transition_issue)
 from .logs import LOG_FILE, install_crash_logging, log_event, trim_log
 from .notify import (load_notify_config, save_notify_config, send_toast,
                      send_webhook)
@@ -312,7 +314,9 @@ class Handler(BaseHTTPRequestHandler):
         "/api/events": "get_api_events",
         "/api/ping": "get_api_ping",
         "/api/jira/config": "get_api_jira_config",
+        "/api/chat/config": "get_api_chat_config",
         "/api/jira/search": "get_api_jira_search",
+        "/api/jira/worklog/mine": "get_api_jira_worklog_mine",
         "/api/notify/config": "get_api_notify_config",
         "/api/history/authors": "get_api_history_authors",
         "/api/history/who": "get_api_history_who",
@@ -328,6 +332,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/waiting/stats": "get_api_waiting_stats",
         "/api/jira/projects": "get_api_jira_projects",
         "/api/feedback/pending": "get_api_feedback_pending",
+        "/api/feedback/mine": "get_api_feedback_mine",
         "/logs": "get_logs",
     }
 
@@ -340,6 +345,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/clientlog": "post_api_clientlog",
         "/api/todo": "post_api_todo",
         "/api/chat": "post_api_chat",
+        "/api/chat/config": "post_api_chat_config",
         "/api/waiting": "post_api_waiting",
         "/api/report/meeting/anchor": "post_api_report_meeting_anchor",
         "/api/notify/config": "post_api_notify_config",
@@ -719,6 +725,77 @@ class Handler(BaseHTTPRequestHandler):
         cfg = load_jira_config()
         self._send(200, json.dumps({"configured": bool(cfg),
                                     "baseUrl": (cfg or {}).get("baseUrl", "")}),
+                   "application/json")
+
+    def get_api_chat_config(self, parsed, ip):
+        # o motor do assistente e (se for o do modelo) o modelo escolhido.
+        # A CHAVE NUNCA VEM AQUI: só `hasKey`, a dizer se existe uma — esta
+        # resposta atravessa a LAN e passa pelos registos.
+        self._send(200, json.dumps({**chat_config_view(),
+                                    "canEdit": _is_local(ip)}), "application/json")
+
+    def post_api_chat_config(self, path, ip):
+        # escolher o motor do assistente: só a partir deste PC, como o aviso e
+        # a configuração do Jira (mexe em credenciais desta máquina)
+        if not _is_local(ip):
+            log_event(f"{ip} tentou configurar o assistente - recusado")
+            self._send(403, json.dumps({"ok": False,
+                                        "error": "só a partir deste computador"}),
+                       "application/json")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            if payload.get("action") == "test":
+                cfg = load_chat_config()
+                if str(cfg.get("engine")) != "llm":
+                    # o motor local está sempre pronto: não se vai à rede para o
+                    # confirmar
+                    self._send(200, json.dumps({"ok": True, "engine": "local"}),
+                               "application/json")
+                    return
+                try:
+                    modelo = llm_test(cfg)
+                except ChatEngineError as exc:
+                    self._send(200, json.dumps({"ok": False, "error": str(exc)}),
+                               "application/json")
+                    return
+                self._send(200, json.dumps({"ok": True, "model": modelo}),
+                           "application/json")
+                return
+            chave = payload.get("api_key")
+            # campo vazio quer dizer "não mexer na chave", não "apagar a chave"
+            chave = chave if isinstance(chave, str) and chave.strip() else None
+            vista = save_chat_config(payload.get("engine"),
+                                     payload.get("model"), chave)
+            # o motor vai para o registo; a chave nunca
+            log_event(f"{ip} configurou o assistente (motor {vista['engine']})")
+            self._send(200, json.dumps({"ok": True, **vista, "canEdit": True}),
+                       "application/json")
+        except Exception as exc:
+            log_event(f"{ip} configuração do assistente FALHOU: {exc}")
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+        return
+
+    def get_api_jira_worklog_mine(self, parsed, ip):
+        # o que JÁ está no Jira, por (issue, dia), registado pela conta do token:
+        # é o que deixa o registo em lote dizer "esse dia já lá está" em vez de
+        # voltar a oferecê-lo (a app só sabia o total que ELA registou).
+        #
+        # É lido no momento em que alguém abre o diálogo do registo, e não dentro
+        # do timesheet_lines: esse é chamado pela montra a cada refrescamento, e
+        # uma ida ao Jira ali punha a montra (e o relatório) à espera da rede.
+        q = parse_qs(parsed.query)
+        chaves = [k for k in (q.get("keys") or [""])[0].split(",") if k.strip()]
+        try:
+            registado = my_worklogs(chaves, (q.get("from") or [""])[0],
+                                    (q.get("to") or [""])[0])
+        except Exception as exc:
+            self._send(400, json.dumps({"ok": False, "error": str(exc)}),
+                       "application/json")
+            return
+        self._send(200, json.dumps({"ok": True, "logged": registado}),
                    "application/json")
 
     def get_api_jira_search(self, parsed, ip):
@@ -2048,7 +2125,7 @@ class Handler(BaseHTTPRequestHandler):
             # página/vista onde o utilizador estava (opcional: quem limpar o
             # campo no formulário não a vê no reporte)
             page = re.sub(r"\s+", " ", str(payload.get("page") or "")).strip()[:80]
-            safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(payload.get("name") or "anon"))[:30]
+            safe = safe_name(payload.get("name"))
             folder = stage_feedback_folder(
                 f"{datetime.now():%Y%m%d_%H%M%S}_{safe}")
             with open(os.path.join(folder, "feedback.txt"), "w", encoding="utf-8") as f:
@@ -2087,6 +2164,21 @@ class Handler(BaseHTTPRequestHandler):
             log_event(f"{ip} feedback FALHOU: {exc}")
             self._send(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
         return
+
+    def get_api_feedback_mine(self, parsed, ip):
+        # o outro lado do formulário: em que pé estão as sugestões desta pessoa.
+        # Quem enviava uma sugestão não voltava a saber nada dela — e a partilha
+        # já diz o estado pela pasta onde o reporte está (feedback\ por tratar,
+        # feedback\Fixed\ tratado). Nunca pode segurar a página nem estourar:
+        # sem partilha ao alcance responde que não alcança, e é isso que a
+        # interface mostra em vez de um "nada" que parecia desprezo.
+        q = parse_qs(parsed.query)
+        try:
+            out = my_reports((q.get("person") or [""])[0])
+        except Exception as exc:
+            log_event(f"{ip} /api/feedback/mine FALHOU: {exc!r}")
+            out = {"reachable": False, "pending": [], "open": [], "fixed": []}
+        self._send(200, json.dumps({"ok": True, **out}), "application/json")
 
     def get_api_feedback_pending(self, parsed, ip):
         # o feedback que ficou neste PC por entregar: sem isto só se via o

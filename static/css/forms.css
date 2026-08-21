@@ -193,6 +193,27 @@ button.searchMode:active {
   border-top: 1px solid var(--border);
 }
 
+/* "as tuas sugestoes": uma linha por reporte, com a data e o estado */
+.fbMineRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.fbMineWhen {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.fbMineNote {
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
 .fbPendingWho {
   display: flex;
   align-items: center;

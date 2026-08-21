@@ -893,6 +893,18 @@ button.metricDayBack:hover {
   font-weight: 700;
 }
 
+/* o dia ja esta registado no Jira: a linha desliga-se sozinha, mas continua a
+   poder ser ligada a mao (a leitura do Jira pode estar incompleta) */
+.weekLogTable tr.wlCovered td {
+  opacity: 0.6;
+}
+
+.wlLogged {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* o subtítulo de um cartão com mais do que uma lista dentro (ver
    metricsClockHtml: uma lista por coluna de estado) */
 .metricSub {

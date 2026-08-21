@@ -236,6 +236,89 @@ def log_work(key, time_spent, started, comment=None):
     return {"id": result.get("id"), "timeSpentSeconds": int(result.get("timeSpentSeconds") or 0)}
 
 
+# quem é o dono do token, uma vez por processo. É por isto que os worklogs se
+# filtram: o nome que aparece na app é escolhido por quem a usa e não tem de ser
+# igual ao do Jira — adivinhar pelo nome mostrado dava tempo de outra pessoa
+# como sendo nosso, ou o nosso como sendo de outra.
+_MYSELF = None
+
+
+def myself():
+    """A conta do token: {name, key, displayName}."""
+    global _MYSELF
+    if _MYSELF is not None:
+        return _MYSELF
+    body = _request("/rest/api/2/myself") or {}
+    # só se guarda o que correu bem: um erro de rede volta a tentar
+    _MYSELF = {"name": str(body.get("name") or ""),
+               "key": str(body.get("key") or ""),
+               "displayName": str(body.get("displayName") or "")}
+    return _MYSELF
+
+
+# páginas de worklogs por issue. Uma issue com mais de 2000 registos é um caso
+# que não existe no trabalho normal; o teto está aqui para que um dia estranho
+# não deixe um pedido a andar pelo Jira sem fim.
+_WORKLOG_PAGE = 200
+_WORKLOG_MAX_PAGES = 10
+_WORKLOG_MAX_KEYS = 20
+
+
+def my_worklogs(keys, day_from, day_to):
+    """Segundos já registados POR MIM em cada (issue, dia) do intervalo.
+
+    Devolve {"CHAVE|AAAA-MM-DD": segundos}. É o que faltava para o registo em
+    lote não voltar a oferecer um dia que já foi registado à mão no Jira: a app
+    só sabia o total que ELA própria tinha registado.
+    """
+    eu = myself()
+    vistas, chaves = set(), []
+    for k in (keys or []):
+        try:
+            chave = issue_key(k)
+        except ValueError:
+            continue                      # chave estragada: não vale um erro
+        if chave not in vistas:
+            vistas.add(chave)
+            chaves.append(chave)
+    if len(chaves) > _WORKLOG_MAX_KEYS:
+        raise ValueError(f"demasiadas issues de uma vez (máximo {_WORKLOG_MAX_KEYS})")
+    de, ate = str(day_from or "")[:10], str(day_to or "")[:10]
+    out = {}
+    for chave in chaves:
+        inicio = 0
+        for _ in range(_WORKLOG_MAX_PAGES):
+            body = _request(f"/rest/api/2/issue/{chave}/worklog"
+                            f"?startAt={inicio}&maxResults={_WORKLOG_PAGE}") or {}
+            registos = body.get("worklogs")
+            registos = registos if isinstance(registos, list) else []
+            for wl in registos:
+                if not isinstance(wl, dict):
+                    continue
+                autor = wl.get("author") if isinstance(wl.get("author"), dict) else {}
+                meu = (eu["name"] and autor.get("name") == eu["name"]) or \
+                      (eu["key"] and autor.get("key") == eu["key"])
+                if not meu:
+                    continue
+                dia = str(wl.get("started") or "")[:10]
+                if (de and dia < de) or (ate and dia > ate):
+                    continue
+                try:
+                    segundos = int(wl.get("timeSpentSeconds") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if segundos:
+                    out[f"{chave}|{dia}"] = out.get(f"{chave}|{dia}", 0) + segundos
+            inicio += len(registos)
+            try:
+                total = int(body.get("total") or 0)
+            except (TypeError, ValueError):
+                total = 0
+            if not registos or inicio >= total:
+                break
+    return out
+
+
 def issue_status(key):
     """Estado atual da issue: {key, status, statusCategory, assignee}.
 

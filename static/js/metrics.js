@@ -643,6 +643,7 @@ function openWeekLogModal() {
       <td class="wlDay">${esc(metricsDayLabel(l.day))}${weekLogWarnHtml(l)}</td>
       <td class="wlTitle" title="${esc(l.title)}">${esc(l.title)}</td>
       <td class="wlIssue">${esc(l.issue)}</td>
+      <td class="wlLogged"></td>
       <td><input type="text" class="wlTime" value="${esc(msToJiraTime(+l.ms || 0))}"
           size="7" spellcheck="false"></td>
       <td class="wlState"></td>
@@ -651,6 +652,57 @@ function openWeekLogModal() {
     + (linhas.some(l => (l.warnings || []).length) ? ` ${t("wl_warn_hint")}` : "");
   overlay.dataset.lines = JSON.stringify(linhas);
   overlay.classList.remove("hidden");
+  weekLogReconcile(overlay, linhas);
+}
+
+// ---------- o que JA esta no Jira ----------
+// A app so sabia o tempo que ELA registou: um dia registado a mao no Jira podia
+// voltar a ser oferecido aqui, e registar duas vezes o mesmo esforco e um
+// problema de auditoria, nao um detalhe. Pergunta-se ao Jira no momento em que o
+// dialogo abre (nunca no timesheet_lines, que a montra chama a cada
+// refrescamento) e anota-se; sem resposta o dialogo fica exatamente como era.
+let weekLogReconToken = 0;
+
+async function weekLogReconcile(overlay, linhas) {
+  const token = ++weekLogReconToken;
+  const chaves = [...new Set(linhas.map(l => l.issue).filter(Boolean))].slice(0, 20);
+  if (!chaves.length) return;
+  const dias = linhas.map(l => l.day).filter(Boolean).sort();
+  let registado;
+  try {
+    const res = await fetch(`/api/jira/worklog/mine?keys=${encodeURIComponent(chaves.join(","))}` +
+      `&from=${encodeURIComponent(dias[0] || "")}&to=${encodeURIComponent(dias[dias.length - 1] || "")}`);
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || "?");
+    registado = out.logged || {};
+  } catch (err) {
+    // o dialogo continua a servir: diz-se so que nao se pode comparar
+    if (token !== weekLogReconToken) return;
+    overlay.querySelectorAll(".wlLogged").forEach(td => { td.textContent = "?"; });
+    const nota = overlay.querySelector(".weekLogNote");
+    if (nota) nota.textContent += ` ${t("wl_logged_off")}`;
+    return;
+  }
+  // o dialogo pode ter sido fechado e reaberto enquanto o Jira respondia
+  if (token !== weekLogReconToken) return;
+  linhas.forEach((l, i) => {
+    const tr = overlay.querySelector(`tr[data-wl="${i}"]`);
+    if (!tr) return;
+    const td = tr.querySelector(".wlLogged");
+    const segundos = +(registado[`${l.issue}|${l.day}`] || 0);
+    if (!td) return;
+    td.title = t("wl_logged_tip");
+    if (!segundos) { td.textContent = "—"; return; }
+    td.textContent = msToJiraTime(segundos * 1000);
+    // ja esta lá tudo (ou mais): desliga-se a linha, mas quem quiser pode
+    // voltar a ligá-la — a leitura do Jira pode estar incompleta
+    if (segundos * 1000 >= (+l.ms || 0)) {
+      tr.classList.add("wlCovered");
+      const caixa = tr.querySelector(".wlOn");
+      if (caixa) caixa.checked = false;
+      td.textContent += ` ✓`;
+    }
+  });
 }
 
 function closeWeekLogModal() {
@@ -681,7 +733,8 @@ function weekLogOverlay() {
         <table class="weekLogTable">
           <thead><tr>
             <th></th><th>${esc(t("week_log_day"))}</th><th>${esc(t("week_log_item"))}</th>
-            <th>${esc(t("week_log_issue"))}</th><th>${esc(t("week_log_time"))}</th><th></th>
+            <th>${esc(t("week_log_issue"))}</th><th>${esc(t("wl_col_logged"))}</th>
+            <th>${esc(t("week_log_time"))}</th><th></th>
           </tr></thead>
           <tbody class="weekLogBody"></tbody>
         </table>

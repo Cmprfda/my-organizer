@@ -516,6 +516,12 @@
               <p class="fileinfo" id="fbPendingHint" style="border-top:none;padding-top:0"></p>
               <ul class="fbPendingList" id="fbPendingList"></ul>
             </div>
+            <div class="fbPending hidden" id="fbMineBox">
+              <div class="fbPendingHead">
+                <strong id="fbMineTitle">As tuas sugest&otilde;es</strong>
+              </div>
+              <ul class="fbPendingList" id="fbMineList"></ul>
+            </div>
           </div>
         </div>
 
@@ -622,6 +628,24 @@
                 <input type="password" id="jiraToken" placeholder="Personal Access Token">
                 <button type="button" class="mini" id="jiraSaveBtn">Gravar</button>
                 <span id="jiraState"></span>
+              </div>
+            </section>
+
+            <section class="setCard">
+              <h2 class="setCardTitle" id="setSecChat">Assistente</h2>
+              <div class="setNote" id="chatCfgBox">
+                <span class="setNoteLbl" id="chatEngineLbl">Motor</span>
+                <select id="chatEngineSel">
+                  <option value="local">Determin&iacute;stico (local)</option>
+                  <option value="llm">Modelo (Anthropic)</option>
+                </select>
+                <input type="text" id="chatModelInput" placeholder="claude-opus-5">
+                <input type="password" id="chatKeyInput" placeholder="Chave da API (opcional)">
+                <div class="setRow">
+                  <button type="button" class="mini" id="chatCfgSaveBtn">Gravar</button>
+                  <button type="button" class="mini" id="chatCfgTestBtn">Testar</button>
+                </div>
+                <span id="chatCfgState"></span>
               </div>
             </section>
 

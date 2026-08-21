@@ -275,6 +275,48 @@ def load_chat_config():
         return {}
 
 
+def save_chat_config(engine, model="", api_key=None):
+    """Grava o `chat_config.json` (motor do assistente e, com o motor do
+    modelo, o modelo e a chave).
+
+    `api_key=None` (ou vazia) MANTÉM a chave que lá estiver: a interface nunca
+    a vê de volta, por isso "não mexer nela" tem de ser possível. Grava-se com
+    `json.dump` e não com o `write_json` do estado, para a chave não ir também
+    para as cópias em `backups\\`.
+    """
+    engine = str(engine or "").strip()
+    if engine not in ("local", "llm"):
+        raise ValueError("motor inválido (usa 'local' ou 'llm')")
+    atual = load_chat_config()
+    cfg = {"engine": engine}
+    if engine == "llm":
+        llm = dict(atual.get("llm") or {}) if isinstance(atual.get("llm"), dict) else {}
+        llm["provider"] = "anthropic"
+        # modelo vazio: fica o que lá estava, ou nenhum — e sem nenhum o
+        # chatllm usa o de omissão (ver LLM_MODEL)
+        llm["model"] = str(model or "").strip() or str(llm.get("model") or "")
+        if isinstance(api_key, str) and api_key.strip():
+            llm["api_key"] = api_key.strip()
+        cfg["llm"] = llm
+    with open(CHAT_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=1)
+    return chat_config_view()
+
+
+def chat_config_view():
+    """O que a interface pode ver do `chat_config.json`.
+
+    NUNCA a chave — só se existe uma. É a mesma doutrina do Jira (ver
+    get_api_jira_config, que devolve `configured` e não o token): a resposta
+    desta rota atravessa a LAN e vai aos registos.
+    """
+    cfg = load_chat_config()
+    llm = cfg.get("llm") if isinstance(cfg.get("llm"), dict) else {}
+    return {"engine": "llm" if str(cfg.get("engine")) == "llm" else "local",
+            "model": str(llm.get("model") or ""),
+            "hasKey": bool(str(llm.get("api_key") or "").strip())}
+
+
 # ---------------------------------------------------------------- contexto
 def _txt(value, limit=MAX_TEXT):
     return str(value or "").strip()[:limit]

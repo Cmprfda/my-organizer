@@ -153,6 +153,7 @@ $("fbSend").addEventListener("click", async () => {
       showFbIssue(out.pending ? out.issue_url : "", out.folder);
       toast(t("fb_sent"), "ok");
       loadFbPending();      // o que ficou por entregar passa a estar à vista
+      loadFbMine();         // e a sugestao nova entra na lista das minhas
     } else {
       toast(`${t("err_save")} ` + (out.error || "?"), "err");
     }
@@ -254,6 +255,68 @@ async function loadFbPending() {
   } catch (err) { /* a página do feedback serve-se sem esta lista */ }
 }
 
+// ---------- "as tuas sugestões" ----------
+// Quem enviava uma sugestão não voltava a saber nada dela: a lista de cima só
+// mostra o que ficou por entregar, e a partir da entrega era silêncio. A
+// partilha já diz o estado pela pasta onde o reporte está (feedback\ por tratar,
+// feedback\Fixed\ tratado): é essa a lista.
+let fbMine = null;
+
+function fbFolderWhen(nome) {
+  // 20260818_101533_Carlos_Andrade -> 18/08/2026 10:15
+  const m = /^(?:BUG_)?(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(String(nome || ""));
+  if (!m) return String(nome || "").slice(0, 24);
+  return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+}
+
+function renderFbMine() {
+  const caixa = $("fbMineBox");
+  const lista = $("fbMineList");
+  if (!caixa || !lista || !fbMine) return;
+  $("fbMineTitle").textContent = t("fb_mine_title");
+  const linhas = [];
+  (fbMine.pending || []).forEach(n => linhas.push({ nome: n, estado: "pending" }));
+  (fbMine.open || []).forEach(n => linhas.push({ nome: n, estado: "open" }));
+  (fbMine.fixed || []).forEach(n => linhas.push({ nome: n, estado: "fixed" }));
+  if (!fbMine.reachable && !linhas.length) {
+    caixa.classList.remove("hidden");
+    lista.innerHTML = `<li class="fbMineNote">${esc(t("fb_mine_off"))}</li>`;
+    return;
+  }
+  if (!linhas.length) {
+    caixa.classList.remove("hidden");
+    lista.innerHTML = `<li class="fbMineNote">${esc(t("fb_mine_none"))}</li>`;
+    return;
+  }
+  // as mais recentes primeiro (o nome da pasta começa pela data)
+  linhas.sort((a, b) => String(b.nome).localeCompare(String(a.nome)));
+  const chips = {
+    pending: `<span class="badge">${esc(t("fb_mine_pending"))}</span>`,
+    open: `<span class="badge">${esc(t("fb_mine_open"))}</span>`,
+    fixed: `<span class="badge done">${esc(t("fb_mine_fixed"))}</span>`,
+  };
+  const contagem = fbMine.reachable
+    ? `<li class="fbMineNote">${esc(tf("fb_mine_counts",
+      (fbMine.open || []).length, (fbMine.fixed || []).length))}</li>`
+    : `<li class="fbMineNote">${esc(t("fb_mine_off"))}</li>`;
+  lista.innerHTML = contagem + linhas.slice(0, 30).map(l =>
+    `<li class="fbMineRow"><span class="fbMineWhen">${esc(fbFolderWhen(l.nome))}</span>` +
+    `${chips[l.estado]}</li>`).join("");
+  caixa.classList.remove("hidden");
+}
+
+async function loadFbMine() {
+  try {
+    const res = await fetch(`/api/feedback/mine?person=${encodeURIComponent(PERSON || "")}`);
+    const out = await res.json();
+    fbMine = out.ok ? out : { reachable: false, pending: [], open: [], fixed: [] };
+  } catch (err) {
+    // a página do feedback serve-se sem esta lista
+    fbMine = { reachable: false, pending: [], open: [], fixed: [] };
+  }
+  renderFbMine();
+}
+
 $("fbPendingList").addEventListener("click", async e => {
   const abrir = e.target.closest("[data-fbissue]");
   if (abrir) {
@@ -320,7 +383,7 @@ $("fbPendingRetry").addEventListener("click", async ev => {
   if (typeof base !== "function") return;
   window.showView = function (name) {
     base(name);
-    if (name === "feedback" || sideView === "feedback") loadFbPending();
+    if (name === "feedback" || sideView === "feedback") { loadFbPending(); loadFbMine(); }
   };
 })();
-if (currentView === "feedback") loadFbPending();
+if (currentView === "feedback") { loadFbPending(); loadFbMine(); }

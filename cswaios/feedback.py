@@ -168,6 +168,52 @@ def feedback_root():
     return os.environ.get("BSP_FEEDBACK_DIR") or find_releases_dir() or ""
 
 
+def safe_name(nome, omissao="anon"):
+    """O nome de quem reporta, como ele entra no nome da pasta do feedback.
+
+    Vive aqui e não em cada sítio que monta uma pasta porque é a mesma regra que
+    o `my_reports` usa para reconhecer as pastas DE alguém: as duas a divergir
+    era ficar com reportes que ninguém volta a encontrar.
+    """
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", str(nome or omissao))[:30]
+
+
+def my_reports(person):
+    """As pastas de feedback desta pessoa, e em que pé estão.
+
+    O estado é a pasta onde o reporte vive: por entregar (`feedback_pending\\`
+    deste PC), entregue e por tratar (`feedback\\` na partilha) ou tratado
+    (`feedback\\Fixed\\`). Quem enviava uma sugestão não voltava a saber nada
+    dela — foi o que o reporte 20260820_105055 mostrou.
+
+    Sem a partilha ao alcance responde `reachable: False` e só o que está neste
+    PC: dizer "não sei" é melhor do que dizer "nada". Só lê pastas locais
+    sincronizadas — nunca vai à rede, para nunca segurar a página.
+    """
+    sufixo = ("_" + safe_name(person)).lower()
+
+    def minhas(pasta):
+        """Os nomes das pastas desta pessoa, ou None se nem se conseguiu ler."""
+        try:
+            return sorted((n for n in os.listdir(pasta)
+                           if n.lower().endswith(sufixo)
+                           and os.path.isdir(os.path.join(pasta, n))),
+                          reverse=True)[:50]
+        except OSError:
+            return None
+
+    pendentes = minhas(PENDING_DIR) or []
+    raiz = feedback_root()
+    abertos = tratados = None
+    if raiz:
+        abertos = minhas(os.path.join(raiz, "feedback"))
+        tratados = minhas(os.path.join(raiz, "feedback", "Fixed"))
+    return {"reachable": bool(raiz) and abertos is not None and tratados is not None,
+            "pending": pendentes,
+            "open": abertos or [],
+            "fixed": tratados or []}
+
+
 def stage_feedback_folder(nome):
     """Pasta local onde o feedback é montado antes de ser entregue."""
     destino = os.path.join(PENDING_DIR, nome)
@@ -424,7 +470,7 @@ def report_bug(origem, mensagem, detalhe="", ip="?", quem="", extra=None):
             attach_server_log(pasta)
             deliver(pasta)
         else:
-            safe = re.sub(r"[^A-Za-z0-9_-]+", "_", quem or "auto")[:30]
+            safe = safe_name(quem, "auto")
             nome = f"BUG_{agora:%Y%m%d_%H%M%S}_{safe}"
             pasta = stage_feedback_folder(nome)
             linhas = [

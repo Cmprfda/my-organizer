@@ -293,14 +293,18 @@
     repete de hora a hora (não há repetição dessas) ou dois fechos no mesmo dia
     contam uma vez só.
   - O registo em lote propõe o dia às 9h (o registo do cronómetro é por dia, não
-    por hora) e um dia parcialmente registado à mão no Jira pode voltar a ser
-    oferecido: a app só sabe o total que ELA registou.
+    por hora). O que já está no Jira passou a ser lido quando o diálogo abre
+    (coluna "Já no Jira", ver `jira.my_worklogs`) e um dia já coberto vem
+    desligado — mas continua a poder ser ligado à mão, porque a leitura pode
+    falhar ou vir incompleta, e sem o Jira ao alcance o diálogo é o de sempre.
   - Os filtros publicados não têm versão nem "quem já os trouxe": publicar outra
     vez substitui o meu ficheiro, e quem já importou fica com a cópia que
     trouxe.
   - O bloqueio é uma marca nossa e não uma regra: nada impede fechar uma tarefa
-    bloqueada, e apagar o que bloqueia deixa a marca a apontar a nada (o chip
-    fica lá, sem salto).
+    bloqueada. Apagar o que bloqueia já não deixa a marca a apontar a nada em
+    silêncio — o chip fica riscado e a caixa da tarefa oferece limpá-la (ver
+    `blockerTargetGone`) — mas só para marcas desta instalação: as dos colegas
+    trazem o nome e não o id, e daí não se pode afirmar que o alvo desapareceu.
   - O `metrics.js` a pedido não poupa nada a quem abre no Início — o separador
     Início É a vista das Métricas. Poupa a quem abre num livro.
   - Os testes da interface só chegam às funções puras: o que precisa de um DOM a

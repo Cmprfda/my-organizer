@@ -452,6 +452,26 @@ def _llm_client(cfg_llm):
         raise ChatEngineError(f"cliente da Anthropic: {exc}") from exc
 
 
+def llm_test(cfg):
+    """Uma volta mínima ao modelo, para o botão Testar das Definições.
+
+    Devolve o nome do modelo que respondeu. Levanta `ChatEngineError` com o
+    motivo quando não dá — que é a informação toda: dizer "não deu" sem dizer
+    porquê deixava quem está a configurar sem saber o que corrigir.
+    """
+    cfg_llm = (cfg or {}).get("llm") if isinstance((cfg or {}).get("llm"), dict) else {}
+    client = _llm_client(cfg_llm)
+    modelo = str((cfg_llm or {}).get("model") or LLM_MODEL).strip() or LLM_MODEL
+    try:
+        client.messages.create(model=modelo, max_tokens=8,
+                               messages=[{"role": "user", "content": "olá"}])
+    except ChatEngineError:
+        raise
+    except Exception as exc:
+        raise ChatEngineError(str(exc)) from exc
+    return modelo
+
+
 def llm_reply(message, ctx, lang, cfg):
     """Resposta pelo modelo, para as perguntas que o motor local não cobre.
 

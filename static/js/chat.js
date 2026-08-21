@@ -514,8 +514,120 @@ document.addEventListener("keydown", e => {
   }
 }, true);
 
+// ---------- definições: o motor do assistente ----------
+// O motor vivia num chat_config.json escrito à mão ao lado da app: quem não
+// editasse JSON não chegava a uma funcionalidade que já estava toda feita. A
+// chave da API NUNCA vem do servidor — o campo mostra só se existe uma, e
+// deixá-lo vazio quer dizer "não mexer nela".
+let chatCfg = { engine: "local", model: "", hasKey: false, canEdit: false };
+
+function renderChatCfg() {
+  const sel = $("chatEngineSel");
+  if (!sel) return;
+  sel.value = chatCfg.engine === "llm" ? "llm" : "local";
+  const modelo = $("chatModelInput");
+  if (document.activeElement !== modelo) modelo.value = chatCfg.model || "";
+  const chave = $("chatKeyInput");
+  chave.placeholder = chatCfg.hasKey ? t("chat_key_set") : t("chat_key_ph");
+  modelo.placeholder = t("chat_model_ph");
+  $("chatCfgSaveBtn").textContent = t("chat_cfg_save");
+  $("chatCfgTestBtn").textContent = t("chat_cfg_test");
+  sel.options[0].textContent = t("chat_engine_local");
+  sel.options[1].textContent = t("chat_engine_llm");
+  $("chatEngineLbl").textContent = t("chat_engine_lbl");
+  $("setSecChat").textContent = t("set_sec_chat");
+  // o modelo e a chave só interessam com o motor do modelo escolhido
+  const llm = sel.value === "llm";
+  modelo.classList.toggle("hidden", !llm);
+  chave.classList.toggle("hidden", !llm);
+  // de outro dispositivo isto é só de leitura: mexe em credenciais desta máquina
+  [sel, modelo, chave, $("chatCfgSaveBtn"), $("chatCfgTestBtn")]
+    .forEach(el => { el.disabled = !chatCfg.canEdit; });
+  if (!chatCfg.canEdit) {
+    $("chatCfgState").innerHTML = `<span class="stateDot"></span>${esc(t("chat_cfg_local_only"))}`;
+  }
+}
+
+async function refreshChatConfig() {
+  if (!$("chatEngineSel")) return;
+  try {
+    const res = await fetch("/api/chat/config");
+    const out = await res.json();
+    chatCfg = {
+      engine: out.engine || "local", model: out.model || "",
+      hasKey: !!out.hasKey, canEdit: !!out.canEdit,
+    };
+  } catch (e) { /* sem resposta fica o que estava */ }
+  renderChatCfg();
+}
+
+async function saveChatConfig() {
+  const btn = $("chatCfgSaveBtn");
+  btn.disabled = true;
+  const chave = $("chatKeyInput").value;
+  try {
+    const res = await fetch("/api/chat/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        engine: $("chatEngineSel").value,
+        model: $("chatModelInput").value.trim(),
+        // vazio: o servidor mantém a chave que lá está
+        api_key: chave,
+      }),
+    });
+    const out = await res.json();
+    if (!out.ok) {
+      $("chatCfgState").innerHTML =
+        `<span class="stateDot"></span>${esc(tf("chat_cfg_fail", out.error || "?"))}`;
+      return;
+    }
+    // a chave gravada nunca volta a ser mostrada: o campo fica vazio
+    $("chatKeyInput").value = "";
+    chatCfg = { engine: out.engine, model: out.model, hasKey: !!out.hasKey, canEdit: true };
+    renderChatCfg();
+    $("chatCfgState").innerHTML = `<span class="stateDot ok"></span>${esc(t("chat_cfg_saved"))}`;
+  } catch (e) {
+    $("chatCfgState").innerHTML =
+      `<span class="stateDot"></span>${esc(tf("chat_cfg_fail", String(e)))}`;
+  } finally {
+    btn.disabled = !chatCfg.canEdit;
+  }
+}
+
+async function testChatConfig() {
+  const btn = $("chatCfgTestBtn");
+  btn.disabled = true;
+  $("chatCfgState").innerHTML = `<span class="stateDot"></span>${esc(t("chat_cfg_testing"))}`;
+  try {
+    const res = await fetch("/api/chat/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "test" }),
+    });
+    const out = await res.json();
+    $("chatCfgState").innerHTML = out.ok
+      ? `<span class="stateDot ok"></span>` + esc(out.engine === "local"
+        ? t("chat_cfg_local_ok") : tf("chat_cfg_ok", out.model || "?"))
+      : `<span class="stateDot"></span>${esc(tf("chat_cfg_fail", out.error || "?"))}`;
+  } catch (e) {
+    $("chatCfgState").innerHTML =
+      `<span class="stateDot"></span>${esc(tf("chat_cfg_fail", String(e)))}`;
+  } finally {
+    btn.disabled = !chatCfg.canEdit;
+  }
+}
+
+if ($("chatEngineSel")) {
+  $("chatEngineSel").addEventListener("change", renderChatCfg);
+  $("chatCfgSaveBtn").addEventListener("click", saveChatConfig);
+  $("chatCfgTestBtn").addEventListener("click", testChatConfig);
+  refreshChatConfig();
+}
+
 // ---------- idioma ----------
 function applyChatLang() {
+  renderChatCfg();
   $("chatBtn").title = `${t("chat_title")} (Ctrl+I)`;
   $("chatBtn").setAttribute("aria-label", t("chat_title"));
   $("chatPanel").setAttribute("aria-label", t("chat_title"));
