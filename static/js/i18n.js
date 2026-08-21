@@ -425,6 +425,8 @@ const TR = {
   theme_auto: ["Automático", "Automatic"],
   theme_light: ["Claro", "Light"],
   theme_dark: ["Escuro", "Dark"],
+  theme_modern_light: ["Moderno claro", "Modern light"],
+  theme_modern_dark: ["Moderno escuro", "Modern dark"],
   viewmap_title: ["Vista resumida desta aba", "Compact view for this sheet"],
   viewmap_hint: ["Define categorias por célula do Excel: célula inicial, orientação e tamanho. Cada categoria lê uma única célula e é editável (texto livre, ou por lista se ligares \"Lista\"); usa o tamanho só se quiseres juntar-lhe as células seguintes na mesma linha/coluna.",
     "Define categories by Excel cell: start cell, orientation and size. Each category reads a single cell and is editable (free text, or from a list if you turn on \"List\"); use size only to append the following cells in the same row/column."],

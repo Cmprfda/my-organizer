@@ -18,15 +18,23 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
   <script>
-    // aplicado antes do primeiro paint para nao haver flash com o tema errado
+    // aplicado antes do primeiro paint para nao haver flash com o tema errado.
+    // A preferencia guarda duas coisas: o claro/escuro (data-theme) e a
+    // aparencia (data-skin, "csw" da marca ou "modern"). Os valores
+    // "modern-light"/"modern-dark" trazem as duas juntas.
     (function () {
-      var dark = false;
-      try {
-        var pref = localStorage.getItem("bsp-tracker-theme") || "auto";
-        dark = pref === "dark" || (pref !== "light" &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches);
-      } catch (e) { }
+      var pref = "auto";
+      try { pref = localStorage.getItem("bsp-tracker-theme") || "auto"; } catch (e) { }
+      var modern = pref.indexOf("modern") === 0;
+      var mode = modern ? pref.slice(7) : pref;   // "modern-dark" -> "dark"
+      var dark = mode === "dark";
+      if (mode !== "dark" && mode !== "light") {
+        try {
+          dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        } catch (e) { }
+      }
       document.documentElement.dataset.theme = dark ? "dark" : "light";
+      document.documentElement.dataset.skin = modern ? "modern" : "csw";
     })();
   </script>
   <link rel="stylesheet" href="/static/css/theme.css">
@@ -563,6 +571,8 @@
                   <option value="auto">Auto</option>
                   <option value="light">Claro</option>
                   <option value="dark">Escuro</option>
+                  <option value="modern-light">Moderno claro</option>
+                  <option value="modern-dark">Moderno escuro</option>
                 </select>
               </div>
               <div class="setRow">

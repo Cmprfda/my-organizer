@@ -86,6 +86,9 @@
   --font-sans: "Aptos", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --font-display: "Aptos Narrow", "Aptos", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Aptos Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* face das etiquetas em CAIXA ALTA — o motivo da marca. Está à parte do
+     --font-mono do código e dos relatórios, que não muda com o tema. */
+  --font-label: var(--font-mono);
   --tracking-tight: -0.01em;
   --tracking-eyebrow: 0.14em;
 
@@ -249,7 +252,7 @@ h3 {
 
 /* motivo "// LABEL" — o kicker monoespaçado da marca */
 .eyebrow {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: var(--tracking-eyebrow);
@@ -277,4 +280,175 @@ html[data-theme="dark"] #toast {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   Tema "Moderno" (aparência Apple / HIG) — html[data-skin="modern"]
+   ---------------------------------------------------------------------------
+   O tema vive numa segunda marca, `data-skin`, e não em valores novos de
+   `data-theme`: assim as regras que já existem para claro/escuro (aqui e no
+   code.css / forms.css) continuam a apanhar o tema moderno sem serem tocadas.
+   Só se trocam fichas — o resto do CSS não sabe que este tema existe.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* — Fichas independentes do claro/escuro — */
+html[data-skin="modern"] {
+  /* rampa neutra: os cinzentos do sistema Apple no lugar da rampa "ink" */
+  --ink-950: #000000;
+  --ink-900: #1c1c1e;
+  --ink-800: #2c2c2e;
+  --ink-700: #3a3a3c;
+  --ink-600: #48484a;
+  --ink-500: #636366;
+  --ink-400: #8e8e93;
+  --ink-300: #aeaeb2;
+  --ink-200: #c7c7cc;
+  --ink-150: #d1d1d6;
+  --ink-100: #e5e5ea;
+  --ink-50: #f2f2f7;
+
+  /* tipografia do sistema: SF Pro no Mac/iOS, Segoe no Windows */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI Variable Text", "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI Variable Display", "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --font-label: var(--font-sans);
+  --tracking-tight: -0.022em;    /* o "optical sizing" dos títulos da Apple */
+  --tracking-eyebrow: 0.04em;
+
+  /* cantos contínuos e generosos, ao contrário dos cantos nítidos da marca */
+  --ios-radius-card: 16px;
+  --ios-radius-btn: 12px;
+  --ios-radius-pill: 999px;
+
+  /* o vidro fosco volta a ligar-se (na marca Critical estava a `none`) */
+  --ios-blur: blur(20px) saturate(180%);
+
+  /* curva de saída da Apple e um toque mais de tempo para se ver o deslize */
+  --ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 150ms;
+  --dur-base: 280ms;
+}
+
+/* — Moderno claro — */
+html[data-skin="modern"][data-theme="light"] {
+  color-scheme: light;
+
+  --ios-bg-primary: #f2f2f7;
+  --ios-bg-secondary: #ffffff;
+  --ios-bg-grouped: #f2f2f7;
+  --ios-glass-bg: rgba(255, 255, 255, 0.72);
+  --ios-glass-border: rgba(60, 60, 67, 0.13);
+  --ios-blue: #007aff;
+  --ios-green: #34c759;
+  --ios-red: #ff3b30;
+  --ios-orange: #ff9500;
+  --ios-gray: #8e8e93;
+  --ios-gray-light: #e5e5ea;
+  --ios-text-primary: #000000;
+  --ios-text-secondary: rgba(60, 60, 67, 0.6);
+  --ios-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --ios-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --scrim-strong: rgba(0, 0, 0, 0.45);
+
+  --border: rgba(60, 60, 67, 0.13);
+  /* o tinto do sistema é azul; o vermelho fica reservado ao que destrói */
+  --accent: #007aff;
+  --accent-hover: #0062cc;
+  --accent-soft: rgba(0, 122, 255, 0.12);
+  --accent-text: #007aff;
+  --ok-text: #248a3d;
+  --accent-warm: #ff9500;
+  --accent-warm-soft: rgba(255, 149, 0, 0.12);
+  --focus-ring: 0 0 0 4px rgba(0, 122, 255, 0.26);
+
+  --status-done-bg: rgba(52, 199, 89, 0.16);
+  --status-done-fg: #248a3d;
+  --status-doing-bg: rgba(255, 149, 0, 0.16);
+  --status-doing-fg: #b25000;
+  --status-blocked-bg: rgba(255, 59, 48, 0.14);
+  --status-blocked-fg: #d70015;
+  --status-info-bg: rgba(0, 122, 255, 0.14);
+  --status-info-fg: #0062cc;
+
+  --coltag-purple-bg: rgba(175, 82, 222, 0.14);
+  --coltag-purple-fg: #8944ab;
+  --coltag-teal-bg: rgba(48, 176, 199, 0.16);
+  --coltag-teal-fg: #0071a4;
+  --coltag-indigo-bg: rgba(88, 86, 214, 0.14);
+  --coltag-indigo-fg: #3634a3;
+  --coltag-sand-bg: rgba(255, 149, 0, 0.14);
+  --coltag-sand-fg: #b25000;
+  --coltag-slate-bg: rgba(120, 120, 128, 0.14);
+  --coltag-slate-fg: #48484a;
+}
+
+/* — Moderno escuro — */
+html[data-skin="modern"][data-theme="dark"] {
+  color-scheme: dark;
+
+  --ios-bg-primary: #000000;
+  --ios-bg-secondary: #1c1c1e;
+  --ios-bg-grouped: #000000;
+  --ios-glass-bg: rgba(28, 28, 30, 0.72);
+  --ios-glass-border: rgba(255, 255, 255, 0.12);
+  --ios-blue: #0a84ff;
+  --ios-green: #30d158;
+  --ios-red: #ff453a;
+  --ios-orange: #ff9f0a;
+  --ios-gray: #98989d;
+  --ios-gray-light: #2c2c2e;
+  --ios-text-primary: #ffffff;
+  --ios-text-secondary: rgba(235, 235, 245, 0.6);
+  --ios-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --ios-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.4);
+  --scrim-strong: rgba(0, 0, 0, 0.7);
+
+  --border: rgba(255, 255, 255, 0.12);
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-soft: rgba(10, 132, 255, 0.2);
+  --accent-text: #64aeff;
+  --ok-text: #30d158;
+  --accent-warm: #ff9f0a;
+  --accent-warm-soft: rgba(255, 159, 10, 0.16);
+  --focus-ring: 0 0 0 4px rgba(10, 132, 255, 0.35);
+
+  --status-done-bg: rgba(48, 209, 88, 0.2);
+  --status-done-fg: #4ce06a;
+  --status-doing-bg: rgba(255, 159, 10, 0.2);
+  --status-doing-fg: #ffb340;
+  --status-blocked-bg: rgba(255, 69, 58, 0.2);
+  --status-blocked-fg: #ff7b72;
+  --status-info-bg: rgba(10, 132, 255, 0.22);
+  --status-info-fg: #64aeff;
+
+  --coltag-purple-bg: rgba(191, 90, 242, 0.2);
+  --coltag-purple-fg: #da8fff;
+  --coltag-teal-bg: rgba(100, 210, 255, 0.18);
+  --coltag-teal-fg: #70d7ff;
+  --coltag-indigo-bg: rgba(94, 92, 230, 0.24);
+  --coltag-indigo-fg: #a4a2f5;
+  --coltag-sand-bg: rgba(255, 159, 10, 0.18);
+  --coltag-sand-fg: #ffb340;
+  --coltag-slate-bg: rgba(255, 255, 255, 0.1);
+  --coltag-slate-fg: #aeaeb2;
+}
+
+/* seleção de texto com o tinto do sistema em vez do vermelho da marca */
+html[data-skin="modern"] ::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* o motivo "// ETIQUETA" é da marca Critical; no tema moderno o lugar dele é
+   o cabeçalho de secção das listas agrupadas do iOS — cinzento e sem prefixo */
+html[data-skin="modern"] .eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+html[data-skin="modern"] .eyebrow::before {
+  content: none;
 }

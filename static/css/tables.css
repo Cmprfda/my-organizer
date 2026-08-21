@@ -188,7 +188,7 @@ th {
   background: var(--ios-glass-bg);
   backdrop-filter: var(--ios-blur);
   -webkit-backdrop-filter: var(--ios-blur);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 11.5px;
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
@@ -451,7 +451,7 @@ td.role.unassigned,
 .tablebox.cards td[data-label]:not(.fn):not(.role)::before {
   content: attr(data-label);
   display: block;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;

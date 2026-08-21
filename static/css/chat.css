@@ -37,7 +37,7 @@
 }
 
 .chatEngine {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 10px;
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;

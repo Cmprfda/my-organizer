@@ -28,6 +28,8 @@ function applyLang() {
   $("themeSel").options[0].textContent = t("theme_auto");
   $("themeSel").options[1].textContent = t("theme_light");
   $("themeSel").options[2].textContent = t("theme_dark");
+  $("themeSel").options[3].textContent = t("theme_modern_light");
+  $("themeSel").options[4].textContent = t("theme_modern_dark");
   document.querySelector('.tabs button[data-view="todo"]').textContent = t("tab_todo");
   document.querySelector('.tabs button[data-view="notes"]').textContent = t("tab_notes");
   document.querySelector('.tabs button[data-view="feedback"]').textContent = t("tab_feedback");
@@ -237,14 +239,21 @@ $("langSel").addEventListener("change", () => {
   load();
 });
 
-// tema: "auto" segue o sistema, "light"/"dark" forçam a escolha do utilizador
+// tema: "auto" segue o sistema, "light"/"dark" forçam a escolha do utilizador.
+// O prefixo "modern-" troca a aparência da marca Critical pela do sistema
+// Apple (ver html[data-skin="modern"] no theme.css) mantendo o mesmo
+// claro/escuro — por isso são duas marcas no <html> e não uma.
 const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 function applyTheme() {
   const pref = localStorage.getItem("bsp-tracker-theme") || "auto";
   $("themeSel").value = pref;
-  const dark = pref === "dark" || (pref === "auto" && darkQuery.matches);
+  const modern = pref.startsWith("modern");
+  const mode = modern ? pref.slice(7) : pref;   // "modern-dark" -> "dark"
+  const dark = mode === "dark" ||
+    (mode !== "light" && darkQuery.matches);    // o que sobra é o "auto"
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.documentElement.dataset.skin = modern ? "modern" : "csw";
 }
 
 $("themeSel").addEventListener("change", () => {

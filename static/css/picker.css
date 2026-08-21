@@ -40,7 +40,7 @@
 
 #pickerBody h4 {
     margin: 10px 6px 4px;
-    font-family: var(--font-mono);
+    font-family: var(--font-label);
     font-size: 12px;
     font-weight: 500;
     text-transform: uppercase;

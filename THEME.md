@@ -49,8 +49,12 @@ failure in red (`--ios-red` → `--csw-red-600`).
 
 - `--font-sans` → **Aptos** (body and UI).
 - `--font-display` → **Aptos Narrow** (h1/h2/h3, large numbers).
-- `--font-mono` → **Aptos Mono** (eyebrows `// LABEL`, table headers,
-  field labels, Kanban column titles).
+- `--font-mono` → **Aptos Mono** (code, reports, file names — content that is
+  genuinely monospaced).
+- `--font-label` → the face of the UPPERCASE labels (eyebrows `// LABEL`, table
+  headers, field labels, Kanban column titles). Defaults to `--font-mono`; the
+  Modern skin repoints it to `--font-sans` (see §6). Kept apart from `--font-mono`
+  precisely so a skin can change the labels without touching code blocks.
 - Titles in *sentence case*, tracking `-0.01em`.
 - Brand motif: `.eyebrow` class (mono, uppercase, `letter-spacing: .14em`,
   automatic `// ` prefix). Used in the app header.
@@ -74,6 +78,45 @@ failure in red (`--ios-red` → `--csw-red-600`).
 
 1. Never introduce fixed hex/rgba values — use tokens or the `--status-*` pairs.
 2. Don't recreate `html[data-theme="dark"]` overrides for colors: the tokens already change.
+   The same holds for `html[data-skin="modern"]` — write to the tokens, not to the skin.
 3. Buttons: primary uses `--accent` and darkens on hover; `.secondary` inverts to a solid fill.
-4. Labels/eyebrows/table headers in `--font-mono` with `--tracking-eyebrow`.
+4. Labels/eyebrows/table headers in `--font-label` with `--tracking-eyebrow`
+   and `text-transform: uppercase` (that trio is what marks a label as a label).
 5. Emoji are not UI elements; `→`, `·` and `//` are the only decorative glyphs.
+
+---
+
+## 6. Modern skin (Apple / HIG appearance)
+
+Besides the brand theme, Settings offers **Modern light** and **Modern dark** — an
+Apple-flavoured appearance for whoever prefers it. It is a *skin*, not a second theme:
+
+- `<html>` carries **two** attributes: `data-theme` (`light`/`dark`, unchanged) and
+  `data-skin` (`csw` by default, or `modern`). Splitting them means every existing
+  light/dark rule — here, in `code.css` and in `forms.css` — keeps working untouched.
+- The stored preference (`bsp-tracker-theme` in `localStorage`) holds both: `auto`,
+  `light`, `dark`, `modern-light`, `modern-dark`. The `modern-` prefix sets the skin,
+  the rest sets light/dark. Resolved in [index.html](index.html) before the first paint
+  and again in `applyTheme()` ([static/js/settings.js](static/js/settings.js)).
+- The skin **only swaps tokens** — there is no component CSS of its own beyond the
+  `.eyebrow` and `::selection` touch-ups. What it changes:
+
+| Token group | Brand (`csw`) | Modern |
+| :-- | :-- | :-- |
+| Accent | Critical Red `#C00000` | system blue `#007AFF` / `#0A84FF` |
+| `--font-sans` / `--font-display` | Aptos / Aptos Narrow | `-apple-system`, SF Pro, Segoe UI |
+| `--font-label` | `--font-mono` (Aptos Mono) | `--font-sans` |
+| Corners | card 12px, button 4px | card 16px, button 12px |
+| `--ios-blur` | `none` | `blur(20px) saturate(180%)` — frosted glass is back on |
+| Neutral ramp `--ink-*` | brand ink | Apple system grays |
+| Motion | 120/200ms, `cubic-bezier(.2,0,0,1)` | 150/280ms, `cubic-bezier(.32,.72,0,1)` |
+| Status / `--coltag-*` | brand semantics | system green/orange/red/blue, purple/teal/indigo |
+
+Red keeps its iOS meaning in this skin: it marks what destroys, not the brand.
+
+**Caveat to keep in mind:** with `--ios-blur` active, `backdrop-filter` makes
+`.ios-top` and `.tabs` into *containing blocks* — a `position: fixed` element placed
+**inside** either bar would anchor to the bar instead of the viewport. Nothing does
+today (every menu and panel is a child of `body`), so the skin is safe as it stands;
+it is the reason the brand theme keeps blur off (§4), and the thing to re-check
+before nesting a fixed element in one of those bars.

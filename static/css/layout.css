@@ -391,7 +391,7 @@ body.topShrunk .ios-top #chatBtn svg {
 
 .setPage label,
 .setPage .setNoteLbl {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 12px;
   font-weight: 500;
   text-transform: uppercase;
@@ -553,7 +553,7 @@ body.topShrunk .ios-top #chatBtn svg {
 }
 
 .viewMapRow > span {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
